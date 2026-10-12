@@ -204,6 +204,23 @@ int main(int argc, char** argv) {
             require(doorState.initialize(descriptors, doorResources, executable, saved, error), error.c_str());
             require(doorState.size() == descriptors.liveCount && doorState.size() != 0,
                 "Map2 door descriptors initialize all allocated leaf controllers.");
+            std::array<std::uint32_t, 256> interactionRooms;
+            for (unsigned room = 0; room < interactionRooms.size(); ++room) interactionRooms[room] = (room << 24) | 0x1234;
+            for (unsigned index = 0; index < doorState.size(); ++index) {
+                const auto& leaf = doorState.leaf(index);
+                std::uint32_t destination = 0;
+                const auto firstRoom = interactionRooms[leaf.rooms[0]], secondRoom = interactionRooms[leaf.rooms[1]];
+                require(doorState.entrySide(index, firstRoom) == 1 &&
+                    doorState.destinationRoom(index, firstRoom, interactionRooms, destination) && destination == secondRoom,
+                    "Door interaction uses the original source-side room byte and destination identifier.");
+                if (leaf.rooms[0] != leaf.rooms[1]) require(doorState.entrySide(index, secondRoom) == 0 &&
+                    !doorState.destinationRoom(index, secondRoom, interactionRooms, destination) && destination == firstRoom,
+                    "Reverse entry returns the opposite room without swapping the retained leaf.");
+                require(doorState.pairedEntry(index, 40, true) == -1 && doorState.pairedEntry(index, firstRoom, false) == -1,
+                    "Disabled or unrelated entries do not select the special paired door.");
+                if (leaf.savedId == 40) require(doorState.pairedEntry(index, 40, false) == doorState.savedPair(44)[0],
+                    "The special paired entry uses the low room byte and original saved-door table.");
+            }
             std::vector<unsigned> sounds;
             const auto emit = [&](unsigned id, const std::array<float, 3>&) { sounds.push_back(id); };
             for (int direction = 0; direction < 2; ++direction) {
