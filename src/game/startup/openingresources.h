@@ -33,4 +33,5 @@ namespace openingscene {
     };
 
     bool read(gameassets::Package& package, unsigned cutscene, Resources& resources, std::string& error);
+    unsigned doorCutscene(bool missingKey, bool front, unsigned type);
 }

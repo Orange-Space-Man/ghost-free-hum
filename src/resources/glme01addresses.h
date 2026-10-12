@@ -3,7 +3,13 @@
 #include <cstdint>
 
 namespace glme01 {
+    inline constexpr std::uint32_t playerDamageDelays = 0x804d2c04;
+    inline constexpr std::uint32_t playerDoorApproachSpeed = 0x804db56c;
+    inline constexpr std::uint32_t playerDoorTurnBlend = 0x804d2ba4;
+    inline constexpr std::uint32_t playerDoorRetryDelay = 0x804d2c6c;
     inline constexpr std::uint32_t playerDoorApproachConstants = 0x804da960;
+    inline constexpr std::uint32_t playerDoorSelectionConstants = 0x804d2008;
+    inline constexpr std::uint32_t fakeDoorActorTypes = 0x8020c980;
     inline constexpr std::uint32_t sineTable = 0x80218238;
     inline constexpr std::uint32_t cosineTable = 0x80219238;
     inline constexpr std::uint32_t arctangentTable = 0x8021d238;

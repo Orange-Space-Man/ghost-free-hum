@@ -1,6 +1,7 @@
 #include "resources/dolresources.h"
 #include "game/startup/openingresources.h"
 #include "game/startup/startupresources.h"
+#include "game/scene/gamearchive.h"
 #include "resources/roomarchivereader.h"
 
 #include <algorithm>
@@ -30,21 +31,26 @@ namespace {
         throw std::runtime_error("Unterminated opening resource name.");
     }
 
-    openingscene::Resource resource(const std::vector<std::uint8_t>& archive, std::string name, bool optional = false) {
+    openingscene::Resource resource(const gamearchive::Archive& archive, std::string name, bool optional = false) {
         openingscene::Resource result;
         result.name = std::move(name);
         if (result.name.empty()) return result;
-        std::string error;
-        if (!roomarchive::read(archive, result.name, result.data, error) && !optional)
-            throw std::runtime_error(result.name + ": " + error);
+        const auto index = archive.findNameResource(result.name);
+        if (index >= 0) result.data = archive.resource(static_cast<unsigned>(index));
+        else if (!optional) throw std::runtime_error("Cutscene archive resource not found: " + result.name);
         return result;
     }
+}
+
+unsigned openingscene::doorCutscene(bool missingKey, bool front, unsigned type) {
+    const std::uint32_t index = (type - 1) * 4 + unsigned(front) * 2 + unsigned(missingKey) + 3;
+    return index < 3 || index > 58 ? 3 : index;
 }
 
 bool openingscene::read(gameassets::Package& package, unsigned cutscene, Resources& resources, std::string& error) {
     error.clear();
     try {
-        if (cutscene != 0 && cutscene != 0x4c) throw std::runtime_error("Unsupported opening cutscene ID.");
+        if (cutscene != 0 && cutscene != 0x4c && (cutscene < 3 || cutscene > 58)) throw std::runtime_error("Unsupported cutscene ID.");
         std::vector<std::uint8_t> executable;
         if (!package.read("sys/main.dol", executable, error)) throw std::runtime_error(error);
         Resources result;
@@ -64,8 +70,10 @@ bool openingscene::read(gameassets::Package& package, unsigned cutscene, Resourc
             segment.id = id;
             segment.archive = name(executable, word(descriptor, 8));
             if (segment.archive.empty() || segment.archive.front() != '/') throw std::runtime_error("Invalid opening archive path.");
-            std::vector<std::uint8_t> compressed, archive;
-            if (!package.read("files" + segment.archive, compressed, error) || !roomarchive::decompress(compressed, archive, error))
+            std::vector<std::uint8_t> compressed, archiveBytes;
+            gamearchive::Archive archive;
+            if (!package.read("files" + segment.archive, compressed, error) || !roomarchive::decompress(compressed, archiveBytes, error) ||
+                !archive.read(archiveBytes, error))
                 throw std::runtime_error(error);
             segment.scene = resource(archive, name(executable, word(descriptor, 12)));
             segment.settings = resource(archive, name(executable, word(descriptor, 16)));
