@@ -53,6 +53,10 @@ namespace doors {
             const std::vector<std::uint8_t>& executable, const SavedFlags& savedFlags, std::string& error);
         unsigned size() const;
         const Leaf& leaf(unsigned index) const;
+        unsigned entrySide(unsigned index, std::uint32_t playerRoom) const;
+        bool destinationRoom(unsigned index, std::uint32_t playerRoom,
+            const std::array<std::uint32_t, 256>& roomIds, std::uint32_t& destination) const;
+        std::int16_t pairedEntry(unsigned index, std::uint32_t playerRoom, bool disabled) const;
         std::uint32_t action(unsigned index, int direction, std::int8_t command, bool forced);
         void advanceAnimation(unsigned index, const SoundEmitter& emit);
         void refreshPose(unsigned index);

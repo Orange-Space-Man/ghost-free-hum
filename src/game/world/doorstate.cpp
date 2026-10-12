@@ -111,6 +111,27 @@ bool doors::State::initialize(const doordata::Table& descriptors, std::shared_pt
 unsigned doors::State::size() const { return static_cast<unsigned>(leaves.size()); }
 const doors::Leaf& doors::State::leaf(unsigned index) const { return leaves.at(index); }
 
+unsigned doors::State::entrySide(unsigned index, std::uint32_t playerRoom) const {
+    return leaves.at(index).rooms[0] == playerRoom >> 24 ? 1 : 0;
+}
+
+bool doors::State::destinationRoom(unsigned index, std::uint32_t playerRoom,
+    const std::array<std::uint32_t, 256>& roomIds, std::uint32_t& destination) const {
+    const auto& rooms = leaves.at(index).rooms;
+    const bool firstSide = rooms[0] == playerRoom >> 24;
+    destination = roomIds[rooms[firstSide ? 1 : 0]];
+    return firstSide;
+}
+
+std::int16_t doors::State::pairedEntry(unsigned index, std::uint32_t playerRoom, bool disabled) const {
+    constexpr unsigned sourceSavedDoor = 40, destinationSavedDoor = 44;
+    if (leaves.empty() || disabled) return -1;
+    if (static_cast<std::uint8_t>(playerRoom) == sourceSavedDoor && leaves.at(index).savedId == sourceSavedDoor) {
+        return savedPairs[destinationSavedDoor][0];
+    }
+    return -1;
+}
+
 std::uint32_t doors::State::action(unsigned index, int direction, std::int8_t command, bool forced) {
     if (leaves.empty()) return 0;
     auto& value = leaves.at(index);

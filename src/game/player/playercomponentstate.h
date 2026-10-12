@@ -4,6 +4,8 @@
 #include <cstdint>
 #include <optional>
 
+namespace actors { class MoveActor; }
+
 namespace playercomponents {
     struct EmptyState {
         EmptyState();
@@ -15,17 +17,15 @@ namespace playercomponents {
         std::optional<float> field10;
     };
 
-    struct State34 {
-        State34();
-        std::array<float, 3> field0;
-        float fieldC, field10, field14;
-        std::uint16_t field18, field1A;
-        std::uint32_t field1C, field20;
-        std::uint8_t field24;
-        void* field28;
-        std::uint8_t field2C, field2D;
-        std::uint16_t field2E;
-        std::uint32_t field30;
+    struct DoorState {
+        std::array<float, 3> approachPosition{}, facing{0, 0, 1};
+        std::int16_t door = 0, pairedDoor = -1;
+        std::uint32_t sourceRoom, side = 1;
+        std::uint8_t command = 1;
+        std::uint32_t approachFrames = 0;
+        std::uint8_t unlocked = 0, blocked = 0;
+        std::uint16_t flags = 1;
+        actors::MoveActor* fakeDoor;
     };
 
     struct State28 {

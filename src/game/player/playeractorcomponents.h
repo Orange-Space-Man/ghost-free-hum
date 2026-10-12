@@ -21,7 +21,7 @@ namespace playeractor {
         std::unique_ptr<playercontrols::State> controls;
         std::unique_ptr<playercomponents::EmptyState> empty;
         std::unique_ptr<playercomponents::QuaternionState> quaternion;
-        std::unique_ptr<playercomponents::State34> state34;
+        std::unique_ptr<playercomponents::DoorState> door;
         std::unique_ptr<playercomponents::State28> state28;
         std::unique_ptr<playercomponents::State80> state80;
         std::unique_ptr<playermodels::ScannerModels> scanner;

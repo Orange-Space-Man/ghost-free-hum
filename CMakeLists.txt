@@ -238,6 +238,7 @@ add_library(Game STATIC
     src/game/player/playervacuumquery.cpp
     src/game/player/playervelocitycontext.cpp
     src/game/player/playervelocityframe.cpp
+    src/game/player/playerdoorapproach.cpp
     src/game/player/playervelocityupdate.cpp
     src/game/player/playerweaponowner.cpp
     src/game/player/playerweaponparameters.cpp

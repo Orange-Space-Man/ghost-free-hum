@@ -3,6 +3,7 @@
 #include <cstdint>
 
 namespace glme01 {
+    inline constexpr std::uint32_t playerDoorApproachConstants = 0x804da960;
     inline constexpr std::uint32_t sineTable = 0x80218238;
     inline constexpr std::uint32_t cosineTable = 0x80219238;
     inline constexpr std::uint32_t arctangentTable = 0x8021d238;
