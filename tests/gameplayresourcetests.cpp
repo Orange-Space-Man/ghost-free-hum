@@ -7,6 +7,9 @@
 #include "game/player/playervelocitycontext.h"
 #include "game/player/playerorientationframe.h"
 #include "game/player/playervelocityframe.h"
+#include "game/player/playerdoorinteraction.h"
+#include "game/player/playerdoorframe.h"
+#include "resources/roomarchivereader.h"
 
 #include <cmath>
 #include <iostream>
@@ -15,6 +18,236 @@
 namespace {
     void require(bool condition, const std::string& message) {
         if (!condition) throw std::runtime_error(message);
+    }
+
+    void checkDoorInteraction(gameplay::ResourceOwner& owner) {
+        const auto& executable = owner.executable();
+        auto& manager = owner.managers();
+        auto& doors = manager.doors();
+        std::string error;
+        actormodel::Catalog catalog;
+        require(catalog.read(executable, error), error);
+        actormodel::Resources models(catalog);
+        std::vector<std::uint8_t> compressed, archiveBytes;
+        gamearchive::Archive archive;
+        require(owner.package().read("files/Game/game_usa.szp", compressed, error) &&
+            roomarchive::decompress(compressed, archiveBytes, error) && archive.read(archiveBytes, error), error);
+        models.initializeEmbedded(archive);
+        std::array<std::uint32_t, 256> rooms{};
+        for (unsigned i = 0; i < owner.rooms().entries().size(); ++i) rooms[i] = owner.rooms().entries()[i].id;
+        std::array<std::uint8_t, 32> keys{};
+        doors::SavedFlags saved{};
+        playerinteraction::DoorServices services{doors, saved, keys, rooms, manager.enemies(), catalog, models};
+        playerinteraction::DoorInteraction interaction(executable);
+        playercomponents::DoorState state;
+        playeractions::Actions actions(executable, 0);
+        playerinteraction::DoorInput input;
+        bool found = false;
+        for (unsigned i = 0; i < doors.size(); ++i) {
+            const auto& leaf = doors.leaf(i);
+            if (!leaf.collision || !leaf.collisionActive) continue;
+            input.position = leaf.collision->center;
+            for (unsigned axis = 0; axis < 3; ++axis) for (unsigned component = 0; component < 3; ++component)
+                input.position[component] += leaf.collision->axes[axis][component] * (leaf.collision->extents[axis] * 0.5f);
+            input.room = rooms[leaf.rooms[0]];
+            input.radius = 0;
+            if (interaction.select(state, input, services)) { found = true; break; }
+        }
+        require(found && state.door >= 0, "Original selection finds a real map-two door before fake actors.");
+        const auto selected = state.door;
+        const auto originalFlags = doors.leaf(selected).flags;
+        const auto savedId = doors.leaf(selected).savedId;
+        input.direction = state.facing;
+        for (auto& value : input.direction) value = -value;
+        require(interaction.select(state, input, services) && state.door == selected,
+            "Original minus-one facing threshold accepts a direction facing directly away.");
+        playerinteraction::DoorOutput output;
+        output.damage = 99;
+        require(!interaction.run(state, actions, input, output, services) && output.damage == 99,
+            "An unpressed interaction leaves the caller output untouched.");
+        input.eligible = input.pressed = input.primary = true;
+        input.speed = 2;
+        input.reaction = 1;
+        require(interaction.run(state, actions, input, output, services) && actions.fields31C[0] == 1,
+            "Selection enters the real protected door action through its payload.");
+        input.position = state.approachPosition;
+        input.contact = true;
+        doors.setEventBlocked(savedId, true);
+        require(interaction.run(state, actions, input, output, services) && output.blocked && actions.field310 == 1 && !state.unlocked,
+            "Arrival processes original door barriers before opening and publishes the blocked reaction.");
+        doors.setEventBlocked(savedId, false);
+        input.contact = false;
+        state.flags = 1;
+        state.door = selected;
+        unsigned presentations = 0;
+        bool missingKey = false;
+        services.presentKey = [&](bool missing, bool front, std::uint8_t type) {
+            ++presentations;
+            missingKey = missing;
+            require(front == (state.side == 1) && type == doors.leaf(selected).type, "Key presentation receives the original side and door type.");
+        };
+        const auto start = [&] {
+            actions.field310 = 1;
+            std::array<std::uint32_t, 12> payload{};
+            payload[8] = payload[9] = 1;
+            actions.request(12, &payload);
+            state.approachFrames = 0;
+            state.pairedDoor = -1;
+            input.position = state.approachPosition;
+        };
+        doors.setSavedFlag(savedId, true, saved);
+        start();
+        require(interaction.run(state, actions, input, output, services) && presentations == 1 && missingKey &&
+            actions.fields31C[0] == 2 && !state.unlocked && (doors.leaf(selected).flags & 0x8000),
+            "Missing keys retain the lock, mark the door used, and enter presentation wait.");
+        services.keyPresentationActive = true;
+        interaction.run(state, actions, input, output, services);
+        require(actions.fields31C[0] == 2 && presentations == 1, "Key presentation is not restarted while active.");
+        services.keyPresentationActive = false;
+        interaction.run(state, actions, input, output, services);
+        require(actions.field310 == 1 && !output.blocked, "Missing-key rejection differs from an event barrier.");
+        keys[savedId >> 3] |= 1u << (savedId & 7);
+        start();
+        interaction.run(state, actions, input, output, services);
+        require(presentations == 2 && !missingKey && state.unlocked && !(doors.leaf(selected).flags & 0x4400) &&
+            !(saved[savedId >> 5] & (0x80000000u >> (savedId & 31))), "A held key clears the manager and saved lock flags before presentation.");
+        interaction.run(state, actions, input, output, services);
+        require(actions.fields31C[0] == 3 && (doors.leaf(selected).flags & 0x20), "Completed key presentation starts the original door animation.");
+        std::uint32_t destination;
+        doors.destinationRoom(selected, input.room, rooms, destination);
+        require(output.room == destination, "Door opening publishes the original destination room.");
+        input.animation = 0;
+        input.previousFrame = input.frame = 0;
+        actions.fields31C[0] = 3;
+        state.pairedDoor = selected;
+        input.animationEnded = true;
+        interaction.run(state, actions, input, output, services);
+        require(state.pairedDoor == -1 && state.unlocked && output.position == &state.approachPosition &&
+            actions.fields31C[0] == 8, "Paired-leaf completion publishes the retained approach position and advances the existing protected action.");
+        input.animationEnded = false;
+        actions.fields31C[0] = 8;
+        interaction.run(state, actions, input, output, services);
+        require(output.room == state.sourceRoom, "Return stage restores the retained source room.");
+        actions.fields31C[0] = 9;
+        interaction.run(state, actions, input, output, services);
+        require(output.instantTurn && output.reverseFacing && output.motion.facing[0] == -state.facing[0],
+            "Fake-door turn stage publishes both original turn flags.");
+        actions.fields31C[0] = 10;
+        input.animationLooped = false;
+        interaction.run(state, actions, input, output, services);
+        require(actions.fields31C[0] == 10 && output.reverseFacing && !output.instantTurn, "Reverse stage waits for the animation loop.");
+        input.animationLooped = true;
+        interaction.run(state, actions, input, output, services);
+        require(actions.fields31C[0] == 11, "The loop event advances the protected action once.");
+        actions.fields31C[0] = 5;
+        input.close = input.reverse = true;
+        interaction.run(state, actions, input, output, services);
+        require(actions.fields31C[0] == 6 && (doors.leaf(selected).flags & 0x1000), "Close input wins when both close and reverse are pressed.");
+        actions.fields31C[0] = 5;
+        input.close = false;
+        interaction.run(state, actions, input, output, services);
+        require(actions.fields31C[0] == 7 && (doors.leaf(selected).flags & 0x80) && output.room == destination,
+            "Reverse input uses the original close-back command and destination publication.");
+        for (unsigned i = 0; i < 100; ++i) doors.advanceAnimation(selected, [](unsigned, const auto&) {});
+        doors.setSavedFlag(savedId, (originalFlags & 0x400) != 0, saved);
+        doors.refreshPose(selected);
+        auto& player = *dynamic_cast<playeractor::Player*>(manager.actors().actor(manager.enemies().appearPoint(0).actor));
+        const auto retainedState = player.state;
+        const auto retainedActions = *player.components->actions;
+        const auto retainedDoor = *player.components->door;
+        const auto retainedControls = *player.components->controls;
+        const auto retainedPosition = player.position;
+        const auto retainedRoom = player.fieldB4;
+        const auto retainedLife = player.life;
+        auto& reactions = *player.components->reactions;
+        const auto retainedReaction = reactions.state;
+        const auto retainedReactionTime = reactions.field4;
+        const auto retainedReactionValue = reactions.field8;
+        const auto retainedReactionPosition = reactions.fieldC;
+        const auto retainedReactionFlag = reactions.field18;
+        std::int32_t audioLife = 100;
+        std::vector<unsigned> sounds;
+        playerevents::LifeEnvironment life{audioLife, manager.particles().effects(),
+            [&](unsigned id, const auto&) { sounds.push_back(id); }, [](const auto&) {}, {}};
+        gameflags::State flags;
+        playerinteraction::DoorFrame frame(executable);
+        playerinteraction::DoorFrameServices frameServices{services, manager.actors(), flags, life};
+        player.state.flags792 |= 1;
+        player.state.field1130 = player.state.field1170 = 0;
+        player.state.field1338 = 1;
+        player.state.field1180 = 0;
+        player.state.field1184 = 1;
+        player.state.flags1140[2] = player.state.flags1330[1] = player.state.field1060 = 0;
+        player.state.field10E4 = 1;
+        player.state.flags10E8[0] = 1;
+        reactions.state = 1;
+        player.components->controls->flagsC[6] = player.components->controls->flagsC[7] = 1;
+        player.components->actions->field310 = 1;
+        require(!frame.run(player, frameServices) && player.state.field10E4 == 0 && !player.state.flags10E8[0],
+            "Door eligibility is sampled before decrementing the retry delay, and the contact latch resets every frame.");
+        const auto controls = frame.input(player);
+        require(controls.eligible && controls.pressed && controls.primary && controls.radius == player.state.fieldF54 &&
+            controls.previousFrame == player.animationFrame - player.animationFrameStep,
+            "The original frame adapter reads player capabilities, button bytes and retained animation timing.");
+        player.position = input.position;
+        player.fieldB4 = input.room;
+        require(frame.run(player, frameServices) && player.state.fieldF70 && player.state.field1070 == 7 &&
+            player.state.flags10E8[0] && player.state.field10E4 > 0,
+            "Manager-owned player input reaches the door dispatcher and publishes forced motion and retry state.");
+        player.position = player.components->door->approachPosition;
+        player.components->door->flags = 0;
+        for (unsigned flag = 0; flag < 256; ++flag) flags.setOn(static_cast<std::uint8_t>(flag));
+        require(frame.run(player, frameServices), "The active protected door action continues during the retry delay.");
+        if (player.fieldB4 != input.room) for (unsigned flag = 0; flag < 256; ++flag)
+            require(flags.value(static_cast<std::uint8_t>(flag)) == (flag < 0x55 || flag >= 0xaa),
+                "Door room changes clear only the original transient event-flag interval.");
+
+        playerevents::DamageFrame damage(executable);
+        playerevents::Payload payload;
+        payload.word(0x18, 4);
+        payload.word(0x20, 0);
+        player.components->actions->field310 = 1;
+        player.state.field10C4 = player.state.field1150 = player.state.field1170 = 0;
+        player.state.field1114 = 0;
+        player.state.flags1040[2] = player.state.field1060 = 0;
+        player.state.field11A0 = nullptr;
+        player.state.fields12F4[9] = 0;
+        player.life = 100;
+        require(damage.run(player, payload, false, manager.actors(), catalog, false, life) && player.life == 96 &&
+            player.state.field10C4 > 0 && audioLife == 96 && sounds.back() == 0x839,
+            "General damage reaches original life-loss effects and audio, retaining the ordinary invulnerability delay.");
+        require(!damage.run(player, payload, false, manager.actors(), catalog, false, life) && player.life == 96,
+            "Invulnerability rejects repeated damage.");
+        player.state.field10C4 = 0;
+        player.state.field1170 = 1;
+        player.state.field1178 = 1;
+        payload.word(0x18, 5);
+        require(damage.run(player, payload, false, manager.actors(), catalog, true, life) && player.life == 92,
+            "Power scaling truncates before the original doubled-damage mode is applied.");
+        player.state.field10C4 = player.state.field1170 = 0;
+        payload.word(0x20, 7);
+        const auto previousSounds = sounds.size();
+        require(damage.run(player, payload, false, manager.actors(), catalog, false, life) && player.life == 92 &&
+            player.state.field112C == 5 && sounds.size() == previousSounds,
+            "Deferred damage publishes its pending amount without immediate life loss or sound.");
+        player.components->actions->field310 = 2;
+        player.components->actions->field314 = 0x20;
+        player.state.field112C = 0;
+        require(!damage.run(player, payload, false, manager.actors(), catalog, false, life),
+            "Protected door actions reject damage unless a deferred amount is already pending.");
+        player.state = retainedState;
+        *player.components->actions = retainedActions;
+        *player.components->door = retainedDoor;
+        *player.components->controls = retainedControls;
+        player.position = retainedPosition;
+        player.fieldB4 = retainedRoom;
+        player.life = retainedLife;
+        reactions.state = retainedReaction;
+        reactions.field4 = retainedReactionTime;
+        reactions.field8 = retainedReactionValue;
+        reactions.fieldC = retainedReactionPosition;
+        reactions.field18 = retainedReactionFlag;
+        std::cout << "Original door selection, key/barrier and protected interaction states verified.\n";
     }
 
     roomportal::Matrix projection(const s3denvironment::Camera& camera) {
@@ -426,6 +659,7 @@ int main(int argc, char** argv) {
                     *player->components->quaternion = quaternion;
                 }
                 managers.updatePlacement(0);
+                if (!cycle) checkDoorInteraction(owner);
                 require(managers.placements().size() == 46, "Independent production resource ownership admits the full fresh mission scan.");
                 const auto submissions = owner.prepareVisibility(projection(owner.camera()), {0, 0, 640, 480});
                 require(submissions.size() == 2 && submissions[0].room == player->room() && (submissions[1].room & 255) == 30 &&

@@ -18,6 +18,12 @@ int main(int argc, char** argv) {
         openingscene::Resources resources;
         resources.cutscene = 123;
         std::string error;
+        for (unsigned type = 1; type <= 14; ++type) for (unsigned front = 0; front < 2; ++front)
+            for (unsigned missing = 0; missing < 2; ++missing)
+                if (openingscene::doorCutscene(missing != 0, front != 0, type) != 3 + (type - 1) * 4 + front * 2 + missing)
+                    throw std::runtime_error("Original door cutscene selection changed.");
+        if (openingscene::doorCutscene(false, false, 0) != 3 || openingscene::doorCutscene(true, true, 15) != 3)
+            throw std::runtime_error("Door cutscene fallback changed.");
         std::vector<std::uint8_t> encoded(50);
         encoded[3] = 18;
         encoded[7] = 16;
@@ -98,14 +104,33 @@ int main(int argc, char** argv) {
                     if (!file) throw std::runtime_error("Could not write stream comparison samples.");
                 }
             }
-            for (unsigned cutscene : {0x4cU,0U}) {
+            for (unsigned id = 3; id <= 58; ++id) {
+                if (!openingscene::read(package, id, resources, error)) throw std::runtime_error(error);
+                if (resources.cutscene != id || resources.segments.empty())
+                    throw std::runtime_error("Missing door cutscene definition.");
+                for (const auto& segment : resources.segments) {
+                    if (segment.scene.data.empty() || segment.settings.data.empty() || segment.models.empty())
+                        throw std::runtime_error("Missing door cutscene resources.");
+                    for (const auto& model : segment.models) {
+                        if (model.model.data.empty()) throw std::runtime_error("Missing door cutscene model.");
+                        for (const auto& track : model.animations) for (const auto& animation : track)
+                            if (animation.data.empty()) throw std::runtime_error("Missing door cutscene animation.");
+                    }
+                }
+            }
+            std::cout << "All 56 door resource selections loaded. Rendering is checked separately.\n";
+            std::vector<unsigned> cutscenes{0x4c, 0};
+            if (argc == 4 && std::string(argv[3]) == "--door-render")
+                for (unsigned id = 3; id <= 58; ++id) cutscenes.push_back(id);
+            for (unsigned cutscene : cutscenes) {
                 if (!openingscene::read(package, cutscene, resources, error)) throw std::runtime_error(error);
                 const std::vector<unsigned> expected = cutscene == 0x4c ? std::vector<unsigned>{23,27,24,25,26,28,29} : std::vector<unsigned>{30,31};
-                if (resources.mode != 2 || resources.segments.size() != expected.size()) throw std::runtime_error("Original opening table changed.");
+                if ((cutscene == 0 || cutscene == 0x4c) && (resources.mode != 2 || resources.segments.size() != expected.size()))
+                    throw std::runtime_error("Original opening table changed.");
                 unsigned models = 0, animations = 0, renderable = 0;
                 for (unsigned i = 0; i < resources.segments.size(); ++i) {
                     const auto& segment = resources.segments[i];
-                    if (segment.id != expected[i] || segment.scene.data.empty() || segment.settings.data.empty())
+                    if (((cutscene == 0 || cutscene == 0x4c) && segment.id != expected[i]) || segment.scene.data.empty() || segment.settings.data.empty())
                         throw std::runtime_error("Invalid opening segment resources.");
                     s3denvironment::CameraAnimation camera;
                     if (!camera.read(segment.scene.data, segment.settings.data, error)) throw std::runtime_error(segment.archive + ": " + error);

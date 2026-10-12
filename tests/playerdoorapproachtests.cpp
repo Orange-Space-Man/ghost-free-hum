@@ -1,4 +1,5 @@
 #include "game/player/playerdoorapproach.h"
+#include "game/player/playerdoorinteraction.h"
 
 #include <cmath>
 #include <cstring>
@@ -28,6 +29,12 @@ namespace {
     }
 
     void check() {
+        const doors::CollisionBox box{{10, 20, 30}, {{{1, 0, 0}, {0, 1, 0}, {0, 0, 1}}}, {4, 5, 6}};
+        require(playerinteraction::DoorInteraction::contains(box, {11, 21, 31}, 0), "Door selection accepts points inside its corner-based box.");
+        require(!playerinteraction::DoorInteraction::contains(box, {10, 21, 31}, 0) &&
+            !playerinteraction::DoorInteraction::contains(box, {14, 21, 31}, 0), "Both selection bounds are strict.");
+        require(playerinteraction::DoorInteraction::contains(box, {9, 21, 31}, 2) &&
+            !playerinteraction::DoorInteraction::contains(box, {8, 21, 31}, 2), "Selection padding preserves strict outer bounds.");
         const auto executable = fixture();
         playerinteraction::DoorApproach approach(executable);
         playercomponents::DoorState state;
