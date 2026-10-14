@@ -22,11 +22,13 @@ int CaptureApplication::run(HINSTANCE instance) {
     try {
         std::filesystem::path assetPath;
         int captureFrame = -1;
+        bool captureDoorMaterial = false;
         int captureMenu = -1;
         int optionsFrame = -1;
         int previewFrame = -1;
         int fileFrame = -1;
         int openingFrame = -1;
+        unsigned cutsceneId = 0x4c;
         bool captureAudio = false;
         bool captureStats = false;
         bool captureMenuFlow = false;
@@ -38,7 +40,15 @@ int CaptureApplication::run(HINSTANCE instance) {
         if (argv != nullptr) {
             for (int index = 1; index < argc; ++index) {
                 const std::wstring value = argv[index];
-                if (value == L"--debug-overlay") {
+                if (value == L"--capture-cutscene" && index + 3 < argc) {
+                    capturePath = argv[++index];
+                    cutsceneId = std::stoul(argv[++index]);
+                    openingFrame = std::stoi(argv[++index]);
+                    if (openingFrame < 0 || openingFrame > 3000) throw std::runtime_error("Invalid cutscene capture frame.");
+                } else if (value == L"--capture-door-material" && index + 1 < argc) {
+                    captureDoorMaterial = true;
+                    capturePath = argv[++index];
+                } else if (value == L"--debug-overlay") {
                     captureStats = true;
                 } else if (value == L"--assets" && index + 1 < argc) {
                     assetPath = argv[++index];
@@ -215,8 +225,47 @@ int CaptureApplication::run(HINSTANCE instance) {
                 close();
                 return 0;
             }
+            if (captureDoorMaterial) {
+                gameassets::Package package;
+                openingscene::Resources resources;
+                std::vector<std::uint8_t> executable, table;
+                if (!package.open(assetPath, error) || !openingscene::read(package, 3, resources, error) ||
+                    !package.read("sys/main.dol", executable, error) ||
+                    !dolresources::read(executable, glme01::sineTable, 5120 * 4, table, error)) throw std::runtime_error(error);
+                std::vector<float> trigonometry(5120);
+                for (unsigned i = 0; i < trigonometry.size(); ++i) {
+                    const unsigned offset = i * 4;
+                    const std::uint32_t bits = (std::uint32_t(table[offset]) << 24) | (std::uint32_t(table[offset + 1]) << 16) |
+                        (std::uint32_t(table[offset + 2]) << 8) | table[offset + 3];
+                    std::memcpy(&trigonometry[i], &bits, sizeof(float));
+                }
+                const auto& segment = resources.segments.front();
+                const auto found = std::find_if(segment.models.begin(), segment.models.end(), [](const auto& model) {
+                    return model.model.name == "d01_mdl.mdl";
+                });
+                if (found == segment.models.end()) throw std::runtime_error("Door material capture model is missing.");
+                s3dmodel::Model model;
+                s3danimation::Animation animation;
+                s3denvironment::Environment environment;
+                s3denvironment::CameraAnimation camera;
+                if (!model.read(found->model.data, error) || !animation.read(found->animations[0].at(0).data, error) ||
+                    !environment.read(segment.scene.data, segment.settings.data, error) ||
+                    !camera.read(segment.scene.data, segment.settings.data, error)) throw std::runtime_error(error);
+                const auto textures = gamerenderer::loadPreviews({model}, 640, 480);
+                const auto view = camera.sample(0);
+                gamerenderer::drawPreview(0, model, model.animate(animation.sample(0), animation.flags, trigonometry),
+                    environment.sample(0), &view, true, 3, false, trigonometry);
+                startupscene::Picture picture;
+                picture.texture = textures[0];
+                picture.width = 640;
+                picture.height = 480;
+                gamerenderer::drawInterface({picture}, false);
+                gamerenderer::capture(capturePath);
+                close();
+                return 0;
+            }
             if (openingFrame >= 0) {
-                if (!opening.load(assetPath, 0x4c, error)) throw std::runtime_error(error);
+                if (!opening.load(assetPath, cutsceneId, error)) throw std::runtime_error(error);
                 for (int frame = 0; frame <= openingFrame; ++frame) opening.update();
                 opening.draw(false);
                 gamerenderer::capture(capturePath);

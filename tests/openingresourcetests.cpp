@@ -3,9 +3,11 @@
 #include "game/models/s3dmodel.h"
 #include "game/models/s3dmorph.h"
 #include "game/models/s3dshadow.h"
+#include "game/models/s3dtexturestage.h"
 #include <cmath>
 #include "game/models/s3denvironment.h"
 #include "game/startup/openingtimeline.h"
+#include "game/startup/keypresentationstate.h"
 #include "jlib/jaudio/jaudiostream.h"
 
 #include <iostream>
@@ -18,6 +20,44 @@ int main(int argc, char** argv) {
         openingscene::Resources resources;
         resources.cutscene = 123;
         std::string error;
+        keypresentation::State key;
+        unsigned doorTransition = 0;
+        unsigned sceneState = 0;
+        bool gameplayEnabled = true, flag56 = true;
+        std::vector<bool> pauses;
+        keypresentation::Services keyServices{sceneState, doorTransition, gameplayEnabled, flag56,
+            [&](bool paused) { pauses.push_back(paused); }};
+        if (!key.request(false, true, 2, 1, keyServices) || key.cutscene != 9 || key.request(true, false, 1, 1, keyServices) || flag56)
+            throw std::runtime_error("Key presentation selection or ownership admission.");
+        if (key.beginDraw() != keypresentation::Action::None || key.phase != keypresentation::Phase::Loading)
+            throw std::runtime_error("Key presentation advanced before resource completion.");
+        key.loaded();
+        if (key.beginDraw() != keypresentation::Action::None || key.phase != keypresentation::Phase::Preparing ||
+            key.beginDraw() != keypresentation::Action::Initialize)
+            throw std::runtime_error("Key presentation lost its original preparation draw.");
+        key.initialized(keyServices);
+        flag56 = true;
+        if (doorTransition != 3 || key.beginDraw() != keypresentation::Action::Update ||
+            key.completeUpdate(false, 0x100, keyServices) || doorTransition != 4 || !key.owned)
+            throw std::runtime_error("Key presentation abort flag must defer completion until the next update.");
+        flag56 = false;
+        if (!key.completeUpdate(false, 0, keyServices) || !key.updated)
+            throw std::runtime_error("Key presentation forced completion was lost.");
+        key.release(keyServices);
+        sceneState = 1;
+        if (key.request(true, false, 1, 0, keyServices) || !pauses.empty())
+            throw std::runtime_error("Key movie admission bypassed the scene-state gate.");
+        sceneState = 0;
+        if (!key.request(true, false, 1, 0, keyServices) || key.forceFinish || key.updated || sceneState != 255 || pauses != std::vector<bool>{true})
+            throw std::runtime_error("Key presentation release or replay reset.");
+        key.loaded();
+        key.beginDraw();
+        key.initialized(keyServices);
+        if (!key.completeUpdate(false, 0x100, keyServices) || gameplayEnabled || doorTransition != 4)
+            throw std::runtime_error("Mode-zero key movie skip or scene suspension changed.");
+        key.release(keyServices);
+        if (sceneState != 0 || !gameplayEnabled || pauses != std::vector<bool>{true, false})
+            throw std::runtime_error("Key movie did not restore scene and audio ownership.");
         for (unsigned type = 1; type <= 14; ++type) for (unsigned front = 0; front < 2; ++front)
             for (unsigned missing = 0; missing < 2; ++missing)
                 if (openingscene::doorCutscene(missing != 0, front != 0, type) != 3 + (type - 1) * 4 + front * 2 + missing)
@@ -107,12 +147,35 @@ int main(int argc, char** argv) {
             for (unsigned id = 3; id <= 58; ++id) {
                 if (!openingscene::read(package, id, resources, error)) throw std::runtime_error(error);
                 if (resources.cutscene != id || resources.segments.empty())
-                    throw std::runtime_error("Missing door cutscene definition.");
+                    throw std::runtime_error("Door cutscene " + std::to_string(id) + " has mode " + std::to_string(resources.mode) + ".");
                 for (const auto& segment : resources.segments) {
                     if (segment.scene.data.empty() || segment.settings.data.empty() || segment.models.empty())
                         throw std::runtime_error("Missing door cutscene resources.");
+                    if (argc == 4 && std::string(argv[3]) == "--door-environment") {
+                        s3denvironment::Environment environment;
+                        if (!environment.read(segment.scene.data, segment.settings.data, error))
+                            throw std::runtime_error(segment.archive + ": " + error);
+                        const unsigned frames = (segment.scene.data[0] << 8) | segment.scene.data[1];
+                        for (unsigned frame = 0; frame <= frames; ++frame) {
+                            const auto lighting = environment.sample(float(frame));
+                            for (const auto& light : lighting.lights) for (float value : light.distance)
+                                if (!std::isfinite(value)) throw std::runtime_error("Nonfinite door light attenuation.");
+                        }
+                    }
                     for (const auto& model : segment.models) {
                         if (model.model.data.empty()) throw std::runtime_error("Missing door cutscene model.");
+                        const auto& bytes = model.model.data;
+                        const auto half = [&](std::size_t offset) { return (unsigned(bytes.at(offset)) << 8) | bytes.at(offset + 1); };
+                        const auto table = (half(104) << 16) | half(106);
+                        for (unsigned material = 0; material < half(40); ++material) {
+                            const std::size_t record = table + std::size_t(material) * 288;
+                            const auto count = bytes.at(record + 7);
+                            if (count > 8) throw std::runtime_error("Door material exceeds its texture stage records.");
+                            for (unsigned stage = 0; stage < count; ++stage) {
+                                const auto decoded = s3dtexturestage::read(bytes, record + 32 + stage * 32);
+                                if (decoded.sampler >= half(36)) throw std::runtime_error("Invalid door material sampler.");
+                            }
+                        }
                         for (const auto& track : model.animations) for (const auto& animation : track)
                             if (animation.data.empty()) throw std::runtime_error("Missing door cutscene animation.");
                     }
@@ -120,8 +183,7 @@ int main(int argc, char** argv) {
             }
             std::cout << "All 56 door resource selections loaded. Rendering is checked separately.\n";
             std::vector<unsigned> cutscenes{0x4c, 0};
-            if (argc == 4 && std::string(argv[3]) == "--door-render")
-                for (unsigned id = 3; id <= 58; ++id) cutscenes.push_back(id);
+            for (unsigned id = 3; id <= 58; ++id) cutscenes.push_back(id);
             for (unsigned cutscene : cutscenes) {
                 if (!openingscene::read(package, cutscene, resources, error)) throw std::runtime_error(error);
                 const std::vector<unsigned> expected = cutscene == 0x4c ? std::vector<unsigned>{23,27,24,25,26,28,29} : std::vector<unsigned>{30,31};

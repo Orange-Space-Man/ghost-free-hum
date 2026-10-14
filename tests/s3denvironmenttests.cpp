@@ -1,4 +1,6 @@
 #include "game/models/s3denvironment.h"
+#include "game/models/s3dtexturestage.h"
+#include "game/models/s3dfog.h"
 #include "resources/gameassetpackage.h"
 #include "resources/roomarchivereader.h"
 
@@ -19,6 +21,34 @@ namespace {
 int main(int argc, char** argv) {
     try {
         s3denvironment::Curve cubic{3, {0,0,0, 30,100,0}};
+        std::vector<std::uint8_t> stageBytes(32);
+        stageBytes[0] = 2;
+        put(stageBytes, 2, 7, 2);
+        put(stageBytes, 4, 0x3f800000, 4);
+        put(stageBytes, 8, 0x3f800000, 4);
+        put(stageBytes, 12, 0x42b40000, 4);
+        put(stageBytes, 24, 0x3f000000, 4);
+        put(stageBytes, 28, 0x3f000000, 4);
+        const auto normalStage = s3dtexturestage::read(stageBytes, 0);
+        require(normalStage.sampler == 7 && normalStage.rotation == 90, "Texture stage decoding.");
+        std::vector<float> trig(5120);
+        trig[1024] = 1;
+        const std::array<float, 12> modelView{1,0,0,100, 0,1,0,200, 0,0,1,300};
+        auto textureMatrix = s3dtexturestage::normalMatrix(normalStage, modelView, trig);
+        require(s3dtexturestage::coordinate(textureMatrix, {1,0,0}) == std::array<float, 2>{1,1},
+            "Normal texture rotation and pivot, excluding model translation.");
+        require(s3dtexturestage::coordinate(textureMatrix, {0.5f,0.5f,0}) == std::array<float, 2>{0.5f,0.5f},
+            "Normal texture pivot must remain fixed.");
+        auto shifted = normalStage;
+        shifted.translationS = 2;
+        shifted.translationT = -3;
+        textureMatrix = s3dtexturestage::normalMatrix(shifted, modelView, trig);
+        require(s3dtexturestage::coordinate(textureMatrix, {1,0,0}) == std::array<float, 2>{3,-2}, "Normal texture translation.");
+        auto turnedView = modelView;
+        turnedView[0] = 0;
+        turnedView[2] = 1;
+        textureMatrix = s3dtexturestage::normalMatrix(normalStage, turnedView, trig);
+        require(s3dtexturestage::coordinate(textureMatrix, {0,0,1}) == std::array<float, 2>{1,1}, "Normal texture follows model-view rotation.");
         require(cubic.sample(-1) == 0 && cubic.sample(31) == 100 && cubic.sample(15) == 50, "Scene cubic endpoints and midpoint.");
         s3denvironment::Curve split{4, {0,0,0,8, 30,100,0,0}};
         require(split.sample(15) == 51, "Scene tangent units and split tangents.");
@@ -67,6 +97,36 @@ int main(int argc, char** argv) {
         lighting.lights[0].direction = {0,0,-1};
         lighting.lights[0].angular = {0,1,0};
         require(lighting.shade(vertex, material, true)[0] == 0, "Spotlight outside cone.");
+        auto specularSettings = settings;
+        put(specularSettings, 0x4c, 0xffff, 2);
+        put(specularSettings, 0x4e, 15, 2);
+        put(specularSettings, 0x60, 0x41200000, 4);
+        put(specularSettings, 0x70, 255, 2);
+        put(specularSettings, 0x78, 0x42800000, 4);
+        require(environment.read(scene, specularSettings, error), error.c_str());
+        auto highlights = environment.sample(0);
+        require(highlights.lights.size() == 1 && highlights.lights[0].specular &&
+            highlights.lights[0].distance == std::array<float, 3>{32,0,-31}, "Specular shininess overrides spot/distance flags.");
+        require(highlights.shade(vertex, material, true)[0] == 64.0f / 255, "Specular light leaked into diffuse channel.");
+        s3denvironment::Camera specularCamera;
+        specularCamera.position = {0,0,10};
+        specularCamera.target = {};
+        require(highlights.shadeSecondary(vertex, material, true, specularCamera)[0] == 1, "Specular normal-facing maximum.");
+        vertex.normal = {std::sqrt(0.75f),0,0.5f};
+        require(std::abs(highlights.shadeSecondary(vertex, material, true, specularCamera)[0] - 0.125f / 24.25f) < 0.000001f,
+            "Specular attenuation must use the GX rational curve and diffuse factor.");
+        vertex.normal = {0,0,1};
+        specularCamera.position = {10,0,0};
+        require(std::abs(highlights.shadeSecondary(vertex, material, true, specularCamera)[0] - 0.5f / 16.5f) < 0.000001f,
+            "Specular half-vector must follow the camera orientation.");
+        specularCamera.position = {0,0,10};
+        vertex.normal = {0,0,-1};
+        require(highlights.shadeSecondary(vertex, material, true, specularCamera)[0] == 0, "Back-facing specular rejection.");
+        vertex.normal = {1,0,0};
+        require(highlights.shadeSecondary(vertex, material, true, specularCamera)[0] == 0, "Specular grazing rejection.");
+        vertex.normal = {0,0,1};
+        require(highlights.shadeSecondary(vertex, material, false, specularCamera)[0] == 1, "Unlit secondary material color.");
+        require(environment.read(scene, settings, error), error.c_str());
         auto invalid = settings;
         invalid.resize(12);
         require(!environment.read(scene, invalid, error), "Silently accepted truncated environment.");
@@ -83,6 +143,25 @@ int main(int argc, char** argv) {
         require(environment.read(scene, fogSettings, error), error.c_str());
         const auto fog = environment.sampleFog(0);
         require(fog.type == 2 && fog.start == 100 && fog.end == 500 && fog.color[0] == 1 && fog.color[1] == 0, "Fog values and signed color clamps.");
+        put(fogSettings, 0x21e, 0xffff, 2);
+        require(environment.read(scene, fogSettings, error), "GX fog must accept an unused negative alpha.");
+        require(environment.sampleFog(0).color == fog.color, "Unused fog alpha changed the RGB hardware state.");
+        s3denvironment::Fog registerFog;
+        registerFog.type = 2;
+        registerFog.end = 2;
+        registerFog.rangeEnabled = true;
+        registerFog.rangeWidth = 640;
+        registerFog.rangeCenter = 320;
+        const std::array<float, 16> projection{1,0,0,0, 0,1,0,0, 0,0,-2,-2, 0,0,-1,0};
+        const auto registers = s3dfog::prepare(registerFog, projection, 1, 2);
+        require(registers.a == 0.25f && registers.c == 0 && registers.magnitude == 8388638 && registers.shift == 2,
+            "Original fog register normalization and magnitude constant.");
+        require(registers.center == 660 && registers.range.front() == 257 && registers.range.back() == 362,
+            "Original fog center offset and quantized range table.");
+        registerFog.end = 0;
+        const auto degenerateFog = s3dfog::prepare(registerFog, projection, 1, 2);
+        require(degenerateFog.a == 0 && degenerateFog.c == 0 && degenerateFog.shift == 1 && degenerateFog.magnitude == 4194319,
+            "Original equal-start/end fog fallback.");
         s3dmodel::Model effectModel;
         effectModel.materials.resize(1);
         effectModel.samplers = {{1,0,1,0},{2,2,0,2}};
