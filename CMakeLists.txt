@@ -178,7 +178,9 @@ add_library(Game STATIC
     src/game/models/modelvertexstream.cpp
     src/game/models/s3danimation.cpp
     src/game/models/s3denvironment.cpp
+    src/game/models/s3dfog.cpp
     src/game/models/s3dmodel.cpp
+    src/game/models/s3dtexturestage.cpp
     src/game/models/s3dmorph.cpp
     src/game/models/s3dshadow.cpp
     src/game/player/playeractioncontext.cpp
@@ -256,6 +258,7 @@ add_library(Game STATIC
     src/game/scene/gameplaymanagerservices.cpp
     src/game/scene/gameplayresourceowner.cpp
     src/game/scene/gameplayspawn.cpp
+    src/game/startup/keypresentationstate.cpp
     src/game/startup/openingresources.cpp
     src/game/startup/openingscenestate.cpp
     src/game/startup/openingtimeline.cpp

@@ -10,6 +10,7 @@ namespace s3denvironment {
     };
 
     struct Light {
+        bool specular = false;
         std::array<float, 3> position{}, direction{}, color{};
         std::array<float, 3> angular{1, 0, 0}, distance{1, 0, 0};
     };
@@ -31,8 +32,11 @@ namespace s3denvironment {
 
     struct Lighting {
         std::array<float, 3> ambient{1, 1, 1};
+        std::array<float, 3> secondaryAmbient{};
         std::vector<Light> lights;
         std::array<float, 4> shade(const s3dmodel::Vertex& vertex, const s3dmodel::Material& material, bool enabled) const;
+        std::array<float, 3> shadeSecondary(const s3dmodel::Vertex& vertex, const s3dmodel::Material& material,
+            bool enabled, const Camera& camera) const;
     };
 
     struct Fog {
@@ -58,6 +62,8 @@ namespace s3denvironment {
         };
         std::array<int, 3> ambient{255, 255, 255};
         std::array<Curve, 3> ambientChannels;
+        std::array<int, 3> secondaryAmbient{};
+        std::array<Curve, 3> secondaryAmbientChannels;
         std::vector<Source> sources;
         Fog fog;
         std::array<int, 4> fogColor{};

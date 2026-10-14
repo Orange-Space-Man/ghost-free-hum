@@ -1,6 +1,7 @@
 #include "platform/windows/debugoverlay.h"
 #include "platform/d3d11/gamerenderer.h"
 #include "platform/d3d11/gameshadowrenderer.h"
+#include "game/models/s3dfog.h"
 
 #include <d3d11.h>
 #include <d3dcompiler.h>
@@ -20,6 +21,7 @@ namespace {
     ComPtr<ID3D11VertexShader> vertexShader;
     ComPtr<ID3D11InputLayout> layout;
     ComPtr<ID3D11Buffer> constants;
+    ComPtr<ID3D11Buffer> fogConstants;
     ComPtr<ID3D11Query> frameComplete;
     ComPtr<ID3D11RasterizerState> solidState;
     ComPtr<ID3D11PixelShader> interfaceShader;
@@ -56,10 +58,19 @@ namespace {
         std::array<float, 3> position{};
         std::array<float, 4> color{};
         std::array<float, 2> coordinate{};
+        std::array<float, 4> secondary{0, 0, 0, 1};
+        std::array<float, 2> secondCoordinate{};
     };
 
     struct Constants {
         DirectX::XMFLOAT4X4 matrix{};
+    };
+
+    struct FogConstants {
+        std::array<float, 4> color{};
+        std::array<float, 4> parameters{};
+        std::array<unsigned, 4> control{};
+        std::array<std::array<float, 4>, 3> ranges{};
     };
 
     void check(HRESULT result, const char* message) {
@@ -69,12 +80,14 @@ namespace {
     constexpr char shader[] = R"(
 cbuffer Camera : register(b0) { row_major float4x4 viewProjection; };
 cbuffer Shadow : register(b2) { row_major float4x4 shadowProjection; float4 shadowColor; float4 shadowState; };
-struct VertexInput { float3 position : POSITION; float4 color : COLOR; float2 coordinate : TEXCOORD0; };
-struct PixelInput { float4 position : SV_POSITION; float4 color : COLOR; float2 coordinate : TEXCOORD0; float4 shadowCoordinate : TEXCOORD1; };
+struct VertexInput { float3 position : POSITION; float4 color : COLOR0; float2 coordinate : TEXCOORD0; float4 secondary : COLOR1; float2 secondCoordinate : TEXCOORD2; };
+struct PixelInput { float4 position : SV_POSITION; float4 color : COLOR0; float2 coordinate : TEXCOORD0; float4 shadowCoordinate : TEXCOORD1; float4 secondary : COLOR1; float2 secondCoordinate : TEXCOORD2; };
 PixelInput vertexMain(VertexInput input) {
     PixelInput output;
     output.position = mul(float4(input.position, 1), viewProjection);
     output.color = input.color;
+    output.secondary = input.secondary;
+    output.secondCoordinate = input.secondCoordinate;
     output.coordinate = input.coordinate;
     output.shadowCoordinate = mul(float4(input.position, 1), shadowProjection);
     return output;
@@ -111,14 +124,18 @@ void gamerenderer::open(HWND window, const std::vector<roommaterials::Texture>& 
     const D3D11_INPUT_ELEMENT_DESC elements[]{
         {"POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0, D3D11_INPUT_PER_VERTEX_DATA, 0},
         {"COLOR", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 12, D3D11_INPUT_PER_VERTEX_DATA, 0},
+        {"COLOR", 1, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 36, D3D11_INPUT_PER_VERTEX_DATA, 0},
+        {"TEXCOORD", 2, DXGI_FORMAT_R32G32_FLOAT, 0, 52, D3D11_INPUT_PER_VERTEX_DATA, 0},
         {"TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT, 0, 28, D3D11_INPUT_PER_VERTEX_DATA, 0}
     };
-    check(device->CreateInputLayout(elements, 3, vertexCode->GetBufferPointer(), vertexCode->GetBufferSize(), &layout), "Could not create vertex layout");
+    check(device->CreateInputLayout(elements, 5, vertexCode->GetBufferPointer(), vertexCode->GetBufferSize(), &layout), "Could not create vertex layout");
     D3D11_BUFFER_DESC buffer{};
     buffer.ByteWidth = sizeof(Constants);
     buffer.Usage = D3D11_USAGE_DEFAULT;
     buffer.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
     check(device->CreateBuffer(&buffer, nullptr, &constants), "Could not create camera buffer");
+    buffer.ByteWidth = sizeof(FogConstants);
+    check(device->CreateBuffer(&buffer, nullptr, &fogConstants), "Could not create fog buffer");
     D3D11_RASTERIZER_DESC raster{};
     raster.FillMode = D3D11_FILL_SOLID;
     raster.CullMode = D3D11_CULL_NONE;
@@ -192,15 +209,23 @@ void gamerenderer::setInterfaceTextures(const std::vector<roommaterials::Texture
     if (!interfaceShader) {
         constexpr char source[] = R"(
 cbuffer Colors : register(b1) { float4 black; float4 white; float4 opacity; };
+cbuffer Fog : register(b3) { float4 fogColor; float4 fogParameters; uint4 fogControl; float4 fogRanges[3]; };
 cbuffer Shadow : register(b2) { row_major float4x4 shadowProjection; float4 shadowColor; float4 shadowState; };
 Texture2D image : register(t0);
 Texture2D shadowImage : register(t1);
 Texture2D shadowLookup : register(t2);
+Texture2D secondImage : register(t3);
 SamplerState filtering : register(s0);
 SamplerState shadowFiltering : register(s1);
 SamplerState lookupFiltering : register(s2);
-float4 pixelMain(float4 position : SV_POSITION, float4 color : COLOR, float2 coordinate : TEXCOORD0, float4 shadowCoordinate : TEXCOORD1) : SV_TARGET {
+SamplerState secondFiltering : register(s3);
+float4 pixelMain(float4 position : SV_POSITION, float4 color : COLOR0, float2 coordinate : TEXCOORD0, float4 shadowCoordinate : TEXCOORD1, float4 secondary : COLOR1, float2 secondCoordinate : TEXCOORD2) : SV_TARGET {
         float4 result = lerp(black, white, image.Sample(filtering, coordinate)) * color;
+        result.rgb = saturate(result.rgb * secondary.a + secondary.rgb);
+        if (opacity.z != 0) {
+            float4 layer = secondImage.Sample(secondFiltering, secondCoordinate);
+            result.rgb = lerp(result.rgb, layer.rgb, layer.a);
+        }
         if (shadowState.x != 0) {
             float3 projected = shadowCoordinate.xyz / shadowCoordinate.w;
             float2 reference = round(shadowLookup.Sample(lookupFiltering, float2(projected.z, projected.z * 256)).rg * 255);
@@ -211,11 +236,33 @@ float4 pixelMain(float4 position : SV_POSITION, float4 color : COLOR, float2 coo
         }
         result.a *= opacity.x;
         clip(result.a - opacity.y);
+        if (fogControl.x != 0) {
+            uint depth = uint(saturate(position.z) * 16777215.0);
+            float denominator = float(int(fogControl.y) - int(depth >> fogControl.z));
+            float distance = fogParameters.x * 16777216.0 / denominator;
+            if (fogControl.w != 0) {
+                float horizontal = (2.0 * position.x - fogParameters.z) / fogParameters.w;
+                float samplePoint = clamp(9.0 * (1.0 - abs(horizontal)), 0.0, 9.0);
+                uint lower = uint(samplePoint);
+                uint upper = min(lower + 1, 9u);
+                float scale = lerp(fogRanges[lower / 4][lower % 4], fogRanges[upper / 4][upper % 4], frac(samplePoint));
+                distance *= sqrt(1.0 + (horizontal * horizontal) / (scale * scale));
+            }
+            float amount = saturate(distance - fogParameters.y);
+            if (fogControl.x == 4) amount = 1.0 - exp2(-8.0 * amount);
+            else if (fogControl.x == 5) amount = 1.0 - exp2(-8.0 * amount * amount);
+            else if (fogControl.x == 6) amount = exp2(-8.0 * (1.0 - amount));
+            else if (fogControl.x == 7) amount = exp2(-8.0 * (1.0 - amount) * (1.0 - amount));
+            uint weight = uint(round(amount * 256.0));
+            uint3 original = uint3(round(saturate(result.rgb) * 255.0));
+            uint3 target = uint3(round(fogColor.rgb * 255.0));
+            result.rgb = float3((original * (256u - weight) + target * weight) >> 8) / 255.0;
+        }
         return result;
 }
 [earlydepthstencil]
-float4 pixelEarly(float4 position : SV_POSITION, float4 color : COLOR, float2 coordinate : TEXCOORD0, float4 shadowCoordinate : TEXCOORD1) : SV_TARGET {
-    return pixelMain(position, color, coordinate, shadowCoordinate);
+float4 pixelEarly(float4 position : SV_POSITION, float4 color : COLOR0, float2 coordinate : TEXCOORD0, float4 shadowCoordinate : TEXCOORD1, float4 secondary : COLOR1, float2 secondCoordinate : TEXCOORD2) : SV_TARGET {
+    return pixelMain(position, color, coordinate, shadowCoordinate, secondary, secondCoordinate);
 }
 )";
         ComPtr<ID3DBlob> code;
@@ -299,6 +346,9 @@ bool gamerenderer::useScene(const std::string& name) {
 void gamerenderer::drawInterface(const std::vector<startupscene::Picture>& pictures, bool present) {
     context->OMSetDepthStencilState(nullptr, 0);
     if (!context || !targetView || !interfaceShader) return;
+    const FogConstants noFog;
+    context->UpdateSubresource(fogConstants.Get(), 0, nullptr, &noFog, 0, 0);
+    context->PSSetConstantBuffers(3, 1, fogConstants.GetAddressOf());
     gameshadowrenderer::bind(false);
     const float background[]{0, 0, 0, 1};
     context->ClearRenderTargetView(targetView.Get(), background);
@@ -438,7 +488,8 @@ std::vector<std::size_t> gamerenderer::loadPreviews(const std::vector<s3dmodel::
 }
 
 void gamerenderer::drawPreview(std::size_t index, const s3dmodel::Model& model, const std::vector<s3dmodel::Batch>& batches,
-    const s3denvironment::Lighting& lighting, const s3denvironment::Camera* sceneCamera, bool clearTarget, unsigned passes, bool receiver) {
+    const s3denvironment::Lighting& lighting, const s3denvironment::Camera* sceneCamera, bool clearTarget, unsigned passes, bool receiver,
+    const std::vector<float>& trigonometry, const s3denvironment::Fog* fog) {
     auto& preview = previews.at(index);
     auto& surface = sceneCamera ? previews.at(0) : preview;
     ID3D11ShaderResourceView* empty = nullptr;
@@ -460,7 +511,27 @@ void gamerenderer::drawPreview(std::size_t index, const s3dmodel::Model& model, 
     if (sceneCamera) parameters = *sceneCamera;
     const auto vector = [](const std::array<float, 3>& value) { return DirectX::XMVectorSet(value[0],value[1],value[2],0); };
     const auto view = DirectX::XMMatrixLookAtRH(vector(parameters.position), vector(parameters.target), vector(parameters.up));
+    DirectX::XMFLOAT4X4 viewValues;
+    DirectX::XMStoreFloat4x4(&viewValues, view);
+    const std::array<float, 12> normalView{viewValues._11,viewValues._21,viewValues._31,0,
+        viewValues._12,viewValues._22,viewValues._32,0,viewValues._13,viewValues._23,viewValues._33,0};
     const auto projection = DirectX::XMMatrixPerspectiveFovRH(parameters.fieldOfView * DirectX::XM_PI / 180.0f, parameters.aspect, parameters.nearPlane, parameters.farPlane);
+    FogConstants fogData;
+    if (fog && fog->type) {
+        DirectX::XMFLOAT4X4 projectionValues;
+        DirectX::XMStoreFloat4x4(&projectionValues, DirectX::XMMatrixTranspose(projection));
+        std::array<float, 16> projectionArray;
+        for (unsigned row = 0; row < 4; ++row) for (unsigned column = 0; column < 4; ++column)
+            projectionArray[row * 4 + column] = projectionValues.m[row][column];
+        const auto state = s3dfog::prepare(*fog, projectionArray, parameters.nearPlane, parameters.farPlane);
+        fogData.color = state.color;
+        fogData.parameters = {state.a, state.c, 2.0f * (float(state.center) - 342.0f), float(surface.width)};
+        fogData.control = {state.type, state.magnitude, state.shift, unsigned(state.rangeEnabled)};
+        for (unsigned index = 0; index < state.range.size(); ++index)
+            fogData.ranges[index / 4][index % 4] = float(state.range[index]) * 4.0f;
+    }
+    context->UpdateSubresource(fogConstants.Get(), 0, nullptr, &fogData, 0, 0);
+    context->PSSetConstantBuffers(3, 1, fogConstants.GetAddressOf());
     DirectX::XMStoreFloat4x4(&camera.matrix, view * projection);
     context->UpdateSubresource(constants.Get(), 0, nullptr, &camera, 0, 0);
     context->VSSetShader(vertexShader.Get(), nullptr, 0);
@@ -471,7 +542,13 @@ void gamerenderer::drawPreview(std::size_t index, const s3dmodel::Model& model, 
     context->IASetVertexBuffers(0, 1, modelVertices.GetAddressOf(), &stride, &offset);
     context->IASetInputLayout(layout.Get());
     context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-    struct Draw { const s3dmodel::Batch* batch; unsigned pass; UINT first; };
+    struct Draw {
+        const s3dmodel::Batch* batch;
+        unsigned pass;
+        UINT first;
+        bool generated;
+        s3dtexturestage::Matrix textureMatrix;
+    };
     std::vector<Draw> draws;
     std::size_t vertices = 0;
     for (unsigned pass = 0; pass < 2; ++pass) {
@@ -482,7 +559,9 @@ void gamerenderer::drawPreview(std::size_t index, const s3dmodel::Model& model, 
             if (material.wrapS > 2 || material.wrapT > 2)
                 throw std::runtime_error("Invalid S3D preview batch.");
             if (batch.cull > 3) throw std::runtime_error("Invalid S3D culling mode.");
-            draws.push_back({&batch, pass, static_cast<UINT>(vertices)});
+            const bool generated = material.stages.size() == 2 && material.stages[1].kind == 2;
+            const auto textureMatrix = generated ? s3dtexturestage::normalMatrix(material.stages[1], normalView, trigonometry) : s3dtexturestage::Matrix{};
+            draws.push_back({&batch, pass, static_cast<UINT>(vertices), generated, textureMatrix});
             vertices += batch.vertices.size();
         }
     }
@@ -496,7 +575,13 @@ void gamerenderer::drawPreview(std::size_t index, const s3dmodel::Model& model, 
             const auto& material = model.materials.at(batch.material);
             for (const auto& source : batch.vertices) {
                 const auto color = lighting.shade(source, material, batch.lighting);
-                *destination++ = {source.position, color, source.coordinate};
+                std::array<float, 4> secondary{0, 0, 0, 1};
+                if (material.secondaryColor) {
+                    const auto highlight = lighting.shadeSecondary(source, material, batch.lighting, parameters);
+                    secondary = {highlight[0], highlight[1], highlight[2], material.texture ? 0.5f : 0.0f};
+                }
+                const auto secondCoordinate = draw.generated ? s3dtexturestage::coordinate(draw.textureMatrix, source.normal) : source.coordinate;
+                *destination++ = {source.position, color, source.coordinate, secondary, secondCoordinate};
             }
         }
         context->Unmap(modelVertices.Get(), 0);
@@ -506,6 +591,14 @@ void gamerenderer::drawPreview(std::size_t index, const s3dmodel::Model& model, 
         for (const auto& draw : draws) {
             const auto& batch = *draw.batch;
             const auto& material = model.materials.at(batch.material);
+            auto stageColors = colors;
+            if (material.stages.size() == 2) {
+                const auto& sampler = model.samplers.at(material.stages[1].sampler);
+                context->PSSetShaderResources(3, 1, preview.textures.at(sampler.texture).GetAddressOf());
+                context->PSSetSamplers(3, 1, modelSamplers[sampler.wrapS * 3 + sampler.wrapT].GetAddressOf());
+                stageColors[2][2] = 1;
+            }
+            context->UpdateSubresource(interfaceColors.Get(), 0, nullptr, stageColors.data(), 0, 0);
             context->OMSetDepthStencilState(modelDepth[draw.pass].Get(), 0);
             context->PSSetShader(s3dmodel::renderMode(material) == 0 ? opaqueShader.Get() : interfaceShader.Get(), nullptr, 0);
             gameshadowrenderer::bind(receiver, material.color[3]);
@@ -570,6 +663,7 @@ void gamerenderer::close() {
     interfaceSampler.Reset();
     solidState.Reset();
     constants.Reset();
+    fogConstants.Reset();
     frameComplete.Reset();
     layout.Reset();
     vertexShader.Reset();

@@ -151,7 +151,20 @@ bool s3dmodel::Model::read(const std::vector<std::uint8_t>& data, std::string& e
             require(data[start + 4] <= 1 && data[start + 5] <= 1, "Unsupported S3D color source.");
             material.vertexColor = data[start + 4] != 0;
             material.vertexAlpha = data[start + 5] != 0;
-            require(data[start + 7] <= 1 && !(data[start + 8] & 2), "Unsupported S3D material stages.");
+            material.secondaryColor = (data[start + 8] & 1) != 0;
+            if (data[start + 7] > 2 || (data[start + 8] & 2))
+                throw std::runtime_error("Unsupported S3D material " + std::to_string(index) + ": " +
+                    std::to_string(data[start + 7]) + " texture stages, flags " + std::to_string(data[start + 8]) +
+                    ", coordinate kinds " + std::to_string(data[start + 32]) + "/" + std::to_string(data[start + 64]) + ".");
+            for (unsigned stageIndex = 0; stageIndex < data[start + 7]; ++stageIndex) {
+                auto stage = s3dtexturestage::read(data, start + 32 + stageIndex * 32);
+                require(stage.sampler < result.samplers.size(), "Invalid S3D stage sampler.");
+                require(stageIndex != 0 || stage.kind == 0 || stage.kind == 1, "Generated primary S3D texture coordinates are not implemented.");
+                const auto& sampler = result.samplers[stage.sampler];
+                require(!(sampler.mode & 4), "S3D bump texture stages are not implemented.");
+                material.mode = std::max(material.mode, sampler.mode & 3);
+                material.stages.push_back(stage);
+            }
             if (data[start + 7]) {
                 const auto sampler = word(data, start + 34);
                 require(sampler < word(data, 36), "Invalid S3D sampler index.");

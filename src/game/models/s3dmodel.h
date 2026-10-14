@@ -1,6 +1,7 @@
 #pragma once
 
 #include "game/models/s3danimation.h"
+#include "game/models/s3dtexturestage.h"
 #include "game/world/roommaterials.h"
 
 namespace s3dmodel {
@@ -19,7 +20,9 @@ namespace s3dmodel {
         std::array<float, 4> color{1, 1, 1, 1};
         unsigned texture = 0, wrapS = 0, wrapT = 0, mode = 0;
         bool vertexColor = false, vertexAlpha = false;
+        bool secondaryColor = false;
         unsigned sourceMode = 0;
+        std::vector<s3dtexturestage::Stage> stages;
     };
 
     struct Sampler {

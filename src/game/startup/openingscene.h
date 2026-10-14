@@ -11,7 +11,8 @@ namespace openingscene {
         bool load(const std::filesystem::path& path, unsigned cutscene, std::string& error);
         void prepareGraphics();
         void reset();
-        void update();
+        void update(bool flag55 = false);
+        bool clearsEventFlag() const;
         void draw(bool present);
         void drawFrozen(bool present, unsigned fadeAlpha);
         bool finished() const;

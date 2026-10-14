@@ -156,7 +156,6 @@ bool s3denvironment::Environment::read(const std::vector<std::uint8_t>& scene, c
             result.fog.start = number(settings, 0x220);
             result.fog.end = number(settings, 0x224);
             for (unsigned channel = 0; channel < 4; ++channel) result.fogColor[channel] = signedWord(settings, 0x218 + channel * 2);
-            require(result.fogColor[3] >= 0, "Indeterminate original fog alpha.");
             const auto record = dword(scene, 20);
             if (signedWord(settings, 0x20c) != -1 && record != 0) {
                 for (unsigned channel = 0; channel < 6; ++channel)
@@ -173,16 +172,23 @@ bool s3denvironment::Environment::read(const std::vector<std::uint8_t>& scene, c
             }
         }
         require(!(word(settings, 0x36) & 2), "S3D vertex ambient color is not implemented.");
+        if (word(settings, 0x42) & 1) {
+            const int index = signedWord(settings, 0x40);
+            for (unsigned axis = 0; axis < 3; ++axis) {
+                result.secondaryAmbient[axis] = signedWord(settings, 0x44 + axis * 2);
+                if (index >= 0 && unsigned(index) < word(scene, 2)) result.secondaryAmbientChannels[axis] =
+                    curve(scene, dword(scene, 28), dword(scene, 12) + index * 36 + 16 + axis * 6, true);
+            }
+        }
         for (unsigned i = 0; i < 8; ++i) {
             const std::size_t offset = 0x4c + i * 56;
             Source source;
             source.flags = word(settings, offset + 2);
             if (!(source.flags & 1)) continue;
-            require(!(source.flags & 8), "S3D specular light is not implemented.");
             source.spot = dword(settings, offset + 4);
             source.attenuation = dword(settings, offset + 8);
-            require(source.spot == 0 || source.spot == 2, "Unsupported S3D spotlight function.");
-            require(source.attenuation <= 3, "Unsupported S3D distance attenuation.");
+            require((source.flags & 8) || source.spot == 0 || source.spot == 2, "Unsupported S3D spotlight function.");
+            require((source.flags & 8) || source.attenuation <= 3, "Unsupported S3D distance attenuation.");
             for (unsigned axis = 0; axis < 3; ++axis) {
                 source.position[axis] = number(settings, offset + 12 + axis * 4);
                 source.target[axis] = number(settings, offset + 24 + axis * 4);
@@ -212,8 +218,9 @@ s3denvironment::Fog s3denvironment::Environment::sampleFog(float frame) const {
     require(std::isfinite(frame), "Invalid S3D fog frame.");
     auto result = fog;
     if (result.type == 0) return result;
-    for (unsigned channel = 0; channel < 4; ++channel)
+    for (unsigned channel = 0; channel < 3; ++channel)
         result.color[channel] = colorSum(fogColor[channel], fogChannels[channel].sample(frame)) / 255.0f;
+    result.color[3] = 1;
     result.start += fogChannels[4].sample(frame);
     result.end += fogChannels[5].sample(frame);
     return result;
@@ -223,6 +230,8 @@ s3denvironment::Lighting s3denvironment::Environment::sample(float frame) const 
     require(std::isfinite(frame), "Invalid S3D environment frame.");
     Lighting result;
     for (unsigned axis = 0; axis < 3; ++axis) result.ambient[axis] = colorSum(ambient[axis], ambientChannels[axis].sample(frame)) / 255.0f;
+    for (unsigned axis = 0; axis < 3; ++axis)
+        result.secondaryAmbient[axis] = colorSum(secondaryAmbient[axis], secondaryAmbientChannels[axis].sample(frame)) / 255.0f;
     for (const auto& source : sources) {
         Light light;
         for (unsigned axis = 0; axis < 3; ++axis) {
@@ -231,6 +240,14 @@ s3denvironment::Lighting s3denvironment::Environment::sample(float frame) const 
             light.color[axis] = colorSum(source.color[axis], source.channels[axis + 9].sample(frame)) / 255.0f;
         }
         light.direction = normalize(light.direction);
+        light.specular = (source.flags & 8) != 0;
+        if (light.specular) {
+            const float shininess = std::clamp(source.angle + 0.5f * source.channels[6].sample(frame), 1.0f, 255.0f);
+            light.angular = {0, 0, 1};
+            light.distance = {0.5f * shininess, 0, 1 - 0.5f * shininess};
+            result.lights.push_back(light);
+            continue;
+        }
         if ((source.flags & 4) && source.spot == 2) {
             const float angle = std::clamp(source.angle + 0.5f * source.channels[6].sample(frame), 0.000001f, 90.0f);
             const float cosine = std::cos(angle * 3.141592654f / 180.0f);
@@ -257,6 +274,7 @@ std::array<float, 4> s3denvironment::Lighting::shade(const s3dmodel::Vertex& ver
     if (!enabled) return color;
     auto illumination = ambient;
     for (const auto& light : lights) {
+        if (light.specular) continue;
         std::array<float, 3> delta{};
         for (unsigned axis = 0; axis < 3; ++axis) delta[axis] = light.position[axis] - vertex.position[axis];
         const float distanceSquared = dot(delta, delta), distance = std::sqrt(distanceSquared);
@@ -269,6 +287,30 @@ std::array<float, 4> s3denvironment::Lighting::shade(const s3dmodel::Vertex& ver
     }
     for (unsigned axis = 0; axis < 3; ++axis) color[axis] *= std::clamp(illumination[axis], 0.0f, 1.0f);
     return color;
+}
+
+std::array<float, 3> s3denvironment::Lighting::shadeSecondary(const s3dmodel::Vertex& vertex,
+    const s3dmodel::Material& material, bool enabled, const Camera& camera) const {
+    auto illumination = secondaryAmbient;
+    std::array<float, 3> eyeDirection{};
+    for (unsigned axis = 0; axis < 3; ++axis) eyeDirection[axis] = camera.position[axis] - camera.target[axis];
+    eyeDirection = normalize(eyeDirection);
+    if (enabled) for (const auto& light : lights) {
+        if (!light.specular) continue;
+        std::array<float, 3> halfDirection{};
+        for (unsigned axis = 0; axis < 3; ++axis) halfDirection[axis] = light.direction[axis] + eyeDirection[axis];
+        const float length = std::sqrt(dot(halfDirection, halfDirection));
+        for (auto& component : halfDirection) component /= length;
+        const float diffuse = std::max(0.0f, dot(vertex.normal, light.direction));
+        const float cosine = diffuse > 0 ? std::max(0.0f, dot(vertex.normal, halfDirection)) : 0;
+        const float squared = cosine * cosine;
+        const float attenuation = squared / (light.distance[0] + light.distance[2] * squared);
+        for (unsigned axis = 0; axis < 3; ++axis) illumination[axis] += light.color[axis] * diffuse * attenuation;
+    }
+    const auto& surface = material.vertexColor ? vertex.color : material.color;
+    for (unsigned axis = 0; axis < 3; ++axis)
+        illumination[axis] = surface[axis] * (enabled ? std::clamp(illumination[axis], 0.0f, 1.0f) : 1.0f);
+    return illumination;
 }
 
 bool s3denvironment::MaterialAnimation::read(const std::vector<std::uint8_t>& data, std::size_t materials, std::string& error) {

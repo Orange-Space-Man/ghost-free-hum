@@ -115,11 +115,13 @@ void openingscene::Scene::reset() {
     loadSegment();
 }
 
-void openingscene::Scene::update() {
+bool openingscene::Scene::clearsEventFlag() const { return timeline.clearFlag55; }
+
+void openingscene::Scene::update(bool flag55) {
     if (stepped) timeline.afterDraw(resources);
     const bool changedSegment = loadedSegment != timeline.segment;
     if (changedSegment) loadSegment();
-    timeline.update(resources, false);
+    timeline.update(resources, flag55);
     for (const auto& command : timeline.commands) {
         auto& state = animations.at(command.model);
         if (command.opcode == 0 && command.animation < state.skeletal.size()) {
@@ -192,7 +194,6 @@ void openingscene::Scene::draw(bool present) {
         for (unsigned effect = 0; effect < state.effects.size(); ++effect) if (state.active[effect])
             state.effects[effect].apply(state.effects[effect].advance(state.effectDrawFrames[effect], 0), models[i]);
     }
-    if (fog.type != 0) throw std::runtime_error("Opening fog shader mode is not implemented.");
     gameshadowrenderer::begin(shadow.sample(sceneFrame), view.aspect);
     for (unsigned i = 0; i < models.size(); ++i)
         if ((animations[i].flags & 3) == 3 && !(timeline.flags & 16)) gameshadowrenderer::draw(shadowBatches[i]);
@@ -201,7 +202,7 @@ void openingscene::Scene::draw(bool present) {
     const std::vector<s3dmodel::Batch> empty;
     for (unsigned pass = 0; pass < 2; ++pass) for (unsigned i = 0; i < models.size(); ++i) {
         const bool visible = (animations[i].flags & 1) && !(timeline.flags & 16);
-        gamerenderer::drawPreview(i, models[i], visible ? batches[i] : empty, lighting, &view, clear, 1U << pass, (animations[i].flags & 4) != 0);
+        gamerenderer::drawPreview(i, models[i], visible ? batches[i] : empty, lighting, &view, clear, 1U << pass, (animations[i].flags & 4) != 0, trigonometry, &fog);
         clear = false;
     }
     for (unsigned i = 0; i < models.size(); ++i) models[i].materials = std::move(materials[i]);
