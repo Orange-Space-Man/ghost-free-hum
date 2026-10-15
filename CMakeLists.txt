@@ -25,6 +25,9 @@ add_library(JLib STATIC
     src/jlib/jaudio/jaudioplayback.cpp
     src/jlib/jaudio/jaudioresources.cpp
     src/jlib/jaudio/jaudiosequence.cpp
+    src/jlib/jaudio/jaudiosequencecontrols.cpp
+    src/jlib/jaudio/jaudioeffectcontrols.cpp
+    src/jlib/jaudio/jaudioeffectvoice.cpp
     src/jlib/jaudio/jaudiostream.cpp
     src/jlib/jaudio/jaudiovoice.cpp
 )
@@ -77,6 +80,9 @@ add_library(Game STATIC
     src/game/actors/characterownervacuum.cpp
     src/game/actors/characterplacementruntime.cpp
     src/game/actors/moveactor.cpp
+    src/game/audio/gameplaymusicrouting.cpp
+    src/game/audio/gameplaymusicowner.cpp
+    src/game/audio/gameplayaudiocontext.cpp
     src/game/audio/jaudiopositionalplayback.cpp
     src/game/audio/jaudiopositionowners.cpp
     src/game/effects/barriereffectpool.cpp

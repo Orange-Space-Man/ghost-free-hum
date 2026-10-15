@@ -32,8 +32,19 @@ namespace jaudio {
         std::vector<std::size_t> returns;
         std::array<unsigned, 32> registers{};
         std::array<unsigned, 16> ports{};
+        std::array<bool, 16> importedPorts{};
+        std::array<bool, 16> exportedPorts{};
         std::array<unsigned, 6> buses{0x150, 0x210, 0x352, 0x412, 0, 0};
         unsigned outputFlags = 0;
+        unsigned route = 0;
+        bool externalControl = false;
+        std::array<std::size_t, 8> interrupts{};
+        unsigned enabledInterrupts = 0, pendingInterrupts = 0;
+        bool interruptsBlocked = false;
+        std::size_t interruptReturn = 0;
+        unsigned interruptWait = 0;
+        void requestInterrupt(unsigned index);
+        void enterInterrupt();
         Track();
     };
 
@@ -58,6 +69,8 @@ namespace jaudio {
         bool finished() const;
         const Track& track(unsigned index) const;
         std::uint64_t ticks() const;
+        void writePort(unsigned track, unsigned port, std::uint16_t value);
+        void setTempoScale(float value);
 
     private:
         unsigned take(Track& track, unsigned count);
@@ -66,6 +79,7 @@ namespace jaudio {
         std::vector<std::uint8_t> data;
         std::array<Track, 65> tracks;
         float phase = 0;
+        float tempoScale = 1;
         std::uint64_t tickCount = 0;
         bool effectDispatch = false;
         bool dispatchReturned = false;

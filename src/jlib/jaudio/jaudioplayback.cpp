@@ -5,14 +5,19 @@
 #include <stdexcept>
 
 bool jaudio::Playback::load(gameassets::Package& package, const Resources& resources, std::string& error) {
+    return loadMusic(package, resources, 0x80000021, error);
+}
+
+bool jaudio::Playback::loadMusic(gameassets::Package& package, const Resources& resources, unsigned id, std::string& error) {
     effectDispatch = false;
     stop();
     entryPoint = 0;
     tempo = 48;
     timebase = 120;
-    if (!readSequence(resources, 0x80000021, sequence, error) || !bank.load(package, resources, error) ||
+    if (!readSequence(resources, id, sequence, error) || !bank.load(package, resources, error) ||
         !mixer.configure(resources.effects, error)) return false;
-    const auto info = soundInfo(resources, 0x80000021);
+    const auto info = soundInfo(resources, id);
+    if (!info) { error = "Missing music metadata."; return false; }
     syncFlags = ((*info)[1] << 8) | (*info)[2];
     return true;
 }
@@ -49,20 +54,76 @@ bool jaudio::Playback::loadMenuEffect(gameassets::Package& package, const Resour
 }
 
 bool jaudio::Playback::loadMenu(gameassets::Package& package, const Resources& resources, std::string& error) {
-    effectDispatch = false;
-    stop();
-    entryPoint = 0;
-    tempo = 48;
-    timebase = 120;
-    if (!readSequence(resources, 0x80000028, sequence, error) || !bank.load(package, resources, error) ||
-        !mixer.configure(resources.effects, error)) return false;
-    const auto info = soundInfo(resources, 0x80000028);
-    if (!info) { error = "Missing menu music metadata."; return false; }
-    syncFlags = ((*info)[1] << 8) | (*info)[2];
-    return true;
+    return loadMusic(package, resources, 0x80000028, error);
+}
+
+bool jaudio::Playback::loadMansion(gameassets::Package& package, const Resources& resources, std::string& error) {
+    return loadMusic(package, resources, 0x80000007, error);
+}
+
+void jaudio::Playback::setTrackMuted(unsigned track, bool muted) { controls.setMuted(track, muted); }
+void jaudio::Playback::setTrackVolume(unsigned track, float volume, unsigned frames) { controls.setVolume(track, volume, frames); }
+void jaudio::Playback::setTrackPitch(unsigned track, float pitch, unsigned frames) { controls.setPitch(track, pitch, frames); }
+void jaudio::Playback::updateSequenceControls() {
+    controls.update();
+    if (tempoPending) {
+        interpreter.setTempoScale(tempoScale.value);
+        tempoScale.update();
+        tempoPending = tempoScale.remaining != 0;
+    }
+}
+const jaudio::SequenceControls& jaudio::Playback::sequenceControls() const { return controls; }
+
+void jaudio::Playback::setTempoScale(float value, unsigned frames) {
+    if (frames == 0) {
+        tempoScale.target = tempoScale.value = value;
+        tempoScale.remaining = 0;
+    } else tempoScale.set(value, frames);
+    tempoPending = true;
+}
+
+void jaudio::Playback::setRootPort(unsigned port, std::uint16_t value) { interpreter.writePort(0, port, value); }
+std::uint16_t jaudio::Playback::rootPort(unsigned port) const { return static_cast<std::uint16_t>(interpreter.track(0).ports.at(port)); }
+
+void jaudio::Playback::setTrackPort(unsigned track, unsigned port, std::uint16_t value) {
+    track &= 255;
+    port &= 255;
+    if (port >= 16) throw std::out_of_range("Sequence port index exceeds the original port bank.");
+    if ((writtenPorts.at(track) & (1u << port)) && trackPorts.at(track).at(port) == value) return;
+    trackPorts.at(track).at(port) = value;
+    writtenPorts.at(track) |= static_cast<std::uint16_t>(1u << port);
+    pendingPorts.at(track) |= static_cast<std::uint16_t>(1u << port);
+    for (unsigned i = 1; i < 65; ++i) {
+        const auto& current = interpreter.track(i);
+        if (current.active && current.route == (0x10000000 | track)) {
+            interpreter.writePort(i, port, value);
+            pendingPorts[track] &= static_cast<std::uint16_t>(~(1u << port));
+        }
+    }
+}
+
+float jaudio::Playback::externalVolume(const Track& track) const {
+    if (!track.externalControl) return 1;
+    const unsigned depth = track.route >> 28;
+    const unsigned index = depth == 1 ? track.route & 15 : depth == 2 ? track.route & 255 : 0;
+    const auto& control = controls.track(index);
+    return control.muted ? 0 : (syncFlags & 1) ? control.volume.value : 1;
+}
+
+float jaudio::Playback::externalPitch(const Track& track) const {
+    if (!track.externalControl || !(syncFlags & 2)) return 1;
+    const unsigned depth = track.route >> 28;
+    const unsigned index = depth == 1 ? track.route & 15 : depth == 2 ? track.route & 255 : 0;
+    return controls.track(index).pitch.value;
 }
 
 void jaudio::Playback::start() {
+    controls = {};
+    tempoScale = {};
+    tempoPending = false;
+    trackPorts = {};
+    writtenPorts = {};
+    pendingPorts = {};
     voices.clear();
     mixer.reset();
     if (effectDispatch) interpreter.startEffect(sequence, entryPoint);
@@ -103,7 +164,17 @@ void jaudio::Playback::stop() {
 void jaudio::Playback::release() { interpreter.release([this](const auto& value) { event(value); }); }
 
 void jaudio::Playback::event(const SequenceEvent& event) {
-    if (event.type == EventType::sync) return;
+    if (event.type == EventType::sync) {
+        const auto& track = interpreter.track(event.track);
+        if ((event.slot == 0 || event.slot == 127) && track.externalControl && (track.route >> 28) == 1) {
+            const unsigned slot = track.route & 15;
+            for (unsigned port = 0; port < 16; ++port) {
+                if (pendingPorts[slot] & (1u << port)) interpreter.writePort(event.track, port, trackPorts[slot][port]);
+            }
+            pendingPorts[slot] = 0;
+        }
+        return;
+    }
     for (auto& voice : voices) {
         if (!voice.envelope.released && voice.track == event.track && (voice.slot == event.slot || event.type == EventType::finish)) {
             voice.envelope.release(voice.instrument.envelope, event.type == EventType::finish ? 10 : voice.instrument.release);
@@ -148,11 +219,11 @@ bool jaudio::Playback::mix(DspMixer& destination, std::string& error, const Spat
         for (auto& voice : voices) {
             if (voice.remaining > 0 && --voice.remaining == 0) voice.envelope.release(voice.instrument.envelope, voice.instrument.release);
             const auto& track = interpreter.track(voice.track);
-            float volume = track.parameters[0].value;
-            float pitch = bank.pitch(track.parameters[1].value, track.bendRange);
+            float volume = track.parameters[0].value * externalVolume(track);
+            float pitch = bank.pitch(track.parameters[1].value, track.bendRange) * externalPitch(track);
             for (int parent = track.parent; parent >= 0; parent = interpreter.track(parent).parent) {
-                volume *= interpreter.track(parent).parameters[0].value;
-                pitch *= bank.pitch(interpreter.track(parent).parameters[1].value, interpreter.track(parent).bendRange);
+                volume *= interpreter.track(parent).parameters[0].value * externalVolume(interpreter.track(parent));
+                pitch *= bank.pitch(interpreter.track(parent).parameters[1].value, interpreter.track(parent).bendRange) * externalPitch(interpreter.track(parent));
             }
             volume *= voice.instrument.volume * voice.envelope.advance(voice.instrument.envelope) * spatial.volume;
             if (voice.envelope.ended) { voice.ended = true; continue; }

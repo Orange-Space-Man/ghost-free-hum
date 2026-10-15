@@ -9,9 +9,9 @@ bool keypresentation::State::request(bool missingKey, bool front, unsigned doorT
     mode = playbackMode;
     if (mode == 0 && !overrideGate) {
         if (services.sceneState != 0) return false;
-        if (!services.pauseAudio) throw std::runtime_error("Key presentation requires original audio pause ownership.");
+        if (!services.setAudioCutsceneActive) throw std::runtime_error("Key presentation requires original cutscene audio routing.");
         services.sceneState = 255;
-        services.pauseAudio(true);
+        services.setAudioCutsceneActive(true);
     }
     overrideAdmission = overrideGate;
     cutscene = openingscene::doorCutscene(missingKey, front, doorType);
@@ -57,8 +57,8 @@ void keypresentation::State::release(Services& services) {
     owned = false;
     services.gameplayEnabled = true;
     if (!overrideAdmission && mode == 0) {
-        if (!services.pauseAudio) throw std::runtime_error("Key presentation requires original audio resume ownership.");
+        if (!services.setAudioCutsceneActive) throw std::runtime_error("Key presentation requires original cutscene audio routing.");
         services.sceneState = 0;
-        services.pauseAudio(false);
+        services.setAudioCutsceneActive(false);
     }
 }

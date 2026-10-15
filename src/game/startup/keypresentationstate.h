@@ -11,7 +11,7 @@ namespace keypresentation {
         unsigned& doorTransition;
         bool& gameplayEnabled;
         bool& flag56;
-        std::function<void(bool)> pauseAudio;
+        std::function<void(bool)> setAudioCutsceneActive;
     };
 
     struct State {

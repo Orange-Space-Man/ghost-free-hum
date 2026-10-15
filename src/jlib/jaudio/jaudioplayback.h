@@ -1,6 +1,7 @@
 #pragma once
 
 #include "jlib/jaudio/jaudiosequence.h"
+#include "jlib/jaudio/jaudiosequencecontrols.h"
 #include "jlib/jaudio/jaudiovoice.h"
 #include "jlib/jaudio/jaudiodspmixer.h"
 
@@ -13,6 +14,16 @@ namespace jaudio {
     public:
         bool load(gameassets::Package& package, const Resources& resources, std::string& error);
         bool loadMenu(gameassets::Package& package, const Resources& resources, std::string& error);
+        bool loadMansion(gameassets::Package& package, const Resources& resources, std::string& error);
+        void setTrackMuted(unsigned track, bool muted);
+        void setTrackVolume(unsigned track, float volume, unsigned frames);
+        void setTrackPitch(unsigned track, float pitch, unsigned frames);
+        void updateSequenceControls();
+        const SequenceControls& sequenceControls() const;
+        void setTempoScale(float value, unsigned frames);
+        void setRootPort(unsigned port, std::uint16_t value);
+        std::uint16_t rootPort(unsigned port) const;
+        void setTrackPort(unsigned track, unsigned port, std::uint16_t value);
         bool loadStartSound(gameassets::Package& package, const Resources& resources, std::string& error);
         bool loadMenuEffect(gameassets::Package& package, const Resources& resources, unsigned id, std::string& error);
         bool loadPositionalEffect(gameassets::Package& package, const Resources& resources, unsigned id, std::string& error);
@@ -45,6 +56,15 @@ namespace jaudio {
             std::array<std::int16_t, 6> gains{};
         };
         void event(const SequenceEvent& event);
+        float externalVolume(const Track& track) const;
+        float externalPitch(const Track& track) const;
+        bool loadMusic(gameassets::Package& package, const Resources& resources, unsigned id, std::string& error);
+        SequenceControls controls;
+        SequenceVolume tempoScale;
+        bool tempoPending = false;
+        std::array<std::array<std::uint16_t, 16>, 32> trackPorts{};
+        std::array<std::uint16_t, 32> writtenPorts{};
+        std::array<std::uint16_t, 32> pendingPorts{};
         VoiceBank bank;
         DspMixer mixer;
         Interpreter interpreter;

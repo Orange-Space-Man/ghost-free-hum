@@ -16,9 +16,13 @@
 namespace {
     struct Audio {
         Audio(const gameplay::ManagerDependencies& dependencies) :
-            playback(owners, dependencies.executable, dependencies.package, dependencies.audio) {}
+            playback(owners, dependencies.executable, dependencies.package, dependencies.audio),
+            context(dependencies.mission, dependencies.flags, dependencies.entry.map),
+            music(dependencies.package, dependencies.audio, context, dependencies.audioLife) {}
         jaudio::PositionOwners owners;
         jaudio::PositionalPlayback playback;
+        gameplayaudio::Context context;
+        gameplaymusic::Owner music;
     };
 }
 
@@ -224,6 +228,9 @@ roomlighting::Pool& gameplay::ManagerServices::lights() { return state->lights; 
 std::shared_ptr<jaudio::PositionalPlayback> gameplay::ManagerServices::playback() {
     return {state->audio, &state->audio->playback};
 }
+
+const gameplayaudio::Context& gameplay::ManagerServices::audioContext() const { return state->audio->context; }
+gameplaymusic::Owner& gameplay::ManagerServices::music() { return state->audio->music; }
 
 void gameplay::ManagerServices::updateOwner(unsigned slot) { state->enemies->update(slot); }
 

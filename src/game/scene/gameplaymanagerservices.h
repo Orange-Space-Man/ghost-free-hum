@@ -4,6 +4,8 @@
 #include "game/actors/charactercreationruntime.h"
 #include "game/scene/gamearchiveresources.h"
 #include "game/audio/jaudiopositionalplayback.h"
+#include "game/audio/gameplayaudiocontext.h"
+#include "game/audio/gameplaymusicowner.h"
 #include "game/effects/modeleffectmanager.h"
 #include "game/effects/particlescene.h"
 #include "game/player/playereventdispatch.h"
@@ -62,6 +64,8 @@ namespace gameplay {
         mapcollision::State& collision();
         roomlighting::Pool& lights();
         std::shared_ptr<jaudio::PositionalPlayback> playback();
+        const gameplayaudio::Context& audioContext() const;
+        gameplaymusic::Owner& music();
         void updateOwner(unsigned slot);
         void updatePlacement(std::int32_t elapsedSeconds);
         void updateGenerators();
