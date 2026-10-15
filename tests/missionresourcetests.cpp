@@ -1,4 +1,5 @@
 #include "game/events/missionresources.h"
+#include "game/audio/gameplayaudiocontext.h"
 #include "game/world/mapcollisionstate.h"
 #include "resources/gameassetpackage.h"
 #include "resources/roomarchivereader.h"
@@ -210,6 +211,32 @@ int main(int argc, char** argv) {
                 roomarchive::decompress(compressed, archive, error), error.c_str());
             require(resources.read(archive, error), error.c_str());
             require(resources.tableCount() == 25, "Owned map2 mission table count.");
+            gameflags::State audioFlags;
+            gameplayaudio::Context audioContext(resources, audioFlags, 2);
+            const auto* roomInfo = resources.getJmpResource("RoomInfo");
+            require(roomInfo && roomInfo->count() > 0x29, "Original room audio exception row exists.");
+            std::uint32_t specialRoom = 0;
+            require(roomInfo->getValue(0x29, "RoomNo", specialRoom), "Original exception room identity exists.");
+            const auto ordinaryAudio = audioContext.parameters(specialRoom, -1);
+            audioFlags.setOn(0x31);
+            require(audioContext.parameters(specialRoom, -1).packed == 0x280, "First mission flag must replace room audio parameters.");
+            audioFlags.setOff(0x31);
+            audioFlags.setOn(0x32);
+            require(audioContext.parameters(specialRoom, -1).packed == 0x280, "Second mission flag must replace room audio parameters.");
+            audioFlags.setOff(0x32);
+            require(audioContext.parameters(specialRoom, -1).packed == ordinaryAudio.packed, "Room audio must observe live flags rather than cached flags.");
+            require(audioContext.parameters(specialRoom | 0x12000000, -1).packed == ordinaryAudio.packed,
+                "Room lookup uses the low byte of the original room identity.");
+            const auto* soundInfo = resources.getJmpResource("SoundPolygonInfo");
+            require(soundInfo && soundInfo->count(), "Original floor audio table exists.");
+            for (unsigned row = 0; row < soundInfo->count(); ++row) {
+                std::uint32_t material = 0, echo = 0;
+                require(soundInfo->getValue(row, "sound_material", material) && soundInfo->getValue(row, "sound_echo_switch", echo),
+                    "Original floor audio fields exist.");
+                const auto packed = audioContext.parameters(0xffffffff, static_cast<std::int16_t>(row));
+                require(packed.packed == (((material & 15) | ((echo & 7) << 4)) << 16),
+                    "Floor material and echo use their original packed widths.");
+            }
             const auto* characters = resources.getJmpResource("CharacterInfo");
             require(characters && characters->findEntryByValue(characters->searchItemInfo("name"), "luige") >= 0,
                 "Typed original CharacterInfo lookup feeds shared ToolData.");

@@ -348,6 +348,55 @@ int main(int argc, char** argv) {
                 auto* player = dynamic_cast<playeractor::Player*>(managers.actors().actor(managers.enemies().appearPoint(0).actor));
                 require(player && player->state.record == &entry.player && player->room() == 0x02000102,
                     "Scene resource ownership preserves the selected record and original foyer spawn.");
+                const auto roomAudio = managers.audioContext().parameters(player->room(), -1);
+                require(roomAudio.packed == 0x54f && roomAudio.size() == 1 && roomAudio.musicCode() == 5,
+                    "The original foyer RoomInfo supplies its audio parameters through manager ownership.");
+                std::cout << "Foyer audio context: " << roomAudio.packed << ", size " << roomAudio.size() <<
+                    ", music code " << roomAudio.musicCode() << '\n';
+                require(managers.audioContext().parameters(0xffffffff, -1).packed == 0,
+                    "Missing room and floor retain the original empty audio context.");
+                {
+                    auto& music = managers.music();
+                    music.setRoom(player->room(), -1);
+                    music.start();
+                    const unsigned selectedMusicTrack = music.routing().playerHealth < 41 ? 6 : music.routing().playerHealth < 71 ? 5 : 4;
+                    require(music.playback().rootPort(0) == 1 && music.routing().selectedTrack == selectedMusicTrack && music.routing().room == 2,
+                        "Manager-owned mansion startup preserves the initial section, player health and room identity.");
+                    music.updateSequenceControls();
+                    require(!music.playback().sequenceControls().track(selectedMusicTrack).muted && music.playback().sequenceControls().track(7).muted,
+                        "Mansion startup selects from the manager's shared audio health value.");
+                    music.setCutsceneActive(true);
+                    music.updateSequenceControls();
+                    for (unsigned track = 4; track < 8; ++track)
+                        require(music.playback().sequenceControls().track(track).muted,
+                            "Owned key-cutscene routing reaches the real sequence track controls.");
+                    music.setCutsceneActive(false);
+                    music.updateSequenceControls();
+                    require(!music.playback().sequenceControls().track(selectedMusicTrack).muted,
+                        "Owned key-cutscene release restores the original selected track.");
+                    jaudio::DspMixer mixer;
+                    std::array<std::int16_t, 160> samples{};
+                    std::string musicError;
+                    for (unsigned block = 0; block < 800; ++block) {
+                        mixer.begin();
+                        require(music.mix(mixer, musicError), musicError);
+                        mixer.end(samples, music.playback().outputLevel());
+                    }
+                    require(music.playback().notes() > 0, "Owned mansion sequence executes original notes.");
+                    const unsigned section = music.playback().rootPort(1);
+                    music.retainSection();
+                    music.stop();
+                    music.setCutsceneActive(true);
+                    music.start();
+                    music.updateSequenceControls();
+                    require(music.playback().rootPort(0) == (section < 14 ? section + 1 : 3),
+                        "Mansion restart must retain section progression.");
+                    for (unsigned track = 4; track < 8; ++track)
+                        require(music.playback().sequenceControls().track(track).muted,
+                            "A cutscene active before music allocation retains its startup mute.");
+                    music.stop();
+                    music.setCutsceneActive(false);
+                }
                 {
                     auto* pad = static_cast<playerinput::Pad*>(player->state.field794);
                     playerinput::PadStatus sample;
