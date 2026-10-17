@@ -2,10 +2,13 @@
 #include "jlib/jaudio/jaudioeffectadmission.h"
 #include "jlib/jaudio/jaudioeffectselection.h"
 #include "jlib/jaudio/jaudioeffectparameterpool.h"
+#include "jlib/jaudio/jaudioeffectrelease.h"
+#include "jlib/jaudio/jaudioplayback.h"
 
 #include <iostream>
 #include <stdexcept>
 #include <vector>
+#include <memory>
 
 namespace {
     void require(bool value, const char* message) {
@@ -20,25 +23,32 @@ namespace {
         bool exhausted = false;
         int actor = 0;
         jaudio::EffectParameterPool parameters{5};
+        std::array<jaudio::EffectMetadata, 16> metadata{};
+        std::unique_ptr<jaudio::Playback> playback = std::make_unique<jaudio::Playback>();
+        std::vector<jaudio::EffectRecord*> channels{nullptr, nullptr};
+        std::uint32_t duckMask = 0;
+        std::vector<jaudio::EffectReleaseSequence> sequences;
+        jaudio::EffectReleaseContext releaseContext{pool, parameters, channels, *playback, duckMask, sequences};
         Admission() {
             pool.free = records.data();
             for (unsigned i = 0; i + 1 < records.size(); ++i) records[i].next = &records[i + 1];
         }
-        void stop(jaudio::EffectRecord& record) override { ++stops; release(record); }
+        void stop(jaudio::EffectRecord& record) override {
+            ++stops;
+            auto* handle = &record;
+            jaudio::stopEffect(&handle, 0, releaseContext);
+        }
         void release(jaudio::EffectRecord& record) override {
             ++releases;
-            if (record.binding) *record.binding = nullptr;
-            record.state = 0;
-            if (record.parameters) parameters.release(*record.parameters);
-            pool.recycle(record);
+            jaudio::releaseEffect(record, releaseContext);
         }
         jaudio::EffectParameters* acquireParameters() override { return exhausted ? nullptr : parameters.acquire(); }
-        void initialize(jaudio::EffectRecord& record, jaudio::EffectRecord** binding) override {
-            record.actor = &actor; record.soundId = id; record.priority = priority; record.binding = binding;
-            if (binding) *binding = &record;
-        }
         void admit(jaudio::EffectRecord** binding, unsigned limit) {
-            jaudio::admitEffect(pool, binding, &actor, id, priority, static_cast<std::uint8_t>(limit), *this);
+            auto& info = metadata[id & 15];
+            info.priority = priority;
+            const jaudio::EffectActorSource source{&actor};
+            const jaudio::EffectRequest request{id, 0, 0, &source, &info};
+            jaudio::admitEffect(pool, binding, request, static_cast<std::uint8_t>(limit), *this);
         }
     };
 
@@ -81,10 +91,110 @@ namespace {
         unsigned roomSize() override { calls.push_back(9); return 2; }
         void release() override { calls.push_back(10); }
     };
+
+    struct OwnedServices : Services {
+        Admission& owner;
+        jaudio::EffectRecord& record;
+        OwnedServices(Admission& owner, jaudio::EffectRecord& record) : owner(owner), record(record) {}
+        void release() override { Services::release(); owner.release(record); }
+    };
 }
 
 int main() {
     try {
+        jaudio::EffectMetadata requestMetadata{0x1848, 17};
+        std::array<float, 3> requestPosition{1, 2, 3}, secondarySource{4, 5, 6};
+        int requestActor = 0;
+        jaudio::EffectActorSource requestSource{&requestActor, &requestPosition, &secondarySource, 0x12345678};
+        jaudio::EffectRequest request{0x828, 27, 4, &requestSource, &requestMetadata};
+        jaudio::EffectRecord initialized, sentinel;
+        jaudio::EffectParameters retainedParameters;
+        initialized.parameters = &retainedParameters;
+        initialized.previous = &sentinel;
+        initialized.next = &sentinel;
+        initialized.state = 3;
+        initialized.pitchOffset = 19;
+        jaudio::EffectRecord* requestBinding = nullptr;
+        jaudio::initializeEffectRequest(initialized, &requestBinding, request);
+        require(requestBinding == &initialized && initialized.binding == &requestBinding && initialized.soundId == 0x828 &&
+            initialized.actor == &requestActor && initialized.position == &requestPosition &&
+            initialized.secondarySource == &secondarySource && initialized.context == 0x12345678 &&
+            initialized.stopFrames == 27 && initialized.listener == 4 && initialized.lifetime == 10 &&
+            initialized.metadataSource == &requestMetadata && initialized.metadataFlags() == 0x1848 && initialized.priority() == 17,
+            "Request initializer omitted original source, binding, metadata or timing fields.");
+        require(initialized.parameters == &retainedParameters && initialized.previous == &sentinel && initialized.next == &sentinel &&
+            initialized.state == 3 && initialized.pitchOffset == 19,
+            "Request initialization reset fields owned by allocation or voice processing.");
+        requestPosition[0] = 99;
+        requestMetadata.flags = 8; requestMetadata.priority = 23;
+        require((*initialized.position)[0] == 99 && initialized.metadataFlags() == 8 && initialized.priority() == 23,
+            "Request source and metadata must remain borrowed, not copied snapshots.");
+        requestSource.actor = nullptr;
+        jaudio::initializeEffectRequest(initialized, nullptr, request);
+        require(!initialized.actor && !initialized.position && !initialized.secondarySource && initialized.context == 0 &&
+            !initialized.binding && requestBinding == &initialized,
+            "Null actor must clear source fields without clearing a previous external binding.");
+        request.source = nullptr;
+        request.listener = 255; request.stopFrames = 0xffffffff;
+        jaudio::initializeEffectRequest(initialized, &requestBinding, request);
+        require(!initialized.actor && !initialized.position && !initialized.secondarySource && !initialized.context &&
+            initialized.listener == 255 && initialized.stopFrames == 0xffffffff && initialized.lifetime == 10,
+            "Source-free request must preserve byte and frame values without normalization.");
+
+        Admission lifecycle;
+        lifecycle.id = 0x828;
+        jaudio::EffectRecord* retained = nullptr;
+        lifecycle.admit(&retained, 3);
+        auto* releasedRecord = retained;
+        auto* releasedBank = retained->parameters;
+        lifecycle.channels[0] = retained;
+        jaudio::stopEffect(&retained, 30, lifecycle.releaseContext);
+        require(!retained && releasedRecord->state == 0 && !lifecycle.channels[0] &&
+            lifecycle.pool.free == releasedRecord && !releasedRecord->parameters,
+            "Unstarted sound must release immediately even with a fade duration.");
+        lifecycle.admit(&retained, 3);
+        require(retained == releasedRecord && retained->parameters == releasedBank, "Release did not recycle both owned objects.");
+        retained->state = 4;
+        lifecycle.channels[0] = retained;
+        auto* localHandle = retained;
+        jaudio::stopEffect(&localHandle, 3, lifecycle.releaseContext);
+        require(!localHandle && retained == releasedRecord && retained->state == 4 && retained->stopFrames == 3 &&
+            retained->parameters->controls.parameter(jaudio::EffectControl::volume, 6).remaining == 3,
+            "Fade stop must clear its supplied handle while preserving the retained actor binding and pool ownership.");
+        retained->parameters->controls.advance(false);
+        retained->parameters->controls.advance(false);
+        retained->parameters->controls.advance(false);
+        jaudio::SequenceVolume restored, excluded;
+        jaudio::EffectMetadata ordinary{}, ducking{8, 0};
+        lifecycle.sequences = {{&ordinary, &excluded}, {&ordinary, &restored}, {&ducking, &excluded}};
+        lifecycle.metadata[lifecycle.id & 15].flags = 8;
+        lifecycle.duckMask = 1;
+        OwnedServices completed(lifecycle, *retained);
+        jaudio::updateEffectVoice(*retained, 1, completed);
+        require(completed.calls == std::vector<unsigned>{1, 10}, "Fade completion did not release before further parameter publication.");
+        require(!retained && restored.target == 127 && restored.remaining == 3 && excluded.remaining == 0 &&
+            !lifecycle.duckMask && !lifecycle.channels[0] && lifecycle.pool.free == releasedRecord,
+            "Completion release failed to clear actor ownership, restore eligible music or recycle the sound.");
+        lifecycle.admit(&retained, 3);
+        lifecycle.duckMask = 1;
+        lifecycle.sequences.clear();
+        lifecycle.release(*retained);
+        require(lifecycle.duckMask == 1, "Original duck mask must remain set when no eligible sequence visits its branch.");
+        lifecycle.admit(&retained, 3);
+        retained->state = 4;
+        lifecycle.channels[0] = retained;
+        OwnedServices ended(lifecycle, *retained);
+        ended.running = 0;
+        jaudio::updateEffectVoice(*retained, 1, ended);
+        require(!retained && !lifecycle.channels[0] && ended.calls == std::vector<unsigned>{1, 10},
+            "Natural sequence completion failed to release retained actor ownership.");
+        bool duplicateReleaseRejected = false;
+        try { jaudio::releaseEffect(*releasedRecord, lifecycle.releaseContext); }
+        catch (const std::runtime_error&) { duplicateReleaseRejected = true; }
+        require(duplicateReleaseRejected, "Repeated native release must not corrupt the original pool links.");
+        jaudio::stopEffect(nullptr, 0, lifecycle.releaseContext);
+        jaudio::stopEffect(&retained, 0, lifecycle.releaseContext);
+
         jaudio::EffectParameterPool parameterPool(4);
         auto* oldest = parameterPool.acquire();
         auto* middle = parameterPool.acquire();
@@ -266,13 +376,14 @@ int main() {
         try { jaudio::updateEffectVoice(unbound, 1, ownedServices); } catch (const std::runtime_error&) { rejectedUnbound = true; }
         require(rejectedUnbound, "Unbound voice must not create a substitute parameter bank.");
 
+        jaudio::EffectMetadata voiceMetadata;
         jaudio::EffectParameters voiceParameters;
         jaudio::EffectRecord voice;
-        voice.parameters = &voiceParameters; voice.state = 2;
+        voice.parameters = &voiceParameters; voice.metadataSource = &voiceMetadata; voice.state = 2;
         unsigned listenerCount = 1;
         Services services;
         voice.soundId = 0x828;
-        voice.metadata = 8 | 0x40 | 0x800 | 0x1000;
+        voiceMetadata.flags = 8 | 0x40 | 0x800 | 0x1000;
         voice.parameters->pendingPorts = (1u << 1) | (1u << 15);
         voice.parameters->ports[1] = 123; voice.parameters->ports[15] = 0xffff;
         jaudio::updateEffectVoice(voice, listenerCount, services);
@@ -299,7 +410,7 @@ int main() {
         services.calls.clear();
         jaudio::updateEffectVoice(voice, listenerCount, services);
         require(services.calls == std::vector<unsigned>{1, 10}, "Completed fade failed to release through its owner.");
-        voice = {}; voice.parameters = &voiceParameters; voice.state = 2; voiceParameters.controls.reset(); voiceParameters.pendingPorts = 0;
+        voice = {}; voice.parameters = &voiceParameters; voice.metadataSource = &voiceMetadata; voice.state = 2; voiceParameters.controls.reset(); voiceParameters.pendingPorts = 0;
         services = {};
         voice.stopFrames = 4;
         jaudio::updateEffectVoice(voice, listenerCount, services);
@@ -312,8 +423,8 @@ int main() {
         jaudio::updateEffectVoice(voice, listenerCount, services);
         require(services.calls == std::vector<unsigned>{1, 10}, "Sequence completion must release before updating parameters.");
         for (unsigned flags : {0u, 0x40u, 0x80u, 0xc0u}) {
-            voice = {}; voice.parameters = &voiceParameters; voice.state = 2; voiceParameters.controls.reset(); voiceParameters.pendingPorts = 0; services = {};
-            voice.metadata = flags | 0x1000;
+            voice = {}; voice.parameters = &voiceParameters; voice.metadataSource = &voiceMetadata; voice.state = 2; voiceParameters.controls.reset(); voiceParameters.pendingPorts = 0; services = {};
+            voiceMetadata.flags = flags | 0x1000;
             listenerCount = 2;
             jaudio::updateEffectVoice(voice, listenerCount, services);
             require(voice.pitchOffset == (flags == 0 ? 0 : flags == 0x40 ? 15 : flags == 0x80 ? 31 : 63) && services.output[3] == 0,

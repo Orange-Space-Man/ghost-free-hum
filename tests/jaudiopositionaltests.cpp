@@ -52,13 +52,24 @@ int main(int argc, char** argv) {
             std::vector<std::uint8_t> dol;
             check(package.read("sys/main.dol", dol, error), error.c_str());
             jaudio::PositionOwners owners;
-            jaudio::PositionalPlayback playback(owners, dol, package, resources);
+            unsigned sourceQueries = 0;
+            jaudio::PositionalPlayback playback(owners, dol, package, resources,
+                [&](const std::array<float, 3>&) { ++sourceQueries; return 0x80u; });
             jaudio::DspMixer mixer;
             check(mixer.configure(resources.effects, error), error.c_str());
             jaudio::Playback level;
             check(level.loadPositionalEffect(package, resources, 0x181e, error), error.c_str());
             std::array<float, 3> position{-100, 0, -200};
             std::array<float, 12> listener{1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0};
+            auto admit = [&] {
+                for (unsigned block = 0; block < 32; ++block) {
+                    mixer.begin();
+                    if (!playback.mix(mixer, error)) throw std::runtime_error(error);
+                    std::array<std::int16_t, 160> samples{};
+                    mixer.end(samples, level.outputLevel());
+                    if (block % 8 == 0) playback.update(listener);
+                }
+            };
             check(playback.spatial({-100, 0, -200}, 0).pan < 0.5f &&
                 playback.spatial({100, 0, -200}, 0).pan > 0.5f &&
                 playback.spatial({0, 0, 0}, 0).volume == 1,
@@ -81,6 +92,25 @@ int main(int argc, char** argv) {
                     "Original door sound must produce PCM, complete, unlink, and clear its real binding.");
             }
             jaudio::PositionalSound* first = nullptr;
+            check(sourceQueries == 4, "Each admitted sound queries its source context.");
+            {
+                std::array<jaudio::PositionalSound*, 4> requests{};
+                const std::array<unsigned, 4> ids{0x1809, 0x180a, 0x180b, 0x181e};
+                for (unsigned index = 0; index < ids.size(); ++index) playback.play(ids[index], position, &requests[index]);
+                check(!requests[0] && requests[1] && requests[2] && requests[3],
+                    "Original category actor limit replaces the oldest equal-priority request and clears its binding.");
+                playback.stop();
+                check(std::all_of(requests.begin(), requests.end(), [](auto* request) { return request == nullptr; }),
+                    "Teardown releases every admitted actor request.");
+            }
+            for (unsigned repetition = 0; repetition < 80; ++repetition) {
+                auto* sound = playback.play(0x1809, position);
+                check(sound != nullptr, "Repeated sound admission lost its recycled record.");
+                admit();
+                sound->stop(0);
+                admit();
+            }
+            playback.stop();
             {
                 auto services = playback.animationServices(position);
                 actoranimation::SoundHandle* animation = nullptr;
@@ -95,6 +125,7 @@ int main(int argc, char** argv) {
                 services.start(0x180a, animation);
                 check(animation && animation->flags() == 0x180a,
                     "Animation slot replacement binds the newly owned playback handle.");
+                admit();
                 animation->stop(1);
                 playback.update(listener);
                 check(animation != nullptr, "Animation binding survives its pending fade.");
@@ -107,6 +138,10 @@ int main(int argc, char** argv) {
             {
                 jaudio::PositionalSound* fading = nullptr;
                 playback.play(0x181e, position, &fading);
+                fading->stop(1);
+                check(!fading && !owners.categories[1], "An unadmitted request cancels immediately even with a fade duration.");
+                playback.play(0x181e, position, &fading);
+                admit();
                 fading->stop(1);
                 check(fading && owners.categories[1] == fading,
                     "Timed effect stop retains its live handle while the fade is pending.");
@@ -142,7 +177,11 @@ int main(int argc, char** argv) {
             const auto savedPosition = retained[0].position;
             position[0] += 1000;
             check(*retainedHandle->position == savedPosition, "Retained playback must not follow a released actor position.");
+            persistent.play(0x181e, position);
+            check(retained[0].sound == retainedHandle,
+                "Reusing the released actor address must not replace its retained sound.");
             for (unsigned block = 0; block < 4000 && !persistent.finished(); ++block) {
+                if (block % 8 == 0) persistent.update(listener);
                 mixer.begin();
                 check(persistent.mix(mixer, error), error.c_str());
                 std::array<std::int16_t, 160> samples{};

@@ -88,7 +88,10 @@ int main(int argc, char** argv) {
         startupaudio::bindPositionalPlayback(positional);
         const std::array<float, 3> position{-100, 0, -200};
         positional->play(0x181e, position);
-        pump(1500);
+        for (unsigned frame = 0; frame < 45; ++frame) {
+            positional->update({1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0});
+            pump(33);
+        }
         check(positional->finished() && !positionalOwners.categories[1], "Positional sound did not complete through the live shared audio mixer.");
         startupaudio::bindPositionalPlayback({});
         startupaudio::close();

@@ -356,6 +356,29 @@ int main(int argc, char** argv) {
                 require(managers.audioContext().parameters(0xffffffff, -1).packed == 0,
                     "Missing room and floor retain the original empty audio context.");
                 {
+                    auto playback = managers.playback();
+                    jaudio::PositionalSound* binding = nullptr;
+                    playback->play(0x181e, player->position, &binding);
+                    jaudio::DspMixer mixer;
+                    std::string audioError;
+                    jaudio::Resources audioResources;
+                    require(jaudio::read(owner.package(), audioResources, audioError), audioError);
+                    require(mixer.configure(audioResources.effects, audioError), audioError);
+                    std::array<std::int16_t, 160> samples{};
+                    double frameClock = 1;
+                    for (unsigned block = 0; block < 4000 && !playback->finished(); ++block) {
+                        if (frameClock >= 1) {
+                            managers.updateAudio({1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0});
+                            frameClock -= 1;
+                        }
+                        mixer.begin();
+                        require(playback->mix(mixer, audioError), audioError);
+                        mixer.end(samples, 32767);
+                        frameClock += 30.0 * 80.0 / 32028.5;
+                    }
+                    require(playback->finished() && !binding, "Production manager must dispatch and release its real positional request.");
+                }
+                {
                     auto& music = managers.music();
                     music.setRoom(player->room(), -1);
                     music.start();
