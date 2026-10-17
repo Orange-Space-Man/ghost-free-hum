@@ -28,6 +28,9 @@ add_library(JLib STATIC
     src/jlib/jaudio/jaudiosequencecontrols.cpp
     src/jlib/jaudio/jaudioeffectcontrols.cpp
     src/jlib/jaudio/jaudioeffectvoice.cpp
+    src/jlib/jaudio/jaudioeffectadmission.cpp
+    src/jlib/jaudio/jaudioeffectparameterpool.cpp
+    src/jlib/jaudio/jaudioeffectselection.cpp
     src/jlib/jaudio/jaudiostream.cpp
     src/jlib/jaudio/jaudiovoice.cpp
 )

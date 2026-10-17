@@ -1,6 +1,7 @@
 #include "resources/dolresources.h"
 #include "game/audio/jaudiopositionalplayback.h"
 #include "jlib/jaudio/jaudioeffectparameter.h"
+#include "jlib/jaudio/jaudioeffectselection.h"
 
 #include <algorithm>
 #include <cmath>
@@ -20,12 +21,6 @@ namespace {
         return result;
     }
 
-    std::array<float, 3> transform(const std::array<float, 12>& matrix, const std::array<float, 3>& position) {
-        std::array<float, 3> result;
-        for (unsigned i = 0; i < 3; ++i) result[i] = std::fma(matrix[i * 4 + 2], position[2],
-            std::fma(matrix[i * 4 + 1], position[1], matrix[i * 4] * position[0])) + matrix[i * 4 + 3];
-        return result;
-    }
 }
 
 struct jaudio::PositionalPlayback::Handle : PositionalSound {
@@ -100,7 +95,7 @@ jaudio::PositionalSound* jaudio::PositionalPlayback::play(unsigned id, const std
     auto handle = std::make_unique<Handle>(*this, prepared[index], id, soundFlags[index]);
     handle->ownerPosition = handle->position = &position;
     handle->binding = binding;
-    handle->current = handle->target = spatial(transform(listener, position), handle->metadata);
+    handle->current = handle->target = spatial(transformEffectPosition(listener, position), handle->metadata);
     handle->playback.start();
     handle->next = owners.categories[1];
     owners.categories[1] = handle.get();
@@ -182,7 +177,7 @@ void jaudio::PositionalPlayback::update(const std::array<float, 12>& matrix) {
             handle->stop(0);
             continue;
         }
-        handle->target = spatial(transform(listener, *handle->position), handle->metadata);
+        handle->target = spatial(transformEffectPosition(listener, *handle->position), handle->metadata);
         auto& current = handle->current;
         const auto& target = handle->target;
         current.volume += (target.volume - current.volume) / 3;

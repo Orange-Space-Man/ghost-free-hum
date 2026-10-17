@@ -1,6 +1,7 @@
 #pragma once
 
 #include "jlib/jaudio/jaudioeffectcontrols.h"
+#include "jlib/jaudio/jaudioeffectadmission.h"
 
 namespace jaudio {
     struct EffectVoiceServices {
@@ -19,14 +20,5 @@ namespace jaudio {
         virtual void release() = 0;
     };
 
-    struct EffectVoice {
-        EffectControls controls;
-        std::uint32_t soundId = 0, metadata = 0, stopFrames = 0;
-        unsigned state = 2, listenerCount = 1;
-        std::uint8_t pitchOffset = 0;
-        std::array<std::uint16_t, 16> ports{};
-        std::uint16_t pendingPorts = 0;
-
-        void update(EffectVoiceServices& services);
-    };
+    void updateEffectVoice(EffectRecord& record, unsigned listenerCount, EffectVoiceServices& services);
 }
