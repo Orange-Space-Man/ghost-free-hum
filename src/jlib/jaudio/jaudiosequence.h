@@ -38,6 +38,10 @@ namespace jaudio {
         unsigned outputFlags = 0;
         unsigned route = 0;
         bool externalControl = false;
+        bool effectControl = false;
+        std::array<float, 5> effectParameters{1, 0.5f, 1, 0, 0};
+        std::array<unsigned, 3> externalBlend{2, 2, 2}, parentBlend{2, 2, 2};
+        float externalWeight = 1, parentWeight = 16384.0f / 32767;
         std::array<std::size_t, 8> interrupts{};
         unsigned enabledInterrupts = 0, pendingInterrupts = 0;
         bool interruptsBlocked = false;
@@ -70,12 +74,19 @@ namespace jaudio {
         const Track& track(unsigned index) const;
         std::uint64_t ticks() const;
         void writePort(unsigned track, unsigned port, std::uint16_t value);
+        void bindEffectParameters(unsigned track, const std::array<float, 5>& values);
+        void updateEffectParameters(unsigned channel, const std::array<float, 5>& values, unsigned mask);
+        void configureSequenceBlend(unsigned track, unsigned flags, bool specialPan);
+        bool writeRoutePort(unsigned route, unsigned port, std::uint16_t value);
+        bool readRoutePort(unsigned route, unsigned port, std::uint16_t& value) const;
+        bool requestRouteInterrupt(unsigned route, unsigned interrupt);
         void setTempoScale(float value);
 
     private:
         unsigned take(Track& track, unsigned count);
         void update(unsigned index, const Listener& listener);
         void stop(unsigned index, const Listener& listener);
+        void close(unsigned index, const Listener& listener);
         std::vector<std::uint8_t> data;
         std::array<Track, 65> tracks;
         float phase = 0;

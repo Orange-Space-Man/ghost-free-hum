@@ -2,6 +2,16 @@
 
 #include <stdexcept>
 
+std::uint32_t jaudio::EffectRecord::metadataFlags() const {
+    if (!metadataSource) throw std::runtime_error("Effect record requires decoded sound metadata.");
+    return metadataSource->flags;
+}
+
+std::uint8_t jaudio::EffectRecord::priority() const {
+    if (!metadataSource) throw std::runtime_error("Effect record requires decoded sound metadata.");
+    return metadataSource->priority;
+}
+
 jaudio::EffectRecord* jaudio::EffectPool::acquire() {
     if (!free) throw std::runtime_error("Effect pool requires its original reserved entry.");
     auto* record = free;
@@ -30,8 +40,27 @@ void jaudio::EffectPool::recycle(EffectRecord& record) {
     free = &record;
 }
 
-void jaudio::admitEffect(EffectPool& pool, EffectRecord** binding, const void* actor, std::uint32_t soundId,
-    std::uint8_t priority, std::uint8_t actorLimit, EffectAdmissionServices& services) {
+void jaudio::initializeEffectRequest(EffectRecord& record, EffectRecord** binding, const EffectRequest& request) {
+    if (!request.metadata) throw std::runtime_error("Effect request requires decoded sound metadata.");
+    record.soundId = request.soundId;
+    record.actor = request.source ? request.source->actor : nullptr;
+    record.position = record.actor ? request.source->position : nullptr;
+    record.secondarySource = record.actor ? request.source->secondarySource : nullptr;
+    record.context = record.actor ? request.source->context : 0;
+    record.binding = binding;
+    record.stopFrames = request.stopFrames;
+    record.listener = request.listener;
+    record.metadataSource = request.metadata;
+    record.lifetime = 10;
+    if (binding) *binding = &record;
+}
+
+void jaudio::admitEffect(EffectPool& pool, EffectRecord** binding, const EffectRequest& request,
+    std::uint8_t actorLimit, EffectAdmissionServices& services) {
+    if (!request.metadata) throw std::runtime_error("Effect request requires decoded sound metadata.");
+    const auto* actor = request.source ? request.source->actor : nullptr;
+    const auto soundId = request.soundId;
+    const auto priority = request.metadata->priority;
     if (binding && *binding && (*binding)->soundId != soundId) services.stop(**binding);
     EffectRecord* weakest = nullptr;
     std::uint8_t count = 0;
@@ -49,13 +78,13 @@ void jaudio::admitEffect(EffectPool& pool, EffectRecord** binding, const void* a
             count = 255;
             break;
         }
-        if (!weakest || record->priority <= weakest->priority) weakest = record;
+        if (!weakest || record->priority() <= weakest->priority()) weakest = record;
         record = record->next;
         ++count;
     }
     if (count == actorLimit) {
         if (!weakest) throw std::runtime_error("Original effect admission has no replacement candidate.");
-        if (priority < weakest->priority || (priority == weakest->priority && weakest->state == 5)) return;
+        if (priority < weakest->priority() || (priority == weakest->priority() && weakest->state == 5)) return;
         services.release(*weakest);
     }
     auto* record = pool.acquire();
@@ -70,5 +99,5 @@ void jaudio::admitEffect(EffectPool& pool, EffectRecord** binding, const void* a
         return;
     }
     record->state = 1;
-    services.initialize(*record, binding);
+    initializeEffectRequest(*record, binding, request);
 }

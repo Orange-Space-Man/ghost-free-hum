@@ -4,6 +4,7 @@
 #include "jlib/jaudio/jaudiosequencecontrols.h"
 #include "jlib/jaudio/jaudiovoice.h"
 #include "jlib/jaudio/jaudiodspmixer.h"
+#include "jlib/jaudio/jaudioeffectadmission.h"
 
 namespace jaudio {
     struct SpatialParameters {
@@ -15,6 +16,7 @@ namespace jaudio {
         bool load(gameassets::Package& package, const Resources& resources, std::string& error);
         bool loadMenu(gameassets::Package& package, const Resources& resources, std::string& error);
         bool loadMansion(gameassets::Package& package, const Resources& resources, std::string& error);
+        bool loadEffects(gameassets::Package& package, const Resources& resources, std::string& error);
         void setTrackMuted(unsigned track, bool muted);
         void setTrackVolume(unsigned track, float volume, unsigned frames);
         void setTrackPitch(unsigned track, float pitch, unsigned frames);
@@ -24,6 +26,12 @@ namespace jaudio {
         void setRootPort(unsigned port, std::uint16_t value);
         std::uint16_t rootPort(unsigned port) const;
         void setTrackPort(unsigned track, unsigned port, std::uint16_t value);
+        void publishEffectParameters(unsigned channel, EffectRecord& record, float categoryVolume, unsigned outputMode);
+        const SpatialParameters& effectParameters(unsigned channel) const;
+        bool writeEffectPort(unsigned channel, unsigned port, std::uint16_t value);
+        bool readEffectPort(unsigned channel, unsigned port, std::uint16_t& value) const;
+        void publishEffectPort(unsigned channel, unsigned port, std::uint16_t value);
+        void stopEffectTrack(unsigned channel);
         bool loadStartSound(gameassets::Package& package, const Resources& resources, std::string& error);
         bool loadMenuEffect(gameassets::Package& package, const Resources& resources, unsigned id, std::string& error);
         bool loadPositionalEffect(gameassets::Package& package, const Resources& resources, unsigned id, std::string& error);
@@ -33,6 +41,7 @@ namespace jaudio {
         bool render(std::array<std::int16_t, 160>& samples, std::string& error);
         bool mix(DspMixer& destination, std::string& error, const SpatialParameters& spatial = {});
         bool voicesFinished() const;
+        bool hasVoices() const;
         std::int16_t outputLevel() const;
         bool finished() const;
         std::uint64_t notes() const;
@@ -58,6 +67,7 @@ namespace jaudio {
         void event(const SequenceEvent& event);
         float externalVolume(const Track& track) const;
         float externalPitch(const Track& track) const;
+        SpatialParameters effectTrackSpatial(unsigned track) const;
         bool loadMusic(gameassets::Package& package, const Resources& resources, unsigned id, std::string& error);
         SequenceControls controls;
         SequenceVolume tempoScale;
@@ -77,5 +87,9 @@ namespace jaudio {
         unsigned tempo = 48;
         unsigned timebase = 120;
         bool effectDispatch = false;
+        std::array<SpatialParameters, 32> effectParameterCache{};
+        unsigned effectOutputMode = 1;
+        std::array<unsigned, 32> effectParameterPending{};
+        std::array<bool, 32> effectStopPending{};
     };
 }

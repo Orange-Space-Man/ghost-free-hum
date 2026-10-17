@@ -20,10 +20,12 @@ namespace jaudio {
     };
 
     struct Resources {
+        std::vector<std::array<std::array<std::uint8_t, 2>, 5>> effectCategories;
         std::vector<std::uint8_t> initialization;
         std::vector<Section> sections;
         EffectConfiguration effects;
         std::array<std::vector<std::array<std::uint8_t, 16>>, 18> sounds;
+        std::array<std::uint8_t, 3> soundParameterFlags{};
         std::string sequenceArchiveName;
         std::vector<Sequence> sequences;
         std::vector<std::uint8_t> sequenceArchive;

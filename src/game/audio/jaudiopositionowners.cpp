@@ -44,8 +44,7 @@ void jaudio::PositionOwners::release(const std::array<float, 3>* position) {
                     retained->sound = sound;
                     sound->clearBinding();
                     sound->binding = &retained->sound;
-                    sound->position = &retained->position;
-                    sound->ownerPosition = nullptr;
+                    sound->retainPosition(retained->position);
                 } else sound->stop(0);
             }
             sound = next;

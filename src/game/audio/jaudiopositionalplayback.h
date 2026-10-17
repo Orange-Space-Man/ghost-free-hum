@@ -9,7 +9,8 @@ namespace jaudio {
     class PositionalPlayback {
     public:
         PositionalPlayback(PositionOwners& owners, const std::vector<std::uint8_t>& executable,
-            gameassets::Package& package, const Resources& resources);
+            gameassets::Package& package, const Resources& resources,
+            std::function<std::uint32_t(const std::array<float, 3>&)> sourceContext = {});
         ~PositionalPlayback();
         PositionalPlayback(const PositionalPlayback&) = delete;
         PositionalPlayback& operator=(const PositionalPlayback&) = delete;
@@ -23,10 +24,11 @@ namespace jaudio {
 
     private:
         struct Handle;
+        struct Runtime;
         Handle& owned(actoranimation::SoundHandle& sound);
         void remove(Handle& handle);
         PositionOwners& owners;
-        std::array<Playback, 4> prepared;
+        std::unique_ptr<Runtime> runtime;
         std::array<std::uint32_t, 4> soundFlags{};
         std::vector<std::unique_ptr<Handle>> handles;
         std::array<float, 12> listener{1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0};

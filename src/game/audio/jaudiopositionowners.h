@@ -10,6 +10,7 @@ namespace jaudio {
     public:
         virtual std::uint32_t metadataFlags() const { return flags(); }
         virtual void clearBinding() { if (binding) *binding = nullptr; binding = nullptr; }
+        virtual void retainPosition(const std::array<float, 3>& retained) { position = &retained; ownerPosition = nullptr; }
         const std::array<float, 3>* ownerPosition = nullptr;
         const std::array<float, 3>* position = nullptr;
         PositionalSound* next = nullptr;

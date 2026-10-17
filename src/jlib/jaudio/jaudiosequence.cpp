@@ -66,6 +66,14 @@ void jaudio::Interpreter::stop(unsigned index, const Listener& listener) {
     for (const auto child : current.children) if (child >= 0) stop(child, listener);
 }
 
+void jaudio::Interpreter::close(unsigned index, const Listener& listener) {
+    stop(index, listener);
+    auto& current = tracks[index];
+    for (const auto child : current.children) if (child >= 0) close(child, listener);
+    current.children.fill(-1);
+    current.parent = -1;
+}
+
 void jaudio::Interpreter::update(unsigned index, const Listener& listener) {
     auto& current = tracks[index];
     if (!current.active) return;
@@ -116,16 +124,24 @@ void jaudio::Interpreter::update(unsigned index, const Listener& listener) {
                     target.step = 0;
                     target.remaining = 1;
                 }
-            } else if (opcode == 0xa4 || opcode == 0xac || opcode == 0xad || opcode == 0xaf) {
+            } else if (opcode == 0xa4 || opcode == 0xa7 || opcode == 0xac || opcode == 0xad || opcode == 0xaf) {
                 const auto reg = take(current, 1);
-                auto value = take(current, opcode == 0xa4 ? 1 : 2);
-                if (opcode == 0xad || opcode == 0xaf) {
-                    if (reg >= current.registers.size()) throw std::runtime_error("Unported JAudio arithmetic register.");
-                    if (opcode == 0xaf) {
-                        current.registers[3] = static_cast<std::uint16_t>(current.registers[reg] - value);
+                auto value = take(current, opcode <= 0xa7 ? 1 : 2);
+                if (opcode == 0xad || opcode == 0xaf || opcode == 0xa7) {
+                    unsigned source = 0;
+                    if (reg == 0x2c) {
+                        for (unsigned child = 0; child < current.children.size(); ++child) {
+                            if (current.children[child] >= 0 && tracks[current.children[child]].active) source |= 1u << child;
+                        }
+                    } else {
+                        if (reg >= current.registers.size()) throw std::runtime_error("Unported JAudio arithmetic register: " + std::to_string(reg));
+                        source = current.registers[reg];
+                    }
+                    if (opcode == 0xaf || opcode == 0xa7) {
+                        current.registers[3] = static_cast<std::uint16_t>(source - value);
                         continue;
                     }
-                    value = static_cast<std::uint16_t>(current.registers[reg] + value);
+                    value = static_cast<std::uint16_t>(source + value);
                 }
                 if (reg < 3) current.registers[reg] = value & 255;
                 else if (reg == 3) current.registers[reg] = value;
@@ -146,7 +162,7 @@ void jaudio::Interpreter::update(unsigned index, const Listener& listener) {
                 const auto slot = take(current, 1);
                 const auto offset = take(current, 3);
                 if (slot >= 16 || offset >= data.size()) throw std::runtime_error("Invalid JAudio child track.");
-                if (current.children[slot] >= 0) stop(current.children[slot], listener);
+                if (current.children[slot] >= 0) close(current.children[slot], listener);
                 const auto found = current.children[slot] >= 0 ? tracks.begin() + current.children[slot] :
                     std::find_if(tracks.begin() + 1, tracks.end(), [](const auto& entry) { return entry.parent == -1; });
                 if (found == tracks.end()) throw std::runtime_error("JAudio track capacity exceeded.");
@@ -161,10 +177,26 @@ void jaudio::Interpreter::update(unsigned index, const Listener& listener) {
                 found->bendRange = current.bendRange;
                 found->timebase = current.timebase;
                 found->tempo = current.tempo;
+                found->externalBlend = current.externalBlend;
+                found->parentBlend = current.parentBlend;
+                found->externalWeight = current.externalWeight;
+                found->parentWeight = current.parentWeight;
                 current.children[slot] = child;
             } else if (opcode == 0xc4) {
-                if (take(current, 1) != 0) throw std::runtime_error("Unported JAudio call condition.");
-                const auto offset = take(current, 3);
+                const auto flags = take(current, 1);
+                auto offset = flags & 0x80 ? current.registers.at(take(current, 1)) & 0xffff : take(current, 3);
+                if ((flags & 0xc0) == 0xc0) {
+                    const auto table = flags & 0x20 ? current.registers.at(take(current, 1)) & 0xffff : take(current, 3);
+                    const auto entry = table + offset * 3;
+                    if (entry + 3 > data.size()) throw std::runtime_error("Truncated JAudio call table.");
+                    offset = (unsigned(data[entry]) << 16) | (unsigned(data[entry + 1]) << 8) | data[entry + 2];
+                }
+                const auto condition = flags & 15;
+                const auto value = current.registers[3];
+                if (condition > 5) throw std::runtime_error("Unported JAudio call condition.");
+                const bool taken = condition == 0 || (condition == 1 && value == 0) || (condition == 2 && value != 0) ||
+                    (condition == 3 && value == 1) || (condition == 4 && value >= 0x8000) || (condition == 5 && value < 0x8000);
+                if (!taken) continue;
                 if (offset >= data.size() || current.returns.size() >= 16) throw std::runtime_error("Invalid JAudio call.");
                 current.returns.push_back(current.position);
                 current.position = offset;
@@ -190,10 +222,18 @@ void jaudio::Interpreter::update(unsigned index, const Listener& listener) {
             } else if (opcode == 0xcb) {
                 const auto port = take(current, 1);
                 const auto reg = take(current, 1);
-                if (port >= current.ports.size() || reg > 2) throw std::runtime_error("Unported JAudio port read.");
+                if (port >= current.ports.size() || (reg >= 32 && reg != 34)) throw std::runtime_error("Unported JAudio port read.");
                 current.importedPorts[port] = false;
-                current.registers[reg] = current.ports[port] & 255;
-                current.registers[3] = static_cast<std::uint16_t>(static_cast<std::int8_t>(current.ports[port]));
+                const auto value = current.ports[port] & 0xffff;
+                if (reg == 34) {
+                    current.registers[0] = value >> 8;
+                    current.registers[1] = value & 255;
+                } else current.registers[reg] = reg < 3 ? value & 255 : value;
+                current.registers[3] = reg < 3 ? static_cast<std::uint16_t>(static_cast<std::int8_t>(value)) : value;
+                if (reg == 6) { current.bank = value >> 8; current.program = value & 255; }
+                if (reg == 7) current.bendRange = value;
+                if (reg == 11) current.externalWeight = value / 32767.0f;
+                if (reg == 12) current.parentWeight = value / 32767.0f;
             } else if (opcode == 0xcc || opcode == 0xd2) {
                 const auto destination = take(current, 1);
                 const auto source = take(current, 1);
@@ -210,6 +250,15 @@ void jaudio::Interpreter::update(unsigned index, const Listener& listener) {
                     tracks[child].ports[destination & 15] = value & 0xffff;
                     tracks[child].importedPorts[destination & 15] = true;
                     if ((destination & 15) < 2) tracks[child].requestInterrupt(3 + (destination & 15));
+                }
+            } else if (opcode == 0xd9) {
+                if (take(current, 1) != 0) throw std::runtime_error("Nonzero JAudio transpose requires its original note conversion.");
+            } else if (opcode == 0xda) {
+                const auto slot = take(current, 1);
+                if (slot >= 16) throw std::runtime_error("Invalid JAudio close-track slot.");
+                if (current.children[slot] >= 0) {
+                    close(current.children[slot], listener);
+                    current.children[slot] = -1;
                 }
             } else if (opcode == 0xdf) {
                 const auto interrupt = take(current, 1);
@@ -244,7 +293,7 @@ void jaudio::Interpreter::update(unsigned index, const Listener& listener) {
             } else if (opcode == 0xe7) {
                 const auto sync = take(current, 2);
                 if (sync == 4) current.ports[15] = current.parent >= 0 ? tracks[current.parent].ports[7] : 0;
-                else if (sync != 0 && sync != 127) throw std::runtime_error("Unported JAudio sync callback: " + std::to_string(sync));
+                else if (sync != 0 && sync != 1 && sync != 127) throw std::runtime_error("Unported JAudio sync callback: " + std::to_string(sync));
                 if (sync == 0 || sync == 127) current.externalControl = true;
                 listener({EventType::sync, index, sync});
             } else if (opcode == 0xf0) {
@@ -310,4 +359,60 @@ void jaudio::Interpreter::writePort(unsigned track, unsigned port, std::uint16_t
     current.ports.at(port) = value;
     current.importedPorts.at(port) = true;
     if (port < 2) current.requestInterrupt(port + 3);
+}
+
+void jaudio::Interpreter::bindEffectParameters(unsigned track, const std::array<float, 5>& values) {
+    auto& current = tracks.at(track);
+    current.effectParameters = values;
+    current.effectControl = true;
+}
+
+void jaudio::Interpreter::updateEffectParameters(unsigned channel, const std::array<float, 5>& values, unsigned mask) {
+    for (auto& current : tracks) {
+        if (!current.active || !current.effectControl || (current.route & 255) != channel) continue;
+        for (unsigned parameter = 0; parameter < values.size(); ++parameter) {
+            if (mask & (1u << parameter)) current.effectParameters[parameter] = values[parameter];
+        }
+    }
+}
+
+void jaudio::Interpreter::configureSequenceBlend(unsigned index, unsigned flags, bool specialPan) {
+    auto& current = tracks.at(index);
+    if ((current.route >> 28) == 0) return;
+    for (unsigned field = 0; field < 3; ++field) {
+        const unsigned flag = field == 0 ? 8 : field == 1 ? 4 : 16;
+        if (!(flags & flag) || (field == 0 && specialPan)) {
+            current.externalBlend[field] = current.parentBlend[field] = 0;
+        }
+    }
+}
+
+bool jaudio::Interpreter::writeRoutePort(unsigned route, unsigned port, std::uint16_t value) {
+    for (unsigned index = 0; index < tracks.size(); ++index) {
+        if (tracks[index].active && tracks[index].route == route) {
+            writePort(index, port, value);
+            return true;
+        }
+    }
+    return false;
+}
+
+bool jaudio::Interpreter::requestRouteInterrupt(unsigned route, unsigned interrupt) {
+    if (interrupt >= 8) throw std::out_of_range("Sequence interrupt index exceeds its original table.");
+    for (auto& current : tracks) {
+        if (!current.active || current.route != route) continue;
+        current.requestInterrupt(interrupt);
+        return true;
+    }
+    return false;
+}
+
+bool jaudio::Interpreter::readRoutePort(unsigned route, unsigned port, std::uint16_t& value) const {
+    for (const auto& current : tracks) {
+        if (current.active && current.route == route) {
+            value = static_cast<std::uint16_t>(current.ports.at(port));
+            return true;
+        }
+    }
+    return false;
 }

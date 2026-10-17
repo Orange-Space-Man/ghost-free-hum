@@ -12,11 +12,17 @@
 #include "game/player/playeractioncontext.h"
 
 #include <stdexcept>
+#include <cmath>
 
 namespace {
     struct Audio {
         Audio(const gameplay::ManagerDependencies& dependencies) :
-            playback(owners, dependencies.executable, dependencies.package, dependencies.audio),
+            playback(owners, dependencies.executable, dependencies.package, dependencies.audio,
+                [this, &rooms = dependencies.actors.rooms](const std::array<float, 3>& position) {
+                    const std::array<float, 3> rounded{std::ceil(position[0]), std::ceil(position[1]), std::ceil(position[2])};
+                    const unsigned room = rooms.resolve(rounded);
+                    return context.parameters(room, -1).packed;
+                }),
             context(dependencies.mission, dependencies.flags, dependencies.entry.map),
             music(dependencies.package, dependencies.audio, context, dependencies.audioLife) {}
         jaudio::PositionOwners owners;

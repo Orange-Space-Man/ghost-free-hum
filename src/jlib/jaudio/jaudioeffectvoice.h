@@ -4,6 +4,8 @@
 #include "jlib/jaudio/jaudioeffectadmission.h"
 
 namespace jaudio {
+    class Playback;
+    struct EffectReleaseContext;
     struct EffectVoiceServices {
         virtual ~EffectVoiceServices() = default;
         virtual std::uint16_t readPort(unsigned port) = 0;
@@ -21,4 +23,23 @@ namespace jaudio {
     };
 
     void updateEffectVoice(EffectRecord& record, unsigned listenerCount, EffectVoiceServices& services);
+
+    class EffectSequenceVoiceServices : public EffectVoiceServices {
+    public:
+        EffectSequenceVoiceServices(Playback& playback, EffectRecord& record, unsigned channel,
+            float categoryVolume, unsigned outputMode, EffectReleaseContext& releaseContext);
+        std::uint16_t readPort(unsigned port) override;
+        void writePort(unsigned port, std::uint16_t value) override;
+        void publishPort(unsigned port, std::uint16_t value) override;
+        void publishParameters(EffectControls& controls, unsigned state) override;
+        void release() override;
+
+    private:
+        Playback& playback;
+        EffectRecord& record;
+        unsigned channel;
+        float categoryVolume;
+        unsigned outputMode;
+        EffectReleaseContext& releaseContext;
+    };
 }

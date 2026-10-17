@@ -93,6 +93,19 @@ bool jaudio::decodeInitialization(const std::vector<std::uint8_t>& data, Resourc
             if (entry.kind == 7 && !decodeEffectConfiguration(sectionBytes(result, entry), result.effects, error)) {
                 throw std::runtime_error(error);
             }
+            if (entry.kind == 6) {
+                const auto block = sectionBytes(result, entry);
+                const auto count = dword(block, 0);
+                range(block, 4, static_cast<std::size_t>(count) * 4);
+                result.effectCategories.resize(count);
+                for (unsigned mode = 0; mode < count; ++mode) {
+                    const auto offset = dword(block, 4 + mode * 4);
+                    range(block, offset, 10);
+                    for (unsigned category = 0; category < 5; ++category) {
+                        result.effectCategories[mode][category] = {block[offset + category * 2], block[offset + category * 2 + 1]};
+                    }
+                }
+            }
             if (entry.kind == 2 || entry.kind == 3) {
                 const auto block = sectionBytes(result, entry);
                 require(dword(block, 0) == (entry.kind == 2 ? 0x49424e4bU : 0x57535953U), "Invalid JAudio bank signature.");
@@ -101,6 +114,7 @@ bool jaudio::decodeInitialization(const std::vector<std::uint8_t>& data, Resourc
         }
         const auto info = sectionBytes(result, section(result, 1));
         range(info, 0, 0x50);
+        std::copy_n(info.begin(), 3, result.soundParameterFlags.begin());
         for (unsigned category = 0; category < result.sounds.size(); ++category) {
             const auto count = word(info, 6 + category * 4);
             const auto offset = 0x50 + word(info, 8 + category * 4) * 16;

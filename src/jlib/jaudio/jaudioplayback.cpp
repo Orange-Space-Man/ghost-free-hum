@@ -1,4 +1,5 @@
 #include "jlib/jaudio/jaudioplayback.h"
+#include "jlib/jaudio/jaudioeffectparameterpool.h"
 
 #include <algorithm>
 #include <cmath>
@@ -61,11 +62,86 @@ bool jaudio::Playback::loadMansion(gameassets::Package& package, const Resources
     return loadMusic(package, resources, 0x80000007, error);
 }
 
+bool jaudio::Playback::loadEffects(gameassets::Package& package, const Resources& resources, std::string& error) {
+    effectDispatch = false;
+    stop();
+    entryPoint = 0;
+    tempo = 48;
+    timebase = 120;
+    if (!readSequence(resources, 0x80000800, sequence, error) || !bank.load(package, resources, error, 0, 0) ||
+        !mixer.configure(resources.effects, error)) return false;
+    const auto* info = soundInfo(resources, 0x80000800);
+    if (!info) { error = "Missing effect master metadata."; return false; }
+    syncFlags = ((*info)[1] << 8) | (*info)[2];
+    return true;
+}
+
 void jaudio::Playback::setTrackMuted(unsigned track, bool muted) { controls.setMuted(track, muted); }
+
+void jaudio::Playback::publishEffectParameters(unsigned channel, EffectRecord& record, float categoryVolume, unsigned outputMode) {
+    if (!record.parameters) throw std::runtime_error("Effect publication requires an admitted parameter bank.");
+    auto& cached = effectParameterCache.at(channel & 255);
+    auto& parameters = record.parameters->controls;
+    effectOutputMode = outputMode;
+    const auto publish = [&](float& previous, float value, auto setter) {
+        if (previous == value) return;
+        previous = value;
+        if (record.state != 2) setter(value);
+    };
+    publish(cached.volume, parameters.combined(EffectControl::volume, categoryVolume),
+        [&](float value) { controls.setVolume(channel, value, 0); if (controls.track(channel & 255).volume.remaining) effectParameterPending.at(channel & 255) |= 1; });
+    publish(cached.pan, parameters.combined(EffectControl::pan),
+        [&](float value) { controls.setPan(channel, value, 0); if (controls.track(channel & 255).pan.remaining) effectParameterPending.at(channel & 255) |= 2; });
+    publish(cached.pitch, parameters.combined(EffectControl::pitch),
+        [&](float value) { controls.setPitch(channel, value, 0); if (controls.track(channel & 255).pitch.remaining) effectParameterPending.at(channel & 255) |= 4; });
+    publish(cached.fxmix, parameters.combined(EffectControl::fxmix),
+        [&](float value) { controls.setFxmix(channel, value, 0); if (controls.track(channel & 255).fxmix.remaining) effectParameterPending.at(channel & 255) |= 8; });
+    publish(cached.dolby, parameters.combined(EffectControl::dolby),
+        [&](float value) { controls.setDolby(channel, value, 0, outputMode); if (controls.track(channel & 255).dolby.remaining) effectParameterPending.at(channel & 255) |= 16; });
+}
+
+const jaudio::SpatialParameters& jaudio::Playback::effectParameters(unsigned channel) const {
+    return effectParameterCache.at(channel & 255);
+}
+
+bool jaudio::Playback::writeEffectPort(unsigned channel, unsigned port, std::uint16_t value) {
+    return interpreter.writeRoutePort(0x20000000 | (channel & 255), port & 255, value);
+}
+
+bool jaudio::Playback::readEffectPort(unsigned channel, unsigned port, std::uint16_t& value) const {
+    return interpreter.readRoutePort(0x20000000 | (channel & 255), port & 255, value);
+}
+
+void jaudio::Playback::publishEffectPort(unsigned channel, unsigned port, std::uint16_t value) {
+    channel &= 255;
+    port &= 255;
+    auto& cached = trackPorts.at(channel).at(port);
+    if (cached == value) return;
+    writeEffectPort(channel, port, value);
+    cached = value;
+}
+
+void jaudio::Playback::stopEffectTrack(unsigned channel) {
+    channel &= 255;
+    writeEffectPort(channel, 0, 0);
+    effectStopPending.at(channel) = true;
+}
 void jaudio::Playback::setTrackVolume(unsigned track, float volume, unsigned frames) { controls.setVolume(track, volume, frames); }
 void jaudio::Playback::setTrackPitch(unsigned track, float pitch, unsigned frames) { controls.setPitch(track, pitch, frames); }
 void jaudio::Playback::updateSequenceControls() {
     controls.update();
+    for (unsigned channel = 0; channel < effectParameterPending.size(); ++channel) {
+        if (!effectParameterPending[channel]) continue;
+        const auto& control = controls.track(channel);
+        interpreter.updateEffectParameters(channel, {control.volume.value, control.pan.value, control.pitch.value,
+            control.fxmix.value, control.dolby.value}, effectParameterPending[channel]);
+        effectParameterPending[channel] = 0;
+    }
+    for (unsigned channel = 0; channel < effectStopPending.size(); ++channel) {
+        if (!effectStopPending[channel]) continue;
+        interpreter.requestRouteInterrupt(0x20000000 | channel, 5);
+        effectStopPending[channel] = false;
+    }
     if (tempoPending) {
         interpreter.setTempoScale(tempoScale.value);
         tempoScale.update();
@@ -103,6 +179,7 @@ void jaudio::Playback::setTrackPort(unsigned track, unsigned port, std::uint16_t
 }
 
 float jaudio::Playback::externalVolume(const Track& track) const {
+    if (track.effectControl) return track.effectParameters[0];
     if (!track.externalControl) return 1;
     const unsigned depth = track.route >> 28;
     const unsigned index = depth == 1 ? track.route & 15 : depth == 2 ? track.route & 255 : 0;
@@ -110,7 +187,35 @@ float jaudio::Playback::externalVolume(const Track& track) const {
     return control.muted ? 0 : (syncFlags & 1) ? control.volume.value : 1;
 }
 
+jaudio::SpatialParameters jaudio::Playback::effectTrackSpatial(unsigned index) const {
+    const auto& track = interpreter.track(index);
+    SpatialParameters result;
+    result.pan = track.parameters[3].value;
+    result.fxmix = track.parameters[2].value;
+    result.dolby = track.parameters[4].value;
+    auto modes = track.externalBlend;
+    auto parentModes = track.parentBlend;
+    if (track.effectControl || track.externalControl) {
+        auto values = track.effectParameters;
+        if (!track.effectControl) {
+            const auto& control = controls.track((track.route >> 28) == 1 ? track.route & 15 : track.route & 255);
+            values = {control.volume.value, control.pan.value, control.pitch.value, control.fxmix.value, control.dolby.value};
+        }
+        result.pan = blendTrackParameter(result.pan, values[1], track.externalWeight, modes[0]);
+        result.fxmix = blendTrackParameter(result.fxmix, values[3], track.externalWeight, modes[1]);
+        result.dolby = blendTrackParameter(result.dolby, values[4], track.externalWeight, modes[2]);
+    }
+    if (track.parent >= 0) {
+        const auto parent = effectTrackSpatial(track.parent);
+        result.pan = blendTrackParameter(result.pan, parent.pan, track.parentWeight, parentModes[0]);
+        result.fxmix = blendTrackParameter(result.fxmix, parent.fxmix, track.parentWeight, parentModes[1]);
+        result.dolby = blendTrackParameter(result.dolby, parent.dolby, track.parentWeight, parentModes[2]);
+    }
+    return result;
+}
+
 float jaudio::Playback::externalPitch(const Track& track) const {
+    if (track.effectControl) return track.effectParameters[2];
     if (!track.externalControl || !(syncFlags & 2)) return 1;
     const unsigned depth = track.route >> 28;
     const unsigned index = depth == 1 ? track.route & 15 : depth == 2 ? track.route & 255 : 0;
@@ -124,6 +229,8 @@ void jaudio::Playback::start() {
     trackPorts = {};
     writtenPorts = {};
     pendingPorts = {};
+    effectParameterPending = {};
+    effectStopPending = {};
     voices.clear();
     mixer.reset();
     if (effectDispatch) interpreter.startEffect(sequence, entryPoint);
@@ -166,6 +273,12 @@ void jaudio::Playback::release() { interpreter.release([this](const auto& value)
 void jaudio::Playback::event(const SequenceEvent& event) {
     if (event.type == EventType::sync) {
         const auto& track = interpreter.track(event.track);
+        if (event.slot == 0 || event.slot == 127) interpreter.configureSequenceBlend(event.track, syncFlags, event.slot == 127);
+        if (event.slot == 1) {
+            const auto& cached = effectParameterCache.at(track.route & 255);
+            interpreter.bindEffectParameters(event.track, {cached.volume, cached.pan, cached.pitch, cached.fxmix,
+                effectOutputMode == 2 ? cached.dolby : 0});
+        }
         if ((event.slot == 0 || event.slot == 127) && track.externalControl && (track.route >> 28) == 1) {
             const unsigned slot = track.route & 15;
             for (unsigned port = 0; port < 16; ++port) {
@@ -238,11 +351,23 @@ bool jaudio::Playback::mix(DspMixer& destination, std::string& error, const Spat
             if (!std::isfinite(pitch) || pitch < 0 || pitch >= 16) throw std::runtime_error("Invalid JAudio voice pitch.");
             const auto ratio = static_cast<unsigned>(pitch * 4096);
             auto pan = track.parameters[3].value;
+            auto fxmix = track.parameters[2].value;
+            auto dolby = track.parameters[4].value;
+            bool effectBound = false;
+            for (int index = static_cast<int>(voice.track); index >= 0; index = interpreter.track(index).parent) {
+                effectBound |= interpreter.track(index).effectControl;
+            }
+            if (effectBound) {
+                const auto inherited = effectTrackSpatial(voice.track);
+                pan = inherited.pan;
+                fxmix = inherited.fxmix;
+                dolby = inherited.dolby;
+            }
             if (spatial.pan != 0.5f) pan += spatial.pan - 0.5f;
-            if ((syncFlags & 8) != 0) pan = pan * (1 - 16384.0f / 32767) + 0.5f * (16384.0f / 32767);
+            if (!effectBound && (syncFlags & 8) != 0) pan = pan * (1 - 16384.0f / 32767) + 0.5f * (16384.0f / 32767);
             const std::array<float, 3> parameters{std::clamp(pan, 0.0f, 1.0f),
-                std::clamp(track.parameters[2].value + spatial.fxmix, 0.0f, 1.0f),
-                std::clamp(track.parameters[4].value + spatial.dolby, 0.0f, 1.0f)};
+                std::clamp(fxmix + spatial.fxmix, 0.0f, 1.0f),
+                std::clamp(dolby + spatial.dolby, 0.0f, 1.0f)};
             std::array<std::int16_t, 6> gains{};
             for (unsigned bus = 0; bus < gains.size(); ++bus) {
                 const auto route = voice.routes[bus];
@@ -283,6 +408,7 @@ bool jaudio::Playback::mix(DspMixer& destination, std::string& error, const Spat
 }
 
 bool jaudio::Playback::voicesFinished() const { return interpreter.finished() && voices.empty(); }
+bool jaudio::Playback::hasVoices() const { return !voices.empty(); }
 std::int16_t jaudio::Playback::outputLevel() const { return static_cast<std::int16_t>(bank.outputLevel); }
 bool jaudio::Playback::finished() const { return voicesFinished() && !mixer.hasTail(); }
 std::uint64_t jaudio::Playback::notes() const { return noteCount; }
