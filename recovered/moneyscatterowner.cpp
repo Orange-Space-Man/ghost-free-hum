@@ -18,6 +18,12 @@ void moneyscatter::Owner::updateCoins(const Vector& position, const Vector& dire
     pool.update(*this);
 }
 
+bool moneyscatter::Owner::place(const Vector& position, std::int32_t row, std::uint32_t room, const Vector& retainedDirection) {
+    return pool.place(position, row, room, [&](Request& request, Particle& particle) {
+        initialize(request, particle, pose, bindings, retainedDirection);
+    }) != nullptr;
+}
+
 void moneyscatter::Owner::initializeParticle(Request& request, Particle& particle) {
     initialize(request, particle, pose, bindings);
 }

@@ -90,6 +90,29 @@ bool moneyscatter::Pool::updateRequest(Request& request, Services& services) {
     return true;
 }
 
+moneyscatter::Particle* moneyscatter::Pool::place(const Vector& position, std::int32_t row, std::uint32_t room,
+    const std::function<void(Request&, Particle&)>& initialize) {
+    auto& request = persistent();
+    auto* particle = takeLast(particles.free);
+    if (!particle) return nullptr;
+    request.position = position;
+    particle->placementRow = row;
+    particle->room = particle->currentRoom = room;
+    initialize(request, *particle);
+    request.particles.append(*particle);
+    return particle;
+}
+
+void moneyscatter::Pool::removePlacement(std::int32_t row) {
+    auto& request = persistent();
+    for (auto* particle = request.particles.sentinel.next; particle != &request.particles.sentinel; particle = particle->next) {
+        if (particle->placementRow == row) {
+            recycle(request, *particle);
+            return;
+        }
+    }
+}
+
 void moneyscatter::Pool::update(Services& services) {
     if (paused) return;
     for (auto* request = active.sentinel.next; request != &active.sentinel;) {

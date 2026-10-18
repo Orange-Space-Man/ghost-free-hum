@@ -1,11 +1,13 @@
 #include "../recovered/moneyscatterscenebindings.h"
 #include "../recovered/moneyscattermodels.h"
 #include "../recovered/moneyscatterowner.h"
+#include "../recovered/moneyscatterplacements.h"
 
 #include <fstream>
 #include <iostream>
 #include <iterator>
 #include <stdexcept>
+#include <cstring>
 
 namespace {
     void check(bool value, const char* message) {
@@ -16,6 +18,31 @@ namespace {
             return std::make_shared<std::vector<std::uint8_t>>(0xc0);
         }
     };
+
+    jmp::ToolData placements() {
+        std::vector<std::uint8_t> bytes(76 + 2 * 24);
+        const auto word = [&](unsigned offset, unsigned value) {
+            for (unsigned i = 0; i < 4; ++i) bytes.at(offset + i) = static_cast<std::uint8_t>(value >> (24 - i * 8));
+        };
+        word(0, 2); word(4, 5); word(8, 76); word(12, 24);
+        const char* names[]{"name", "room_no", "pos_x", "pos_y", "pos_z"};
+        const unsigned offsets[]{0, 8, 12, 16, 20};
+        for (unsigned i = 0; i < 5; ++i) {
+            unsigned hash = 0;
+            for (auto* name = names[i]; *name; ++name) hash = (hash * 256 + static_cast<unsigned char>(*name)) % 33554393;
+            word(16 + 12 * i, hash); word(20 + 12 * i, 0xffffffff); word(24 + 12 * i, offsets[i] << 16);
+        }
+        for (unsigned row = 0; row < 2; ++row) {
+            const unsigned base = 76 + row * 24;
+            std::memcpy(bytes.data() + base, row ? "bill" : "coin", 5);
+            word(base + 8, 0x105);
+            word(base + 12, 0x42f00000); word(base + 16, 0x42200000); word(base + 20, 0x41f00000);
+        }
+        jmp::ToolData table;
+        std::string error;
+        check(table.attach(bytes, error), error.c_str());
+        return table;
+    }
 }
 
 int main(int argc, char** argv) {
@@ -137,6 +164,41 @@ int main(int argc, char** argv) {
             owner.updateCoins({1, 2, 3}, {});
             check(owner.storage().active.count == 1 && owner.storage().requests.free.count == 34,
                 "The original persistent request survives ordinary request retirement.");
+            auto table = placements();
+            jmp::ToolDataRef coinEntry{&table, 0}, billEntry{&table, 1};
+            std::array<std::int16_t, 256> indices{};
+            indices[5] = 0x101;
+            unsigned scratchReads = 0;
+            moneyscatter::Placements receiver(owner, rooms, indices, flags, [&](int row) {
+                check(row == 0, "Placed initializer retains its JMP row identity.");
+                ++scratchReads;
+                return moneyscatter::Vector{1, 2, 3};
+            });
+            jmp::MessageSender sender;
+            check(sender.addReceiver(&receiver), "Coin receiver must register with the original message sender.");
+            flags[1] &= ~0x40u;
+            check(!sender.dispatch(&jmp::MessageReceiver::create, billEntry) &&
+                sender.dispatch(&jmp::MessageReceiver::create, coinEntry), "Coin receiver must recognize only coin entries.");
+            auto& retained = owner.storage().persistent();
+            auto* placed = retained.particles.sentinel.next;
+            check(placed == &owner.storage().particles.at(199) && placed->position == moneyscatter::Vector{120, 50, 30} &&
+                placed->placementRow == 0 && placed->room == 0x01000007 && placed->currentRoom == 0x01000007 &&
+                placed->lifetime == 1000 && placed->model && scratchReads == 1,
+                "Placement masks room indices, raises height, retains row/room identity and initializes through the persistent owner.");
+            check(sender.dispatch(&jmp::MessageReceiver::create, coinEntry) && retained.particles.count == 2,
+                "Original placement admits duplicate rows rather than deduplicating them.");
+            check(sender.dispatch(&jmp::MessageReceiver::remove, coinEntry) && retained.particles.count == 1 &&
+                retained.particles.sentinel.next == &owner.storage().particles.at(198),
+                "Removal recycles only the first matching row.");
+            flags[1] |= 0x40;
+            check(sender.dispatch(&jmp::MessageReceiver::create, coinEntry) && retained.particles.count == 1 && scratchReads == 2,
+                "Suppressed placement remains handled without reading initializer scratch or allocating.");
+            flags[1] &= ~0x40u;
+            for (unsigned i = 0; i < 199; ++i) check(owner.place({120, 50, 30}, 1000 + i, 0x01000007, {1, 2, 3}),
+                "Persistent placement should fill available particle slots.");
+            check(sender.dispatch(&jmp::MessageReceiver::create, coinEntry) && retained.particles.count == 200 && scratchReads == 2,
+                "Exhausted placement remains handled without invoking initialization.");
+            check(!sender.dispatch(&jmp::MessageReceiver::message, coinEntry, "hide"), "Coin receiver has no command handler.");
         }
         dependencies.dispatch = {};
         bool rejected = false;

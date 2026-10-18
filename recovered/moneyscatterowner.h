@@ -13,6 +13,7 @@ namespace moneyscatter {
         Request* scatter(const Vector& position, const Vector& direction, std::uint8_t count,
             std::uint16_t lifetime, double speed, std::uint8_t positionMode);
         void updateCoins(const Vector& cameraPosition, const Vector& cameraDirection);
+        bool place(const Vector& position, std::int32_t row, std::uint32_t room, const Vector& retainedDirection);
         Pool& storage();
         const Models& modelStorage() const;
 

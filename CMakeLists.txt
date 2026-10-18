@@ -4,8 +4,12 @@ set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 set(PORT_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../ghost-free-hum" CACHE PATH "Clean port source directory")
 add_subdirectory("${PORT_SOURCE_DIR}" port)
 enable_testing()
+add_executable(billscatterpooltests tests/billscatterpooltests.cpp recovered/billscatterpool.cpp)
+target_link_libraries(billscatterpooltests PRIVATE WindowsRuntime)
+add_test(NAME billscatterpool COMMAND billscatterpooltests)
 add_executable(moneyscenebindingtests tests/moneyscenebindingtests.cpp
     recovered/moneyscatterscenebindings.cpp recovered/moneyscattermodels.cpp recovered/moneyscatterowner.cpp recovered/moneyscatterupdate.cpp
+    recovered/moneyscatterplacements.cpp
     recovered/moneyscattercontact.cpp recovered/moneyscatterinitializer.cpp recovered/moneyscatterpool.cpp)
 target_link_libraries(moneyscenebindingtests PRIVATE WindowsRuntime)
 add_test(NAME moneyscenebindings COMMAND moneyscenebindingtests "${CMAKE_CURRENT_SOURCE_DIR}/../orig/GLME01/sys/main.dol")

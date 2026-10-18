@@ -2,6 +2,7 @@
 
 #include "game/effects/particlepoolstate.h"
 #include "jlib/j3d/j3dmodelinstance.h"
+#include <functional>
 
 namespace moneyscatter {
     using Vector = std::array<float, 3>;
@@ -17,6 +18,7 @@ namespace moneyscatter {
         std::uint8_t sparkleCounter = 0;
         bool placedMotion = false;
         std::int32_t motion = 0;
+        std::int32_t placementRow = 0;
         std::uint32_t room = 0xffffffff, currentRoom = 0xffffffff;
         std::int16_t lifetime = 0;
         bool visible = false, blinking = false;
@@ -61,6 +63,9 @@ namespace moneyscatter {
             std::uint16_t lifetime, double speed, std::uint8_t positionMode, Services& services);
         void update(Services& services);
         void recycle(Request& request, Particle& particle);
+        Particle* place(const Vector& position, std::int32_t row, std::uint32_t room,
+            const std::function<void(Request&, Particle&)>& initialize);
+        void removePlacement(std::int32_t row);
         Request& persistent();
         bool paused = false;
         particles::Pool<Particle> particles{200};
