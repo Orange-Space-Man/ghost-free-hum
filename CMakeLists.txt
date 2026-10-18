@@ -4,9 +4,35 @@ set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 set(PORT_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../ghost-free-hum" CACHE PATH "Clean port source directory")
 add_subdirectory("${PORT_SOURCE_DIR}" port)
 enable_testing()
+add_executable(billscatterscenetests tests/billscatterscenetests.cpp recovered/billscatterscene.cpp
+    recovered/billscatterinitializer.cpp recovered/billscatterupdate.cpp recovered/billscattermotion.cpp
+    recovered/billscattercontact.cpp recovered/billscattercollection.cpp recovered/billscattermodels.cpp
+    recovered/billscatterpool.cpp recovered/moneyscatterinitializer.cpp)
+target_link_libraries(billscatterscenetests PRIVATE WindowsRuntime)
+add_test(NAME billscatterscene COMMAND billscatterscenetests "${CMAKE_CURRENT_SOURCE_DIR}/../orig/GLME01/sys/main.dol")
+add_executable(billscatterupdatetests tests/billscatterupdatetests.cpp recovered/billscatterupdate.cpp
+    recovered/billscattermotion.cpp recovered/billscattercontact.cpp recovered/billscattercollection.cpp
+    recovered/billscattermodels.cpp recovered/billscatterpool.cpp recovered/moneyscatterinitializer.cpp)
+target_link_libraries(billscatterupdatetests PRIVATE WindowsRuntime)
+add_test(NAME billscatterupdate COMMAND billscatterupdatetests "${CMAKE_CURRENT_SOURCE_DIR}/../orig/GLME01/sys/main.dol")
+add_executable(billscattercollectiontests tests/billscattercollectiontests.cpp recovered/billscattercollection.cpp recovered/billscatterpool.cpp)
+target_link_libraries(billscattercollectiontests PRIVATE WindowsRuntime)
+add_test(NAME billscattercollection COMMAND billscattercollectiontests)
 add_executable(billscatterpooltests tests/billscatterpooltests.cpp recovered/billscatterpool.cpp)
 target_link_libraries(billscatterpooltests PRIVATE WindowsRuntime)
 add_test(NAME billscatterpool COMMAND billscatterpooltests)
+add_executable(billscattercontacttests tests/billscattercontacttests.cpp recovered/billscattercontact.cpp)
+target_link_libraries(billscattercontacttests PRIVATE WindowsRuntime)
+add_test(NAME billscattercontact COMMAND billscattercontacttests)
+add_executable(billscatterinitializertests tests/billscatterinitializertests.cpp recovered/billscatterpool.cpp recovered/billscatterinitializer.cpp)
+target_link_libraries(billscatterinitializertests PRIVATE WindowsRuntime)
+add_test(NAME billscatterinitializer COMMAND billscatterinitializertests)
+add_executable(billscattermodeltests tests/billscattermodeltests.cpp recovered/billscatterpool.cpp recovered/billscatterinitializer.cpp recovered/billscattermodels.cpp)
+target_link_libraries(billscattermodeltests PRIVATE WindowsRuntime)
+add_test(NAME billscattermodels COMMAND billscattermodeltests)
+add_executable(billscattermotiontests tests/billscattermotiontests.cpp recovered/billscattermotion.cpp recovered/billscattercontact.cpp)
+target_link_libraries(billscattermotiontests PRIVATE WindowsRuntime)
+add_test(NAME billscattermotion COMMAND billscattermotiontests "${CMAKE_CURRENT_SOURCE_DIR}/../orig/GLME01/sys/main.dol")
 add_executable(moneyscenebindingtests tests/moneyscenebindingtests.cpp
     recovered/moneyscatterscenebindings.cpp recovered/moneyscattermodels.cpp recovered/moneyscatterowner.cpp recovered/moneyscatterupdate.cpp
     recovered/moneyscatterplacements.cpp

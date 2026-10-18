@@ -10,6 +10,13 @@ namespace billscatter {
         Particle() : next(this), previous(this) {}
         std::unique_ptr<j3dmodel::ModelInstance> model;
         Vector position{};
+        Vector velocity{};
+        Vector acceleration{}, forward{}, up{};
+        std::array<std::int16_t, 3> angles{};
+        float spin = 0;
+        std::uint8_t flutterCounter = 0;
+        float scale = 1;
+        std::int32_t motion = 0;
         std::uint32_t room = 0xffffffff, currentRoom = 0xffffffff;
         std::int16_t lifetime = 0;
         bool visible = false, blinking = false;
@@ -21,6 +28,9 @@ namespace billscatter {
     struct Request {
         Request() : next(this), previous(this) {}
         particles::Ring<Particle> particles;
+        Vector position{}, direction{}, spawnPosition{};
+        float strength = 0;
+        std::uint8_t count = 0;
         std::int16_t lifetime = 0;
         std::uint8_t delay = 0, suctionCounter = 0;
         bool suctionReady = false;
