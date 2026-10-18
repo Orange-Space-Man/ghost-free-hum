@@ -3,6 +3,7 @@
 #include <cstdint>
 
 namespace glme01 {
+    inline constexpr std::uint32_t cutsceneDefinitions = 0x80373aa8;
     inline constexpr std::uint32_t playerDamageDelays = 0x804d2c04;
     inline constexpr std::uint32_t playerDoorApproachSpeed = 0x804db56c;
     inline constexpr std::uint32_t playerDoorTurnBlend = 0x804d2ba4;

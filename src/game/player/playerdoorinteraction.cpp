@@ -150,7 +150,9 @@ void playerinteraction::DoorInteraction::arrive(playercomponents::DoorState& sta
             state.unlocked = 0;
             state.blocked = 1;
         } else if (services.doors.markUsed(state.door, savedId, type)) {
-            if (!(services.keys[savedId >> 3] & (1u << (savedId & 7)))) state.unlocked = 0;
+            if (!services.keys.data || (unsigned(savedId) >> 3) >= services.keys.bytes)
+                throw std::runtime_error("Door interaction requires the player's retained key storage.");
+            if (!(services.keys.data[savedId >> 3] & (1u << (savedId & 7)))) state.unlocked = 0;
             else services.doors.setSavedFlag(savedId, false, services.savedDoors);
             present = (state.flags & 1) != 0;
         }

@@ -20,13 +20,14 @@ void gameplaymusic::Owner::setRoom(unsigned value, std::int16_t polygon) {
 
 void gameplaymusic::Owner::start() {
     if (soundState) throw std::runtime_error("Mansion music replacement requires the original stop lifecycle.");
-    if (!prepared) {
+    if (preparedSound != 0x80000007) {
         std::string error;
         if (!sequence.loadMansion(package, resources, error)) throw std::runtime_error(error);
-        prepared = true;
+        preparedSound = 0x80000007;
     }
     refreshContext();
     sequence.start();
+    activeSound = 0x80000007;
     soundState = 3;
     sequence.setRootPort(0, static_cast<std::uint16_t>(lastSection < 14 ? lastSection + 1 : 3));
     sequence.setTrackPort(15, 15, 0xffff);
@@ -42,6 +43,25 @@ void gameplaymusic::Owner::start() {
 void gameplaymusic::Owner::stop() {
     sequence.stop();
     soundState = 0;
+    activeSound = 0;
+}
+
+bool gameplaymusic::Owner::requestDeath(std::uint32_t audioFrame) {
+    if (lastRequestFrame == audioFrame) return false;
+    const auto* info = jaudio::soundInfo(resources, 0x80000012);
+    if (!info || (*info)[0] || (*info)[1] || (*info)[2] || (*info)[3])
+        throw std::runtime_error("Unsupported original death sequence routing metadata.");
+    stop();
+    std::string error;
+    if (!sequence.loadDeath(package, resources, error)) {
+        preparedSound = 0;
+        throw std::runtime_error(error);
+    }
+    preparedSound = activeSound = 0x80000012;
+    sequence.start();
+    soundState = 4;
+    lastRequestFrame = audioFrame;
+    return true;
 }
 
 void gameplaymusic::Owner::setCutsceneActive(bool active) {
@@ -52,19 +72,27 @@ void gameplaymusic::Owner::setCutsceneActive(bool active) {
 void gameplaymusic::Owner::updateSequenceControls() { sequence.updateSequenceControls(); }
 
 void gameplaymusic::Owner::retainSection() {
-    if (soundState > 3) lastSection = sequence.rootPort(1);
+    if (hasMansionSequence() && soundState > 3) lastSection = sequence.rootPort(1);
 }
 
 bool gameplaymusic::Owner::mix(jaudio::DspMixer& destination, std::string& error) {
     if (!soundState) return true;
-    if (sequence.mix(destination, error)) return true;
+    if (sequence.mix(destination, error)) {
+        if (sequence.voicesFinished()) {
+            soundState = 0;
+            activeSound = 0;
+        }
+        return true;
+    }
     soundState = 0;
+    activeSound = 0;
     return false;
 }
 
 const gameplaymusic::State& gameplaymusic::Owner::routing() const { return state; }
 const jaudio::Playback& gameplaymusic::Owner::playback() const { return sequence; }
-bool gameplaymusic::Owner::hasMansionSequence() const { return soundState != 0; }
+unsigned gameplaymusic::Owner::currentSound() const { return activeSound; }
+bool gameplaymusic::Owner::hasMansionSequence() const { return soundState != 0 && activeSound == 0x80000007; }
 unsigned gameplaymusic::Owner::sequenceState() const { return soundState; }
 short gameplaymusic::Owner::roomSize() { return static_cast<short>(roomParameters.size()); }
 short gameplaymusic::Owner::roomMusicCode() { return static_cast<short>(roomParameters.musicCode()); }

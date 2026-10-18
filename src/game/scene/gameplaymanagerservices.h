@@ -15,6 +15,7 @@
 #include "game/enemies/enemygeneratormanager.h"
 #include "game/effects/particleglowpool.h"
 #include "game/player/playerpadsampler.h"
+#include "game/player/playerdoorinteraction.h"
 
 namespace playeractions { struct Input; }
 
@@ -66,6 +67,8 @@ namespace gameplay {
         std::shared_ptr<jaudio::PositionalPlayback> playback();
         const gameplayaudio::Context& audioContext() const;
         gameplaymusic::Owner& music();
+        gameflags::State& flags();
+        const playerinput::Pad& controller() const;
         void updateOwner(unsigned slot);
         void updatePlacement(std::int32_t elapsedSeconds);
         void updateGenerators();
@@ -81,6 +84,7 @@ namespace gameplay {
             const float* originalRegister = nullptr, const bool* emptyCompletion = nullptr);
         void updateAudio(const std::array<float, 12>& listener);
         playeractions::Input preparePlayerAction(unsigned index);
+        playerinteraction::DoorServices preparePlayerDoor(unsigned index);
 
     private:
         struct State;

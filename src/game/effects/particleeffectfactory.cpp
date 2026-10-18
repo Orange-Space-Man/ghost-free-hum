@@ -98,6 +98,26 @@ particles::Emitter* particles::EffectFactory::createLifeLoss(unsigned type, cons
     return emitter;
 }
 
+void particles::CoinCollectionCallback::advance(Emitter& emitter) {
+    if (emitter.fieldBC > 1) emitter.flags = 0x1c;
+}
+
+particles::Emitter* particles::EffectFactory::createCoinCollection(unsigned type, const std::array<float, 3>& position) {
+    for (unsigned i = 49; i > 0; --i) history[i] = history[i - 1];
+    history[0] = type + 310;
+    const auto parameters = resources.get(0x4b485f45, "coin_ef.pcr");
+    const auto texture = resources.get(0x4b485f45, "star5_03.bti");
+    const auto alternate = resources.get(0x4b485f45, "ps_6kaku.bti");
+    auto* emitter = pool.create(parameters, texture, alternate);
+    if (emitter) {
+        emitter->position = position;
+        emitter->field220 = emitter->field22C = {};
+        emitter->fieldC4 = &coinCollection;
+        emitter->fieldC8 = nullptr;
+    }
+    return emitter;
+}
+
 particles::Emitter* particles::EffectFactory::create(unsigned type, const std::array<float, 3>& position,
     const std::array<float, 3>& vector) {
     for (unsigned i = 49; i > 0; --i) history[i] = history[i - 1];

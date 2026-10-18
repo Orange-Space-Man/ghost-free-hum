@@ -16,6 +16,7 @@ namespace jaudio {
         bool load(gameassets::Package& package, const Resources& resources, std::string& error);
         bool loadMenu(gameassets::Package& package, const Resources& resources, std::string& error);
         bool loadMansion(gameassets::Package& package, const Resources& resources, std::string& error);
+        bool loadDeath(gameassets::Package& package, const Resources& resources, std::string& error);
         bool loadEffects(gameassets::Package& package, const Resources& resources, std::string& error);
         void setTrackMuted(unsigned track, bool muted);
         void setTrackVolume(unsigned track, float volume, unsigned frames);
@@ -53,12 +54,15 @@ namespace jaudio {
             unsigned track = 0;
             unsigned slot = 0;
             unsigned remaining = 0;
+            float pitchTarget = 1;
+            std::uint16_t pitchRemaining = 0;
             InstrumentVoice instrument;
             Envelope envelope;
             Envelope vibrato;
             Oscillator vibratoDefinition;
             bool hasVibrato = false;
             bool ended = false;
+            bool noteAttached = true;
             std::uint64_t position = 0;
             bool firstBlock = true;
             std::array<unsigned, 6> routes{};

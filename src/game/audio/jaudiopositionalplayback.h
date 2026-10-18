@@ -10,11 +10,12 @@ namespace jaudio {
     public:
         PositionalPlayback(PositionOwners& owners, const std::vector<std::uint8_t>& executable,
             gameassets::Package& package, const Resources& resources,
-            std::function<std::uint32_t(const std::array<float, 3>&)> sourceContext = {});
+            std::function<std::uint32_t(const std::array<float, 3>&, bool)> sourceContext = {});
         ~PositionalPlayback();
         PositionalPlayback(const PositionalPlayback&) = delete;
         PositionalPlayback& operator=(const PositionalPlayback&) = delete;
         PositionalSound* play(unsigned id, const std::array<float, 3>& position, PositionalSound** binding = nullptr);
+        void playDeathEffects(const std::array<float, 3>& position);
         actoranimation::SoundServices animationServices(const std::array<float, 3>& position);
         void update(const std::array<float, 12>& listenerMatrix);
         bool mix(DspMixer& mixer, std::string& error);
@@ -29,7 +30,7 @@ namespace jaudio {
         void remove(Handle& handle);
         PositionOwners& owners;
         std::unique_ptr<Runtime> runtime;
-        std::array<std::uint32_t, 4> soundFlags{};
+        std::vector<std::uint32_t> soundFlags;
         std::vector<std::unique_ptr<Handle>> handles;
         std::array<float, 12> listener{1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0};
         float maximumDistance, fullDistance, minimumVolume;

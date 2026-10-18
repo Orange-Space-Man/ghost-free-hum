@@ -5,6 +5,7 @@
 #include <functional>
 #include <string>
 #include <vector>
+#include <optional>
 
 namespace jaudio {
     struct Parameter {
@@ -22,10 +23,14 @@ namespace jaudio {
         unsigned bank = 0;
         unsigned program = 240;
         unsigned bendRange = 12;
+        std::uint8_t lastNote = 0;
+        std::uint8_t transpose = 0, combinedTranspose = 0;
         unsigned tempo = 48;
         unsigned timebase = 120;
         bool vibrato = false;
         unsigned oscillatorRoute = 0;
+        unsigned envelopeRoute = 15;
+        std::optional<std::array<std::uint16_t, 5>> adsr;
         std::array<int, 16> children{};
         std::array<Parameter, 18> parameters{};
         std::array<bool, 18> parameterWritten{};
@@ -61,6 +66,7 @@ namespace jaudio {
         unsigned key = 0;
         unsigned velocity = 0;
         unsigned duration = 0;
+        int targetKey = -1;
     };
 
     class Interpreter {
@@ -81,9 +87,12 @@ namespace jaudio {
         bool readRoutePort(unsigned route, unsigned port, std::uint16_t& value) const;
         bool requestRouteInterrupt(unsigned route, unsigned interrupt);
         void setTempoScale(float value);
+        std::function<std::uint32_t()> random;
+        std::function<bool(unsigned, unsigned)> noteStopped;
 
     private:
         unsigned take(Track& track, unsigned count);
+        unsigned readRegister(unsigned track, unsigned reg) const;
         void update(unsigned index, const Listener& listener);
         void stop(unsigned index, const Listener& listener);
         void close(unsigned index, const Listener& listener);

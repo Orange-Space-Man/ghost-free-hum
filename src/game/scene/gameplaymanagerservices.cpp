@@ -16,12 +16,19 @@
 
 namespace {
     struct Audio {
-        Audio(const gameplay::ManagerDependencies& dependencies) :
+        Audio(const gameplay::ManagerDependencies& dependencies, const mapcollision::State& collision) :
             playback(owners, dependencies.executable, dependencies.package, dependencies.audio,
-                [this, &rooms = dependencies.actors.rooms](const std::array<float, 3>& position) {
+                [this, &rooms = dependencies.actors.rooms, &collision](const std::array<float, 3>& position, bool queryFloor) {
+                    std::int16_t polygon = -1;
+                    if (queryFloor) {
+                        auto probe = position;
+                        probe[1] += 5;
+                        probe[1] = collision.floorHeight(probe) + 5;
+                        polygon = static_cast<std::int16_t>(collision.floorPolygons(probe, 10)[0]);
+                    }
                     const std::array<float, 3> rounded{std::ceil(position[0]), std::ceil(position[1]), std::ceil(position[2])};
                     const unsigned room = rooms.resolve(rounded);
-                    return context.parameters(room, -1).packed;
+                    return context.parameters(room, polygon).packed;
                 }),
             context(dependencies.mission, dependencies.flags, dependencies.entry.map),
             music(dependencies.package, dependencies.audio, context, dependencies.audioLife) {}
@@ -34,6 +41,7 @@ namespace {
 
 struct gameplay::ManagerServices::State {
     explicit State(const ManagerDependencies& dependencies) : dependencies(dependencies),
+        savedDoors(dependencies.entry.inventory.data(), dependencies.entry.inventory.size()),
         commonResources(dependencies.common), mapResources(dependencies.map), collision(dependencies.mission),
         actionContext(dependencies.executable), actorCollision(dependencies.collisions, dependencies.actors.catalog),
         padSampler(dependencies.executable) {}
@@ -97,8 +105,9 @@ struct gameplay::ManagerServices::State {
         if (!doordata::read(dependencies.executable, word(word(0x802ff218 + mapMode * 4) + 0x18), descriptors, error)) {
             throw std::runtime_error(error);
         }
-        doors::SavedFlags savedDoors{};
-        for (unsigned i = 0; i < 32; ++i) savedDoors[i / 4] |= unsigned(dependencies.entry.inventory[i]) << (24 - (i % 4) * 8);
+        const auto& rooms = dependencies.actors.rooms.entries();
+        if (rooms.size() > roomIds.size()) throw std::runtime_error("Door room table exceeds the original room index range.");
+        for (unsigned i = 0; i < rooms.size(); ++i) roomIds[i] = rooms[i].id;
         if (!doors.initialize(descriptors, doorResources, dependencies.executable, savedDoors, error)) throw std::runtime_error(error);
         missionEvents = std::make_unique<gameevent::MissionActivation>(dependencies.mission, dependencies.types,
             dependencies.entry, dependencies.flags);
@@ -107,7 +116,7 @@ struct gameplay::ManagerServices::State {
         const int collisionIndex = dependencies.map.findNameResource("col.mp");
         if (collisionIndex < 0) throw std::runtime_error("Original manager services require map collision.");
         collision.load(dependencies.map.resource(collisionIndex));
-        audio = std::make_shared<Audio>(dependencies);
+        audio = std::make_shared<Audio>(dependencies, collision);
         particles = std::make_unique<particles::Scene>(dependencies.executable, commonResources, dependencies.randomState);
         particles->initializeEffectBatches();
         players = std::make_unique<players::Manager>(dependencies.common, dependencies.materials, mapMode,
@@ -181,6 +190,8 @@ struct gameplay::ManagerServices::State {
     bool restored = false;
     bool placementFailed = false;
     doors::State doors;
+    doors::SavedFlags savedDoors;
+    std::array<std::uint32_t, 256> roomIds{};
     particles::GlowPool glows;
     std::array<std::uint8_t, 4> ambient{};
     std::unique_ptr<enemystrategy::BarrierEnvironment> barrierServices;
@@ -237,6 +248,8 @@ std::shared_ptr<jaudio::PositionalPlayback> gameplay::ManagerServices::playback(
 
 const gameplayaudio::Context& gameplay::ManagerServices::audioContext() const { return state->audio->context; }
 gameplaymusic::Owner& gameplay::ManagerServices::music() { return state->audio->music; }
+gameflags::State& gameplay::ManagerServices::flags() { return state->dependencies.flags; }
+const playerinput::Pad& gameplay::ManagerServices::controller() const { return state->dependencies.pad; }
 
 void gameplay::ManagerServices::updateOwner(unsigned slot) { state->enemies->update(slot); }
 
@@ -248,6 +261,13 @@ playeractions::Input gameplay::ManagerServices::preparePlayerAction(unsigned ind
 }
 
 void gameplay::ManagerServices::updateGenerators() { state->generators->update(); }
+playerinteraction::DoorServices gameplay::ManagerServices::preparePlayerDoor(unsigned index) {
+    if (index >= state->dependencies.playerCount) throw std::out_of_range("Player door index exceeds the bound player count.");
+    auto* player = dynamic_cast<playeractor::Player*>(state->actors->actor(state->enemies->appearPoint(index).actor));
+    if (!player) throw std::runtime_error("Door interaction requires its registered player owner.");
+    return {state->doors, state->savedDoors, *player->components->flags, state->roomIds, *state->enemies,
+        state->dependencies.actors.catalog, state->dependencies.actors.resources, state->dependencies.flags.value(0x53) == 1};
+}
 void gameplay::ManagerServices::sampleInput(const playerinput::PadStatus& pad, std::int16_t port) {
     state->dependencies.pad.port = port;
     state->padSampler.update(state->dependencies.pad, pad);

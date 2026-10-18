@@ -163,6 +163,7 @@ void openingscene::Scene::update(bool flag55) {
 }
 
 void openingscene::Scene::draw(bool present) {
+    if (graphicsReady && !gamerenderer::useScene(graphicsKey(loadedSegment))) graphicsReady = false;
     if (!graphicsReady) {
         if (!gamerenderer::useScene(graphicsKey(loadedSegment))) {
             gamerenderer::setInterfaceTextures({});

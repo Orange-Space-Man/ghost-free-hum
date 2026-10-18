@@ -135,45 +135,53 @@ float jaudio::Envelope::advance(const Oscillator& oscillator) {
     return shaped * oscillator.scale + oscillator.offset;
 }
 
-bool jaudio::VoiceBank::load(gameassets::Package& package, const Resources& resources, std::string& error, unsigned instrumentBank, unsigned waveSystem) {
+void jaudio::VoiceBank::loadWaveSystem(gameassets::Package& package, const Resources& resources, unsigned id) {
+    auto& waveData = waveSystems[id];
+    waveData = block(resources, 3, id);
+    std::string error;
+    const auto info = dword(waveData, 16);
+    const auto control = dword(waveData, 20);
+    const auto groups = dword(waveData, info + 4);
+    require(dword(waveData, info) == 0x57494e46 && dword(waveData, control) == 0x57424354 &&
+        groups == dword(waveData, control + 8) && groups <= 256, "Invalid JAudio wave directory.");
+    for (unsigned group = 0; group < groups; ++group) {
+        const auto archive = dword(waveData, info + 8 + group * 4);
+        word(waveData, archive + 112);
+        const auto first = waveData.begin() + archive;
+        const auto last = std::find(first, first + 112, 0);
+        require(last != first + 112 && last != first, "Invalid JAudio wave archive name.");
+        const std::string filename(first, last);
+        require(filename.find_first_of("/\\:") == std::string::npos && filename != "." && filename != "..", "Invalid JAudio wave archive path.");
+        if (!package.read("files/AudioRes/Banks/" + filename, archives[filename], error)) throw std::runtime_error(error);
+        const auto scene = dword(waveData, control + 12 + group * 4);
+        require(dword(waveData, scene) == 0x53434e45, "Invalid JAudio wave scene.");
+        unsigned index = 0;
+        for (unsigned field : {12U, 16U}) {
+            const auto table = dword(waveData, scene + field);
+            if (table == 0) continue;
+            const auto count = dword(waveData, table + 4);
+            require(count <= dword(waveData, archive + 112) - index, "Invalid JAudio wave count.");
+            for (unsigned item = 0; item < count; ++item, ++index) {
+                const auto entry = dword(waveData, table + 8 + item * 4);
+                const auto sampleId = (id << 16) | (dword(waveData, entry) & 0xffff);
+                require(locations.emplace(sampleId, WaveLocation{filename, dword(waveData, archive + 116 + index * 4)}).second,
+                    "Duplicate JAudio wave ID.");
+            }
+        }
+        require(index == dword(waveData, archive + 112), "Unmapped JAudio wave samples.");
+    }
+}
+
+bool jaudio::VoiceBank::load(gameassets::Package& package, const Resources& resources, std::string& error, unsigned instrumentBank,
+    unsigned waveSystem, const std::vector<unsigned>& additionalWaveSystems) {
     *this = {};
     error.clear();
     try {
         bankId = instrumentBank;
         waveId = waveSystem;
         bankData = block(resources, 2, bankId);
-        waveData = block(resources, 3, waveId);
-        const auto info = dword(waveData, 16);
-        const auto control = dword(waveData, 20);
-        const auto groups = dword(waveData, info + 4);
-        require(dword(waveData, info) == 0x57494e46 && dword(waveData, control) == 0x57424354 &&
-            groups == dword(waveData, control + 8) && groups <= 256, "Invalid JAudio wave directory.");
-        for (unsigned group = 0; group < groups; ++group) {
-            const auto archive = dword(waveData, info + 8 + group * 4);
-            word(waveData, archive + 112);
-            const auto first = waveData.begin() + archive;
-            const auto last = std::find(first, first + 112, 0);
-            require(last != first + 112 && last != first, "Invalid JAudio wave archive name.");
-            const std::string filename(first, last);
-            require(filename.find_first_of("/\\:") == std::string::npos && filename != "." && filename != "..", "Invalid JAudio wave archive path.");
-            if (!package.read("files/AudioRes/Banks/" + filename, archives[filename], error)) throw std::runtime_error(error);
-            const auto scene = dword(waveData, control + 12 + group * 4);
-            require(dword(waveData, scene) == 0x53434e45, "Invalid JAudio wave scene.");
-            unsigned index = 0;
-            for (unsigned field : {12U, 16U}) {
-                const auto table = dword(waveData, scene + field);
-                if (table == 0) continue;
-                const auto count = dword(waveData, table + 4);
-                require(count <= dword(waveData, archive + 112) - index, "Invalid JAudio wave count.");
-                for (unsigned item = 0; item < count; ++item, ++index) {
-                    const auto entry = dword(waveData, table + 8 + item * 4);
-                    const auto id = dword(waveData, entry) & 0xffff;
-                    require(locations.emplace(id, WaveLocation{filename, dword(waveData, archive + 116 + index * 4)}).second,
-                        "Duplicate JAudio wave ID.");
-                }
-            }
-            require(index == dword(waveData, archive + 112), "Unmapped JAudio wave samples.");
-        }
+        loadWaveSystem(package, resources, waveId);
+        for (const auto id : additionalWaveSystems) if (waveSystems.count(id) == 0) loadWaveSystem(package, resources, id);
         std::vector<std::uint8_t> dol, table;
         if (!package.read("sys/main.dol", dol, error) ||
             !dolresources::read(dol, glme01::voicePredictorCoefficients, 64, table, error)) throw std::runtime_error(error);
@@ -207,8 +215,9 @@ bool jaudio::VoiceBank::load(gameassets::Package& package, const Resources& reso
 }
 
 std::shared_ptr<const jaudio::Wave> jaudio::VoiceBank::wave(unsigned id) {
-    require((id >> 16) == waveId, "Unported JAudio wave group.");
-    id &= 0xffff;
+    if ((id >> 16) == 0xffff) id = (waveId << 16) | (id & 0xffff);
+    require(waveSystems.count(id >> 16) != 0, "Unloaded JAudio wave system.");
+    const auto& waveData = waveSystems.at(id >> 16);
     if (waves.count(id) != 0) return waves.at(id);
     const auto found = locations.find(id);
     require(found != locations.end(), "Missing JAudio instrument sample.");
@@ -291,10 +300,17 @@ jaudio::InstrumentVoice jaudio::VoiceBank::voice(unsigned bank, unsigned program
         const auto gain = velocity / 127.0f;
         result.volume *= real(bankData, entry + 8) * gain * gain;
         result.pitch *= real(bankData, entry + 12) * (result.wave->sampleRate / 32028.5f);
+        result.basePitch = result.pitch;
+        result.percussion = percussion;
         if (!percussion) result.pitch *= pitches[std::clamp(static_cast<int>(key) + 60 - static_cast<int>(result.wave->rootKey), 0, 127)];
         return result;
     }
     throw std::runtime_error("Missing JAudio velocity map.");
+}
+
+float jaudio::VoiceBank::keyPitch(const InstrumentVoice& voice, unsigned key) const {
+    const int pitchKey = voice.percussion ? static_cast<int>(key & 255) : static_cast<int>(key & 255) + 60 - static_cast<int>(voice.wave->rootKey);
+    return voice.basePitch * pitches[std::clamp(pitchKey, 0, 127)];
 }
 
 float jaudio::VoiceBank::pitch(float bend, unsigned range) const {

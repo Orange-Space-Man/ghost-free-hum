@@ -11,6 +11,7 @@ namespace gameplaymusic {
             const gameplayaudio::Context& context, const std::int32_t& playerHealth);
         void setRoom(unsigned room, std::int16_t soundPolygon);
         void start();
+        bool requestDeath(std::uint32_t audioFrame);
         void stop();
         void setCutsceneActive(bool active);
         void updateSequenceControls();
@@ -18,6 +19,7 @@ namespace gameplaymusic {
         bool mix(jaudio::DspMixer& destination, std::string& error);
         const State& routing() const;
         const jaudio::Playback& playback() const;
+        unsigned currentSound() const;
 
     private:
         bool hasMansionSequence() const override;
@@ -37,6 +39,7 @@ namespace gameplaymusic {
         unsigned room = 0xffffffff, soundState = 0;
         std::int16_t soundPolygon = -1;
         unsigned lastSection = 0;
-        bool prepared = false;
+        unsigned preparedSound = 0, activeSound = 0;
+        std::uint32_t lastRequestFrame = 0;
     };
 }

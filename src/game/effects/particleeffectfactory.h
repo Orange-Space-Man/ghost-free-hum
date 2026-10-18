@@ -6,6 +6,9 @@
 
 namespace particles {
     struct SuctionCallback;
+    struct CoinCollectionCallback : EmitterCallback {
+        void advance(Emitter& emitter) override;
+    };
     class ArchiveResources {
     public:
         virtual ~ArchiveResources() = default;
@@ -18,6 +21,7 @@ namespace particles {
         Emitter* create(unsigned type, const std::array<float, 3>& position, const std::array<float, 3>& vector);
         Emitter* createDamage(unsigned type, const std::array<float, 3>& position, SuctionCallback& callback);
         Emitter* createLifeLoss(unsigned type, const std::array<float, 3>& position, std::int32_t amount);
+        Emitter* createCoinCollection(unsigned type, const std::array<float, 3>& position);
         void createExplosion(unsigned type, const std::array<float, 3>& position);
         std::array<std::uint32_t, 50> history{};
 
@@ -25,5 +29,6 @@ namespace particles {
         const std::vector<std::uint8_t>& executable;
         ArchiveResources& resources;
         EmitterPool& pool;
+        CoinCollectionCallback coinCollection;
     };
 }

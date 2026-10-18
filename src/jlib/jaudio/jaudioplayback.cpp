@@ -62,13 +62,17 @@ bool jaudio::Playback::loadMansion(gameassets::Package& package, const Resources
     return loadMusic(package, resources, 0x80000007, error);
 }
 
+bool jaudio::Playback::loadDeath(gameassets::Package& package, const Resources& resources, std::string& error) {
+    return loadMusic(package, resources, 0x80000012, error);
+}
+
 bool jaudio::Playback::loadEffects(gameassets::Package& package, const Resources& resources, std::string& error) {
     effectDispatch = false;
     stop();
     entryPoint = 0;
     tempo = 48;
     timebase = 120;
-    if (!readSequence(resources, 0x80000800, sequence, error) || !bank.load(package, resources, error, 0, 0) ||
+    if (!readSequence(resources, 0x80000800, sequence, error) || !bank.load(package, resources, error, 0, 0, {1}) ||
         !mixer.configure(resources.effects, error)) return false;
     const auto* info = soundInfo(resources, 0x80000800);
     if (!info) { error = "Missing effect master metadata."; return false; }
@@ -289,8 +293,9 @@ void jaudio::Playback::event(const SequenceEvent& event) {
         return;
     }
     for (auto& voice : voices) {
-        if (!voice.envelope.released && voice.track == event.track && (voice.slot == event.slot || event.type == EventType::finish)) {
-            voice.envelope.release(voice.instrument.envelope, event.type == EventType::finish ? 10 : voice.instrument.release);
+        if (voice.track == event.track && (voice.slot == event.slot || event.type == EventType::finish)) {
+            voice.noteAttached = false;
+            if (!voice.envelope.released) voice.envelope.release(voice.instrument.envelope, event.type == EventType::finish ? 10 : voice.instrument.release);
         }
     }
     if (event.type != EventType::noteOn) return;
@@ -301,6 +306,19 @@ void jaudio::Playback::event(const SequenceEvent& event) {
     voice.slot = event.slot;
     voice.remaining = event.duration;
     voice.instrument = bank.voice(track.bank, track.program, event.key, event.velocity);
+    if (event.targetKey >= 0) {
+        voice.pitchTarget = bank.keyPitch(voice.instrument, static_cast<unsigned>(event.targetKey));
+        voice.pitchRemaining = static_cast<std::uint16_t>(event.duration);
+        if (!event.duration) voice.instrument.pitch = voice.pitchTarget;
+    }
+    if (track.adsr && track.envelopeRoute == 0) {
+        const auto& values = *track.adsr;
+        auto& envelope = voice.instrument.envelope;
+        envelope = Oscillator{};
+        envelope.attack = {{0, values[0], 32767}, {0, values[1], 32767},
+            {0, values[2], static_cast<std::int16_t>(values[3])}, {14, 0, 0}};
+        envelope.release = {{0, values[4], 0}, {15, 1, 0}};
+    }
     voice.hasVibrato = track.vibrato && track.oscillatorRoute == 0x11;
     voice.vibratoDefinition = bank.vibrato;
     voice.envelope.advance(voice.instrument.envelope);
@@ -328,8 +346,17 @@ bool jaudio::Playback::render(std::array<std::int16_t, 160>& samples, std::strin
 bool jaudio::Playback::mix(DspMixer& destination, std::string& error, const SpatialParameters& spatial) {
     error.clear();
     try {
+        interpreter.noteStopped = [this](unsigned track, unsigned slot) {
+            return std::none_of(voices.begin(), voices.end(), [&](const auto& voice) {
+                return voice.track == track && voice.slot == slot && voice.noteAttached && !voice.ended;
+            });
+        };
         if (!interpreter.advance([this](const auto& value) { event(value); }, error)) throw std::runtime_error(error);
         for (auto& voice : voices) {
+            if (voice.pitchRemaining) {
+                voice.instrument.pitch += (voice.pitchTarget - voice.instrument.pitch) / voice.pitchRemaining;
+                --voice.pitchRemaining;
+            }
             if (voice.remaining > 0 && --voice.remaining == 0) voice.envelope.release(voice.instrument.envelope, voice.instrument.release);
             const auto& track = interpreter.track(voice.track);
             float volume = track.parameters[0].value * externalVolume(track);

@@ -11,7 +11,15 @@ namespace playerevents { class Dispatcher; }
 
 namespace doors {
     using SoundEmitter = std::function<void(std::uint32_t, const std::array<float, 3>&)>;
-    using SavedFlags = std::array<std::uint32_t, 8>;
+    class SavedFlags {
+    public:
+        SavedFlags(std::uint8_t* data, std::size_t size);
+        bool value(std::uint8_t id) const;
+        void set(std::uint8_t id, bool enabled);
+
+    private:
+        std::uint8_t* data;
+    };
     using ModelSubmitter = std::function<void(const ModelResource&, const PoseOwner&, unsigned, std::uint8_t, bool)>;
 
     struct CollisionBox {

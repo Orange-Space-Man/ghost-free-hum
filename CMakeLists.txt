@@ -25,6 +25,7 @@ add_library(JLib STATIC
     src/jlib/jaudio/jaudioplayback.cpp
     src/jlib/jaudio/jaudioresources.cpp
     src/jlib/jaudio/jaudiosequence.cpp
+    src/jlib/jaudio/jaudiosequencerandom.cpp
     src/jlib/jaudio/jaudiosequencecontrols.cpp
     src/jlib/jaudio/jaudioeffectcontrols.cpp
     src/jlib/jaudio/jaudioeffectvoice.cpp
@@ -310,6 +311,7 @@ add_library(WindowsRuntime STATIC
     src/game/menu/fileselectscene.cpp
     src/game/scene/gameplayscene.cpp
     src/game/startup/openingscene.cpp
+    src/game/startup/keypresentationowner.cpp
     src/platform/d3d11/gamerenderer.cpp
     src/platform/d3d11/gameshadowrenderer.cpp
     src/platform/d3d11/modelbatchrenderer.cpp

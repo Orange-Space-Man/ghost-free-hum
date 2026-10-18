@@ -28,7 +28,7 @@ namespace playerinteraction {
     struct DoorServices {
         doors::State& doors;
         doors::SavedFlags& savedDoors;
-        const std::array<std::uint8_t, 32>& keys;
+        const playercomponents::FlagBuffer& keys;
         const std::array<std::uint32_t, 256>& roomIds;
         enemies::Manager& enemies;
         const actormodel::Catalog& catalog;

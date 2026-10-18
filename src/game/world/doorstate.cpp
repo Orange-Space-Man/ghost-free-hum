@@ -44,6 +44,18 @@ namespace {
     }
 }
 
+doors::SavedFlags::SavedFlags(std::uint8_t* data, std::size_t size) : data(data) {
+    if (!data || size < 32) throw std::invalid_argument("Door save flags require 32 bytes of retained inventory storage.");
+}
+
+bool doors::SavedFlags::value(std::uint8_t id) const { return (data[id >> 3] & (0x80u >> (id & 7))) != 0; }
+
+void doors::SavedFlags::set(std::uint8_t id, bool enabled) {
+    auto& value = data[id >> 3];
+    const auto mask = static_cast<std::uint8_t>(0x80u >> (id & 7));
+    value = enabled ? value | mask : value & ~mask;
+}
+
 bool doors::State::initialize(const doordata::Table& descriptors, std::shared_ptr<const Resources> source,
     const std::vector<std::uint8_t>& executable, const SavedFlags& savedFlags, std::string& error) {
     error.clear();
@@ -67,7 +79,7 @@ bool doors::State::initialize(const doordata::Table& descriptors, std::shared_pt
                 value.type = static_cast<std::uint8_t>(type);
                 value.references.fill(0xff);
                 value.flags = 8;
-                if (savedFlags[value.savedId >> 5] & (0x80000000U >> (value.savedId & 31))) value.flags |= 0x4400;
+                if (savedFlags.value(value.savedId)) value.flags |= 0x4400;
                 value.rooms = descriptor.rooms;
                 const bool rotated = !doordata::traversalEnabled(descriptor);
                 if (rotated) { value.flags |= 0x100; value.angles[1] = -0x4000; }
@@ -218,9 +230,7 @@ void doors::State::setSavedFlag(std::uint8_t id, bool enabled, SavedFlags& saved
         if (side && pair[side] == 0xff) break;
         auto& value = leaves.at(pair[side]);
         value.flags = enabled ? value.flags | 0x4400 : value.flags & ~0x4400U;
-        const auto mask = 0x80000000U >> (value.savedId & 31);
-        auto& saved = savedFlags[value.savedId >> 5];
-        saved = enabled ? saved | mask : saved & ~mask;
+        savedFlags.set(value.savedId, enabled);
     }
 }
 

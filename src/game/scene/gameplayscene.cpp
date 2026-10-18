@@ -30,7 +30,8 @@ namespace {
     }
 }
 
-gameplay::Scene::Scene(const std::filesystem::path& package, gameentry::State& entry) : resources(package, entry) {
+gameplay::Scene::Scene(const std::filesystem::path& package, gameentry::State& entry) : resources(package, entry),
+    keyPresentation(package, resources.executable(), sceneControl, resources.managers().flags(), resources.managers().music()) {
     std::string error;
     if (!trig.read(resources.executable(), error) || !poseTables.read(resources.executable(), error)) throw std::runtime_error(error);
     opacityDistance = constant<float>(resources.executable(), 0x804d9abc);
@@ -79,6 +80,7 @@ gameplay::Scene::Scene(const std::filesystem::path& package, gameentry::State& e
 
 void gameplay::Scene::prepareGraphics() {
     textures = gamerenderer::loadPreviews(actorModels, 640, 480);
+    gamerenderer::cacheScene("gameplay");
     const auto load = [&](const doors::ModelResource& model) {
         if (!models.count(&model)) models[&model].load(gamerenderer::modelDevice(), model);
     };
@@ -97,6 +99,12 @@ void gameplay::Scene::prepareGraphics() {
 void gameplay::Scene::update(const playerinput::PadStatus& pad, std::int16_t port) {
     resources.managers().sampleInput(pad, port);
     auto& managers = resources.managers();
+    presentationButtons = managers.controller().pressed;
+    presentationTick = true;
+    if (!sceneControl.gameplayEnabled) {
+        managers.updateAudio(view);
+        return;
+    }
     managers.updatePlacement(ticks / 30);
     managers.updateGenerators();
     for (unsigned i = 0; i < managers.enemies().slots().size(); ++i) managers.updateOwner(i);
@@ -108,6 +116,13 @@ void gameplay::Scene::update(const playerinput::PadStatus& pad, std::int16_t por
 }
 
 unsigned gameplay::Scene::updates() const { return ticks; }
+
+bool gameplay::Scene::presentKey(bool missingKey, bool front, unsigned doorType) {
+    return keyPresentation.request(missingKey, front, doorType);
+}
+
+bool gameplay::Scene::keyPresentationActive() const { return keyPresentation.state().owned; }
+bool gameplay::Scene::gameplaySuspended() const { return !sceneControl.gameplayEnabled; }
 
 
 void gameplay::Scene::updateOpacity() {
@@ -147,7 +162,26 @@ void gameplay::Scene::drawModel(const doors::ModelResource& model,
 }
 
 void gameplay::Scene::draw(bool present) {
+    const bool gameplayDrawn = sceneControl.gameplayEnabled;
+    if (gameplayDrawn) drawGameplay(false);
+    if (presentationTick) {
+        keyPresentation.advanceDraw(presentationButtons);
+        presentationTick = false;
+        presentationButtons = 0;
+    }
+    if (keyPresentation.state().owned && keyPresentation.state().updated) keyPresentation.draw(present);
+    else {
+        startupscene::Picture picture;
+        picture.texture = gameplayDrawn ? textures[0] : 0;
+        picture.width = 640;
+        picture.height = 480;
+        gamerenderer::drawInterface({picture}, present);
+    }
+}
+
+void gameplay::Scene::drawGameplay(bool present) {
     if (textures.empty()) throw std::runtime_error("Gameplay graphics are not prepared.");
+    if (!gamerenderer::useScene("gameplay")) throw std::runtime_error("Gameplay graphics ownership is unavailable.");
     gamerenderer::bindSceneTarget(true);
     modelrenderer::initializeModelState(pipeline);
     pipeline.scissor = true;

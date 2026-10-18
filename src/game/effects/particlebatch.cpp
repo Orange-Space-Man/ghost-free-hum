@@ -54,3 +54,13 @@ void particles::Batch::update() {
 }
 
 const std::vector<particles::Emitter*>& particles::Batch::entries() const { return slots; }
+
+void particles::Batch::emit(const std::array<float, 3>& position) {
+    if (!initialized) {
+        initialized = allocate();
+    } else if (cursor < slots.size() && slots[cursor]) {
+        slots[cursor]->position = position;
+        slots[cursor]->flags = 0xe;
+        ++cursor;
+    }
+}
