@@ -20,9 +20,6 @@ The port is written in C++ and currently runs on Windows using Direct3D 11. It u
 
 This is still an early work in progress, not a complete playable game.
 
-- **Up and running:** boot, title screen, file selection, the opening sequence, and movement through the Foyer, Balcony, and Parlor.
-- **Opening events:** the Parlor cutscene, E. Gadd's lab introduction and cameras, and the transition into training.
-
 There is still a lot of the game left to port.
 
 ## Getting started
