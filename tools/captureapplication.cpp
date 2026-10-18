@@ -156,6 +156,41 @@ int CaptureApplication::run(HINSTANCE instance) {
                     throw std::runtime_error("Gameplay simulation did not preserve its 30 Hz clock.");
                 draw(false);
                 gamerenderer::capture(capturePath.wstring() + L".foyer.png");
+                if (!gameplayScene->presentKey(false, false, 1)) throw std::runtime_error("Gameplay did not admit the original key presentation.");
+                if (gameplayScene->presentKey(false, false, 1)) throw std::runtime_error("Gameplay admitted a competing key presentation.");
+                for (unsigned frame = 0; frame < 60; ++frame) {
+                    gameplayScene->update();
+                    draw(false);
+                }
+                if (!gameplayScene->keyPresentationActive() || !gameplayScene->gameplaySuspended())
+                    throw std::runtime_error("Original key presentation did not suspend gameplay.");
+                gamerenderer::capture(capturePath.wstring() + L".key.png");
+                const auto pausedUpdates = gameplayScene->updates();
+                for (unsigned frame = 0; frame < 10; ++frame) {
+                    gameplayScene->update();
+                    draw(false);
+                }
+                if (gameplayScene->updates() != pausedUpdates) throw std::runtime_error("Suspended gameplay continued updating its actors.");
+                playerinput::PadStatus skipKey;
+                skipKey.buttons = 0x100;
+                gameplayScene->update(skipKey, 0);
+                draw(false);
+                if (gameplayScene->keyPresentationActive() || gameplayScene->gameplaySuspended())
+                    throw std::runtime_error("A-button key completion did not release scene ownership.");
+                gameplayScene->update();
+                draw(false);
+                if (gameplayScene->updates() != pausedUpdates + 1) throw std::runtime_error("Key completion did not resume the original gameplay clock.");
+                gamerenderer::capture(capturePath.wstring() + L".key-return.png");
+                if (!gameplayScene->presentKey(false, false, 1)) throw std::runtime_error("Gameplay could not reacquire a released key presentation.");
+                for (unsigned frame = 0; frame < 3000 && gameplayScene->keyPresentationActive(); ++frame) {
+                    gameplayScene->update();
+                    draw(false);
+                }
+                if (gameplayScene->keyPresentationActive() || gameplayScene->gameplaySuspended())
+                    throw std::runtime_error("Original key timeline did not return naturally to gameplay.");
+                gameplayScene->update();
+                draw(false);
+                gamerenderer::capture(capturePath.wstring() + L".key-natural-return.png");
                 gameplayScene.reset();
                 gameplayActive = false;
                 enterOpening(2, gameEntry.cutscene);
@@ -166,6 +201,8 @@ int CaptureApplication::run(HINSTANCE instance) {
                 draw(false);
                 gamerenderer::capture(capturePath.wstring() + L".skip-foyer.png");
                 if (saves.working != initialSave) throw std::runtime_error("Foyer reload changed the memory-card working image.");
+                if (!gameplayScene->presentKey(false, false, 1)) throw std::runtime_error("Reset check could not acquire its key scene.");
+                for (unsigned frame = 0; frame < 3; ++frame) { gameplayScene->update(); draw(false); }
                 SendMessageW(window, WM_KEYDOWN, VK_F1, 0);
                 if (gameplayScene || gameplayActive || openingActive || menuActive || gameEntry.initialized || saves.working != initialSave)
                     throw std::runtime_error("F1 did not reset the active game to fresh startup.");

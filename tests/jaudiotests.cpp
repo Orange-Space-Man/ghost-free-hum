@@ -156,6 +156,15 @@ int main(int argc, char** argv) {
             }
             std::cout << "Start: " << playback.notes() << " notes, " << pcm.size() / 2 << " frames\n";
             if (argc > 3) writeWave(argv[3], pcm);
+            if (!playback.loadDeath(package, resources, error)) throw std::runtime_error(error);
+            playback.start();
+            unsigned deathPeak = 0;
+            for (unsigned i = 0; i < 24000 && !playback.finished(); ++i) {
+                if (!playback.render(block, error)) throw std::runtime_error(error);
+                for (const auto sample : block) deathPeak = std::max(deathPeak, static_cast<unsigned>(std::abs(int(sample))));
+            }
+            check(playback.finished() && playback.notes() > 0 && deathPeak > 0, "Original death music must finish audibly.");
+            std::cout << "Death: " << playback.notes() << " notes, " << playback.ticks() << " ticks, peak " << deathPeak << '\n';
             check(playback.loadMenu(package, resources, error), error.c_str());
             playback.start();
             unsigned menuPeak = 0;

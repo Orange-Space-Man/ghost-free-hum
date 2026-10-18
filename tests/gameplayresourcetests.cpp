@@ -9,6 +9,7 @@
 #include "game/player/playervelocityframe.h"
 #include "game/player/playerdoorinteraction.h"
 #include "game/player/playerdoorframe.h"
+#include "game/startup/keypresentationowner.h"
 #include "resources/roomarchivereader.h"
 
 #include <cmath>
@@ -20,24 +21,29 @@ namespace {
         if (!condition) throw std::runtime_error(message);
     }
 
-    void checkDoorInteraction(gameplay::ResourceOwner& owner) {
+    void checkDoorInteraction(gameplay::ResourceOwner& owner, const std::filesystem::path& packagePath) {
         const auto& executable = owner.executable();
         auto& manager = owner.managers();
         auto& doors = manager.doors();
-        std::string error;
-        actormodel::Catalog catalog;
-        require(catalog.read(executable, error), error);
-        actormodel::Resources models(catalog);
-        std::vector<std::uint8_t> compressed, archiveBytes;
-        gamearchive::Archive archive;
-        require(owner.package().read("files/Game/game_usa.szp", compressed, error) &&
-            roomarchive::decompress(compressed, archiveBytes, error) && archive.read(archiveBytes, error), error);
-        models.initializeEmbedded(archive);
-        std::array<std::uint32_t, 256> rooms{};
-        for (unsigned i = 0; i < owner.rooms().entries().size(); ++i) rooms[i] = owner.rooms().entries()[i].id;
-        std::array<std::uint8_t, 32> keys{};
-        doors::SavedFlags saved{};
-        playerinteraction::DoorServices services{doors, saved, keys, rooms, manager.enemies(), catalog, models};
+        auto services = manager.preparePlayerDoor(0);
+        const auto& catalog = services.catalog;
+        const auto& rooms = services.roomIds;
+        auto& saved = services.savedDoors;
+        auto* keys = services.keys.data;
+        require(keys && services.keys.bytes == 32, "Production door services borrow the bound player's key record.");
+        const bool pairingDisabled = manager.flags().value(0x53);
+        manager.flags().setOn(0x53);
+        require(manager.preparePlayerDoor(0).pairingDisabled, "Door pairing reads the original live event flag.");
+        manager.flags().setOff(0x53);
+        require(!manager.preparePlayerDoor(0).pairingDisabled, "Door pairing observes cleared event state on the next preparation.");
+        if (pairingDisabled) manager.flags().setOn(0x53);
+        bool rejectedPlayer = false;
+        try { manager.preparePlayerDoor(2); }
+        catch (const std::out_of_range&) { rejectedPlayer = true; }
+        require(rejectedPlayer, "Door service binding rejects an unregistered player index.");
+        gameflags::State movieFlags;
+        keypresentation::SceneControl movieControl;
+        keypresentation::Owner movie(packagePath, executable, movieControl, movieFlags, manager.music());
         playerinteraction::DoorInteraction interaction(executable);
         playercomponents::DoorState state;
         playeractions::Actions actions(executable, 0);
@@ -57,6 +63,8 @@ namespace {
         const auto selected = state.door;
         const auto originalFlags = doors.leaf(selected).flags;
         const auto savedId = doors.leaf(selected).savedId;
+        const auto retainedKey = keys[savedId >> 3];
+        keys[savedId >> 3] &= static_cast<std::uint8_t>(~(1u << (savedId & 7)));
         input.direction = state.facing;
         for (auto& value : input.direction) value = -value;
         require(interaction.select(state, input, services) && state.door == selected,
@@ -85,6 +93,7 @@ namespace {
             ++presentations;
             missingKey = missing;
             require(front == (state.side == 1) && type == doors.leaf(selected).type, "Key presentation receives the original side and door type.");
+            require(movie.request(missing, front, type), "Door presentation must acquire its original cutscene owner.");
         };
         const auto start = [&] {
             actions.field310 = 1;
@@ -100,17 +109,57 @@ namespace {
         require(interaction.run(state, actions, input, output, services) && presentations == 1 && missingKey &&
             actions.fields31C[0] == 2 && !state.unlocked && (doors.leaf(selected).flags & 0x8000),
             "Missing keys retain the lock, mark the door used, and enter presentation wait.");
-        services.keyPresentationActive = true;
+        services.keyPresentationActive = movie.state().owned;
         interaction.run(state, actions, input, output, services);
         require(actions.fields31C[0] == 2 && presentations == 1, "Key presentation is not restarted while active.");
-        services.keyPresentationActive = false;
+        require(!movie.request(false, false, 1), "A retained movie rejects competing presentation requests.");
+        movie.advanceDraw(0);
+        require(movie.state().phase == keypresentation::Phase::Preparing,
+            "Resource completion retains the original separate preparation draw.");
+        movie.advanceDraw(0);
+        require(movie.state().phase == keypresentation::Phase::Playing && !movieControl.gameplayEnabled &&
+            movieControl.state == 255 && manager.music().routing().cutsceneActive,
+            "Original key scene suspends gameplay and retains cutscene audio routing.");
+        movie.advanceDraw(0x100);
+        require(!movie.state().owned && movieControl.gameplayEnabled && !movieControl.state &&
+            !manager.music().routing().cutsceneActive, "A-button completion releases the scene and restores its audio owner.");
+        services.keyPresentationActive = movie.state().owned;
         interaction.run(state, actions, input, output, services);
         require(actions.field310 == 1 && !output.blocked, "Missing-key rejection differs from an event barrier.");
         keys[savedId >> 3] |= 1u << (savedId & 7);
         start();
         interaction.run(state, actions, input, output, services);
         require(presentations == 2 && !missingKey && state.unlocked && !(doors.leaf(selected).flags & 0x4400) &&
-            !(saved[savedId >> 5] & (0x80000000u >> (savedId & 31))), "A held key clears the manager and saved lock flags before presentation.");
+            !saved.value(savedId), "A held key clears the manager and saved lock flags before presentation.");
+        movie.advanceDraw(0);
+        movie.advanceDraw(0);
+        movieFlags.setOn(0x56);
+        movie.advanceDraw(0);
+        require(movie.state().owned && movie.state().forceFinish, "Original completion flag remains deferred for one update.");
+        movie.advanceDraw(0);
+        require(!movie.state().owned && movieControl.gameplayEnabled, "Deferred completion releases the loaded key scene.");
+        movieControl.state = 1;
+        require(!movie.request(false, false, 1) && !manager.music().routing().cutsceneActive,
+            "Original scene admission rejects a key movie without changing audio state.");
+        movieControl.state = 0;
+        require(movie.request(false, false, 1), "Completed movie resources can be acquired again.");
+        for (unsigned frame = 0; frame < 3000 && movie.state().owned; ++frame) movie.advanceDraw(0);
+        require(!movie.state().owned && !movieControl.state && !manager.music().routing().cutsceneActive,
+            "Original key timeline completes and releases its retained scene without a synthetic completion flag.");
+        {
+            keypresentation::Owner cancelled(packagePath, executable, movieControl, movieFlags, manager.music());
+            require(cancelled.request(false, false, 1), "Teardown check acquires the original key movie.");
+        }
+        require(movieControl.gameplayEnabled && !movieControl.state && !manager.music().routing().cutsceneActive,
+            "Scene destruction releases movie ownership and restores music routing.");
+        {
+            keypresentation::Owner failed(packagePath.wstring() + L".missing", executable, movieControl, movieFlags, manager.music());
+            bool rejected = false;
+            try { failed.request(false, false, 1); }
+            catch (const std::runtime_error&) { rejected = true; }
+            require(rejected && !failed.state().owned && !movieControl.state && movieControl.gameplayEnabled &&
+                !manager.music().routing().cutsceneActive, "A failed native resource load must release its admitted scene and audio ownership.");
+        }
         interaction.run(state, actions, input, output, services);
         require(actions.fields31C[0] == 3 && (doors.leaf(selected).flags & 0x20), "Completed key presentation starts the original door animation.");
         std::uint32_t destination;
@@ -247,6 +296,7 @@ namespace {
         reactions.field8 = retainedReactionValue;
         reactions.fieldC = retainedReactionPosition;
         reactions.field18 = retainedReactionFlag;
+        keys[savedId >> 3] = retainedKey;
         std::cout << "Original door selection, key/barrier and protected interaction states verified.\n";
     }
 
@@ -348,6 +398,24 @@ int main(int argc, char** argv) {
                 auto* player = dynamic_cast<playeractor::Player*>(managers.actors().actor(managers.enemies().appearPoint(0).actor));
                 require(player && player->state.record == &entry.player && player->room() == 0x02000102,
                     "Scene resource ownership preserves the selected record and original foyer spawn.");
+                {
+                    auto door = managers.preparePlayerDoor(0);
+                    require(&door.keys == player->components->flags.get() && door.keys.data == entry.player.data() + 0x144 &&
+                        &door.doors == &managers.doors() && &door.enemies == &managers.enemies(),
+                        "Door services retain the actual player record and original manager instances.");
+                    const auto before = entry.inventory;
+                    door.savedDoors.set(255, !door.savedDoors.value(255));
+                    require(entry.inventory[31] == (before[31] ^ 1),
+                        "Door lock changes immediately reach the selected entry without a detached save copy.");
+                    for (unsigned i = 0; i < entry.inventory.size(); ++i) if (i != 31)
+                        require(entry.inventory[i] == before[i], "Door writeback preserves unrelated inventory bytes.");
+                    entry.inventory[31] = before[31];
+                    require(door.savedDoors.value(255) == bool(before[31] & 1),
+                        "The retained door view observes inventory changes made by the original save owner.");
+                    for (unsigned i = 0; i < owner.rooms().entries().size(); ++i)
+                        require(door.roomIds[i] == owner.rooms().entries()[i].id,
+                            "Door destination lookup uses the production room catalog in original order.");
+                }
                 const auto roomAudio = managers.audioContext().parameters(player->room(), -1);
                 require(roomAudio.packed == 0x54f && roomAudio.size() == 1 && roomAudio.musicCode() == 5,
                     "The original foyer RoomInfo supplies its audio parameters through manager ownership.");
@@ -355,10 +423,14 @@ int main(int argc, char** argv) {
                     ", music code " << roomAudio.musicCode() << '\n';
                 require(managers.audioContext().parameters(0xffffffff, -1).packed == 0,
                     "Missing room and floor retain the original empty audio context.");
-                {
+                for (unsigned vocalId : {0x280fu, 0x2810u, 0x282bu}) {
                     auto playback = managers.playback();
                     jaudio::PositionalSound* binding = nullptr;
+                    jaudio::PositionalSound* lifeLoss = nullptr;
+                    jaudio::PositionalSound* vocal = nullptr;
                     playback->play(0x181e, player->position, &binding);
+                    playback->play(vocalId == 0x282b ? 0x83d : 0x839, player->position, &lifeLoss);
+                    playback->play(vocalId, player->position, &vocal);
                     jaudio::DspMixer mixer;
                     std::string audioError;
                     jaudio::Resources audioResources;
@@ -376,7 +448,8 @@ int main(int argc, char** argv) {
                         mixer.end(samples, 32767);
                         frameClock += 30.0 * 80.0 / 32028.5;
                     }
-                    require(playback->finished() && !binding, "Production manager must dispatch and release its real positional request.");
+                    require(playback->finished() && !binding && !lifeLoss && !vocal,
+                        "Production manager completes concurrent door, life-loss and player vocal requests through actual room and floor services.");
                 }
                 {
                     auto& music = managers.music();
@@ -417,6 +490,30 @@ int main(int argc, char** argv) {
                     for (unsigned track = 4; track < 8; ++track)
                         require(music.playback().sequenceControls().track(track).muted,
                             "A cutscene active before music allocation retains its startup mute.");
+                    require(!music.requestDeath(0) && music.currentSound() == 0x80000007,
+                        "The original zero-initialized request-frame guard suppresses frame zero.");
+                    require(music.requestDeath(1) && music.currentSound() == 0x80000012,
+                        "Death replaces the owned primary mansion sequence.");
+                    require(!music.requestDeath(1), "Duplicate primary requests in the same audio frame do not restart playback.");
+                    music.setCutsceneActive(true);
+                    music.updateSequenceControls();
+                    for (unsigned track = 4; track < 8; ++track)
+                        require(!music.playback().sequenceControls().track(track).muted,
+                            "Mansion cutscene routing must not mute the death sequence.");
+                    bool audibleDeath = false;
+                    for (unsigned block = 0; block < 24000 && !music.playback().finished(); ++block) {
+                        mixer.begin();
+                        require(music.mix(mixer, musicError), musicError);
+                        mixer.end(samples, music.playback().outputLevel());
+                        for (const auto sample : samples) audibleDeath |= sample != 0;
+                    }
+                    require(audibleDeath && !music.currentSound() && music.playback().finished() && music.playback().notes() == 37 && music.playback().ticks() == 1678,
+                        "Owned death music executes the complete original sequence.");
+                    music.retainSection();
+                    music.stop();
+                    music.start();
+                    require(music.currentSound() == 0x80000007 && music.playback().rootPort(0) == (section < 14 ? section + 1 : 3),
+                        "Returning to mansion music reloads its resources and preserves its own section.");
                     music.stop();
                     music.setCutsceneActive(false);
                 }
@@ -731,7 +828,7 @@ int main(int argc, char** argv) {
                     *player->components->quaternion = quaternion;
                 }
                 managers.updatePlacement(0);
-                if (!cycle) checkDoorInteraction(owner);
+                if (!cycle) checkDoorInteraction(owner, argv[1]);
                 require(managers.placements().size() == 46, "Independent production resource ownership admits the full fresh mission scan.");
                 const auto submissions = owner.prepareVisibility(projection(owner.camera()), {0, 0, 640, 480});
                 require(submissions.size() == 2 && submissions[0].room == player->room() && (submissions[1].room & 255) == 30 &&

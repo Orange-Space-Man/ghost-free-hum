@@ -30,6 +30,29 @@ namespace {
 
 int main(int argc, char** argv) {
     try {
+        {
+            std::array<std::uint8_t, 34> storage{};
+            storage.front() = 0x5a;
+            storage.back() = 0xa5;
+            doors::SavedFlags flags(storage.data() + 1, 32);
+            for (unsigned id = 0; id < 256; ++id) {
+                flags.set(static_cast<std::uint8_t>(id), true);
+                require(flags.value(static_cast<std::uint8_t>(id)) &&
+                    storage[1 + id / 8] == (0x80u >> (id & 7)),
+                    "Saved doors use the original high-bit-first order across byte and word boundaries.");
+                flags.set(static_cast<std::uint8_t>(id), false);
+                require(!flags.value(static_cast<std::uint8_t>(id)) && storage[1 + id / 8] == 0,
+                    "Clearing a saved door writes directly to its retained inventory byte.");
+            }
+            storage[4] = 0xa5;
+            flags.set(25, true);
+            require(storage[4] == 0xe5 && flags.value(24), "Saved-door updates preserve neighboring bits and observe external writes.");
+            require(storage.front() == 0x5a && storage.back() == 0xa5, "Saved-door storage preserves adjacent inventory fields.");
+            bool rejected = false;
+            try { doors::SavedFlags invalid(storage.data(), 31); }
+            catch (const std::invalid_argument&) { rejected = true; }
+            require(rejected, "Truncated saved-door storage is rejected.");
+        }
         dooranimation::Resource resource;
         require(doors::distanceOpacity({0, 0, 0}, {0, 0, 0}) == 100 &&
             doors::distanceOpacity({300, 0, 0}, {0, 0, 0}) == 100 &&
@@ -199,7 +222,8 @@ int main(int argc, char** argv) {
             };
             doordata::Table descriptors;
             require(doordata::read(executable, dolWord(dolWord(0x802ff218 + 2 * 4) + 0x18), descriptors, error), error.c_str());
-            doors::SavedFlags saved{};
+            std::array<std::uint8_t, 32> savedBytes{};
+            doors::SavedFlags saved(savedBytes.data(), savedBytes.size());
             doors::State doorState;
             require(doorState.initialize(descriptors, doorResources, executable, saved, error), error.c_str());
             require(doorState.size() == descriptors.liveCount && doorState.size() != 0,
@@ -259,7 +283,7 @@ int main(int argc, char** argv) {
             }
             const auto savedId = doorState.leaf(0).savedId;
             doorState.setSavedFlag(savedId, true, saved);
-            require((saved[savedId >> 5] & (0x80000000U >> (savedId & 31))) != 0,
+            require(saved.value(savedId),
                 "Door save flags retain their original most-significant-bit-first ordering.");
             for (auto index : doorState.savedPair(savedId))
                 if (index != 0xff) require((doorState.leaf(index).flags & 0x4400) == 0x4400,

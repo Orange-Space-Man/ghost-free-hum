@@ -4,6 +4,34 @@ set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 set(PORT_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../ghost-free-hum" CACHE PATH "Clean port source directory")
 add_subdirectory("${PORT_SOURCE_DIR}" port)
 enable_testing()
+add_executable(moneyscenebindingtests tests/moneyscenebindingtests.cpp
+    recovered/moneyscatterscenebindings.cpp recovered/moneyscattermodels.cpp recovered/moneyscatterowner.cpp recovered/moneyscatterupdate.cpp
+    recovered/moneyscattercontact.cpp recovered/moneyscatterinitializer.cpp recovered/moneyscatterpool.cpp)
+target_link_libraries(moneyscenebindingtests PRIVATE WindowsRuntime)
+add_test(NAME moneyscenebindings COMMAND moneyscenebindingtests "${CMAKE_CURRENT_SOURCE_DIR}/../orig/GLME01/sys/main.dol")
+add_executable(moneyeffecttests tests/moneyeffecttests.cpp)
+target_link_libraries(moneyeffecttests PRIVATE WindowsRuntime)
+add_test(NAME moneyeffects COMMAND moneyeffecttests "${CMAKE_CURRENT_SOURCE_DIR}/../orig/GLME01/sys/main.dol")
+add_executable(moneyscattermodeltests tests/moneyscattermodeltests.cpp
+    recovered/moneyscattermodels.cpp recovered/moneyscatterpool.cpp)
+target_link_libraries(moneyscattermodeltests PRIVATE WindowsRuntime)
+add_test(NAME moneyscattermodels COMMAND moneyscattermodeltests)
+add_executable(moneyscatterupdatetests tests/moneyscatterupdatetests.cpp
+    recovered/moneyscatterupdate.cpp recovered/moneyscattercontact.cpp recovered/moneyscattermodels.cpp
+    recovered/moneyscatterinitializer.cpp recovered/moneyscatterpool.cpp)
+target_link_libraries(moneyscatterupdatetests PRIVATE WindowsRuntime)
+add_test(NAME moneyscatterupdate COMMAND moneyscatterupdatetests "${CMAKE_CURRENT_SOURCE_DIR}/../orig/GLME01/sys/main.dol")
+add_executable(moneyscattercontacttests tests/moneyscattercontacttests.cpp
+    recovered/moneyscattercontact.cpp recovered/moneyscatterinitializer.cpp recovered/moneyscatterpool.cpp)
+target_link_libraries(moneyscattercontacttests PRIVATE WindowsRuntime)
+add_test(NAME moneyscattercontact COMMAND moneyscattercontacttests "${CMAKE_CURRENT_SOURCE_DIR}/../orig/GLME01/sys/main.dol")
+add_executable(moneyscatterinitializertests tests/moneyscatterinitializertests.cpp
+    recovered/moneyscatterinitializer.cpp recovered/moneyscatterpool.cpp)
+target_link_libraries(moneyscatterinitializertests PRIVATE WindowsRuntime)
+add_test(NAME moneyscatterinitializer COMMAND moneyscatterinitializertests "${CMAKE_CURRENT_SOURCE_DIR}/../orig/GLME01/sys/main.dol")
+add_executable(moneyscatterpooltests tests/moneyscatterpooltests.cpp recovered/moneyscatterpool.cpp)
+target_link_libraries(moneyscatterpooltests PRIVATE WindowsRuntime)
+add_test(NAME moneyscatterpool COMMAND moneyscatterpooltests)
 add_executable(jaudiosequencecontroltests tests/jaudiosequencecontroltests.cpp)
 target_link_libraries(jaudiosequencecontroltests PRIVATE WindowsRuntime)
 add_test(NAME jaudiosequencecontrols COMMAND jaudiosequencecontroltests)
