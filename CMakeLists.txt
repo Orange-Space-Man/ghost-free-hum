@@ -4,6 +4,14 @@ set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 set(PORT_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../ghost-free-hum" CACHE PATH "Clean port source directory")
 add_subdirectory("${PORT_SOURCE_DIR}" port)
 enable_testing()
+add_executable(leafscatterownertests tests/leafscatterownertests.cpp recovered/leafscatterowner.cpp recovered/billscatterpool.cpp)
+target_link_libraries(leafscatterownertests PRIVATE WindowsRuntime)
+target_sources(leafscatterownertests PRIVATE recovered/leafscatterinitializer.cpp recovered/billscattermodels.cpp recovered/moneyscatterinitializer.cpp)
+add_executable(leafscatterinitializertests tests/leafscatterinitializertests.cpp recovered/leafscatterowner.cpp
+    recovered/leafscatterinitializer.cpp recovered/billscattermodels.cpp recovered/billscatterpool.cpp recovered/moneyscatterinitializer.cpp)
+target_link_libraries(leafscatterinitializertests PRIVATE WindowsRuntime)
+add_test(NAME leafscatterinitializer COMMAND leafscatterinitializertests "${CMAKE_CURRENT_SOURCE_DIR}/../orig/GLME01/sys/main.dol")
+add_test(NAME leafscatterowner COMMAND leafscatterownertests)
 add_executable(billscatterscenetests tests/billscatterscenetests.cpp recovered/billscatterscene.cpp
     recovered/billscatterinitializer.cpp recovered/billscatterupdate.cpp recovered/billscattermotion.cpp
     recovered/billscattercontact.cpp recovered/billscattercollection.cpp recovered/billscattermodels.cpp

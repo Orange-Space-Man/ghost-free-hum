@@ -1,7 +1,7 @@
 #include "billscatterpool.h"
 
-billscatter::Pool::Pool(const std::shared_ptr<j3dmodel::ModelData>& model) {
-    for (unsigned i = 0; i < 30; ++i)
+billscatter::Pool::Pool(const std::shared_ptr<j3dmodel::ModelData>& model, unsigned particleCapacity) : particles(particleCapacity) {
+    for (unsigned i = 0; i < particleCapacity; ++i)
         particles.at(i).model = std::make_unique<j3dmodel::ModelInstance>(model, 0x10000);
 }
 

@@ -15,6 +15,7 @@ namespace billscatter {
         std::array<std::int16_t, 3> angles{};
         float spin = 0;
         std::uint8_t flutterCounter = 0;
+        std::uint8_t sizeRatio = 0;
         float scale = 1;
         std::int32_t motion = 0;
         std::uint32_t room = 0xffffffff, currentRoom = 0xffffffff;
@@ -48,10 +49,10 @@ namespace billscatter {
 
     class Pool {
     public:
-        explicit Pool(const std::shared_ptr<j3dmodel::ModelData>& model);
+        explicit Pool(const std::shared_ptr<j3dmodel::ModelData>& model, unsigned particleCapacity = 30);
         void update(bool paused, std::uint8_t suctionDelay, std::uint8_t blinkThreshold, Services& services);
         void recycle(Request& request, Particle& particle);
-        particles::Pool<Particle> particles{30};
+        particles::Pool<Particle> particles;
         particles::Pool<Request> requests{15};
         particles::Ring<Request> active;
 
