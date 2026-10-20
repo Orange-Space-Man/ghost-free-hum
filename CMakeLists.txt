@@ -15,6 +15,9 @@ add_library(scattersection STATIC
     recovered/moneyscatterowner.cpp recovered/moneyscatterscenebindings.cpp recovered/moneyscattermodels.cpp
     recovered/moneyscatterpool.cpp recovered/moneyscatterupdate.cpp recovered/moneyscattercontact.cpp)
 target_link_libraries(scattersection PUBLIC WindowsRuntime)
+add_executable(moneyplayerintegrationtests tests/moneyplayerintegrationtests.cpp)
+target_link_libraries(moneyplayerintegrationtests PRIVATE scattersection)
+add_test(NAME moneyplayerintegration COMMAND moneyplayerintegrationtests "${CMAKE_CURRENT_SOURCE_DIR}/../assets/glme01.ppak")
 add_executable(leafsectiontests tests/leafsectiontests.cpp)
 target_link_libraries(leafsectiontests PRIVATE scattersection)
 add_test(NAME leafsection COMMAND leafsectiontests "${CMAKE_CURRENT_SOURCE_DIR}/../assets/glme01.ppak")
