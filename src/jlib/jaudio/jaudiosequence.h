@@ -35,6 +35,7 @@ namespace jaudio {
         std::array<Parameter, 18> parameters{};
         std::array<bool, 18> parameterWritten{};
         std::vector<std::size_t> returns;
+        std::array<std::uint16_t, 16> loopCounts{};
         std::array<unsigned, 32> registers{};
         std::array<unsigned, 16> ports{};
         std::array<bool, 16> importedPorts{};

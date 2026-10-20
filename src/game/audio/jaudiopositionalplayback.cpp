@@ -11,7 +11,7 @@
 #include <stdexcept>
 
 namespace {
-    constexpr std::array<unsigned, 9> soundIds{0x839, 0x83d, 0x1809, 0x180a, 0x180b, 0x181e, 0x280f, 0x2810, 0x282b};
+    constexpr std::array<unsigned, 11> soundIds{0x839, 0x83d, 0x1809, 0x180a, 0x180b, 0x181e, 0x280f, 0x2810, 0x282b, 0x186e, 0x1841};
     constexpr unsigned effectRecordCountAddress = 0x804d78b8;
     constexpr unsigned effectParameterCountAddress = 0x804d78d4;
     constexpr unsigned maximumDistanceAddress = 0x804dd170;
@@ -240,6 +240,22 @@ jaudio::PositionalSound* jaudio::PositionalPlayback::play(unsigned id, const std
     if (reusable == handles.end()) handles.push_back(std::move(handle));
     else *reusable = std::move(handle);
     return result;
+}
+
+void jaudio::PositionalPlayback::setPort(PositionalSound& sound, unsigned port, std::uint16_t value) {
+    std::lock_guard<std::recursive_mutex> lock(owners.mutex);
+    auto& handle = owned(sound);
+    if (port >= 16) throw std::out_of_range("Effect port is outside the original parameter block.");
+    auto& record = *handle.record;
+    if (!record.parameters) return;
+    if (record.state == 1) {
+        record.parameters->ports[port] = value;
+        record.parameters->pendingPorts |= static_cast<std::uint16_t>(1u << port);
+    } else {
+        if (record.parameters->ports[port] == value) return;
+        runtime->master.publishEffectPort(record.channel, port, value);
+        record.parameters->ports[port] = value;
+    }
 }
 
 void jaudio::PositionalPlayback::playDeathEffects(const std::array<float, 3>& position) {

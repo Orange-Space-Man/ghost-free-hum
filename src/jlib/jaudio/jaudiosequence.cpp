@@ -114,14 +114,17 @@ void jaudio::Interpreter::update(unsigned index, const Listener& listener) {
                 const auto mode = take(current, 1);
                 if (mode & 0x80) key = static_cast<std::uint8_t>(readRegister(index, key) + current.combinedTranspose);
                 const auto slot = mode & 0x3f;
-                const auto velocity = take(current, 1);
-                if (velocity >= 128 || slot == 0 || (slot > 8 && slot != 16) || ((mode & 0x40) && slot != 8 && slot != 16))
+                auto velocity = take(current, 1);
+                if (velocity >= 128) velocity = readRegister(index, velocity - 128) & 255;
+                if (slot == 0 || (slot > 8 && slot != 16) || ((mode & 0x40) && slot != 8 && slot != 16))
                     throw std::runtime_error("Unported JAudio note mode " + std::to_string(mode) + " at " + std::to_string(position));
                 if (slot == 8 || slot == 16) {
-                    const auto gate = take(current, 1);
-                    if (!gate || gate >= 128) throw std::runtime_error("Unported JAudio note gate: " + std::to_string(gate));
+                    auto gate = take(current, 1);
+                    if (gate >= 128) gate = readRegister(index, gate - 128) & 255;
+                    if (!gate) throw std::runtime_error("Unported JAudio zero note gate.");
                     current.wait = take(current, slot >> 3);
-                    if (current.wait == 0 || (slot == 8 && current.wait >= 128)) throw std::runtime_error("Unported JAudio note duration.");
+                    if (slot == 8 && current.wait >= 128) current.wait = readRegister(index, current.wait - 128);
+                    if (current.wait == 0) throw std::runtime_error("Unported JAudio zero note duration.");
                     const auto clock = (static_cast<float>(tracks[0].tempo * tracks[0].timebase) / ((60.0f * 32028.5f) / 80.0f)) * tempoScale;
                     listener({EventType::noteOn, index, 0, mode & 0x40 ? current.lastNote : key, velocity,
                         static_cast<unsigned>(((static_cast<float>(current.wait) * gate) / 100.0f) / clock),
@@ -259,6 +262,19 @@ void jaudio::Interpreter::update(unsigned index, const Listener& listener) {
                     (condition == 3 && value == 1) || (condition == 4 && value >= 0x8000) || (condition == 5 && value < 0x8000)) {
                     current.position = offset;
                 }
+            } else if (opcode == 0xc9) {
+                const auto count = take(current, 2);
+                if (current.returns.size() >= 16) throw std::runtime_error("JAudio loop stack overflow.");
+                current.loopCounts[current.returns.size()] = static_cast<std::uint16_t>(count);
+                current.returns.push_back(current.position);
+            } else if (opcode == 0xca) {
+                if (current.returns.empty()) { close(index, listener); yield = true; }
+                else {
+                    auto& count = current.loopCounts[current.returns.size() - 1];
+                    if (count) --count;
+                    if (count) current.position = current.returns.back();
+                    else current.returns.pop_back();
+                }
             } else if (opcode == 0xcb) {
                 const auto port = take(current, 1);
                 const auto reg = take(current, 1);
@@ -274,6 +290,9 @@ void jaudio::Interpreter::update(unsigned index, const Listener& listener) {
                 if (reg == 7) current.bendRange = value;
                 if (reg == 11) current.externalWeight = value / 32767.0f;
                 if (reg == 12) current.parentWeight = value / 32767.0f;
+            } else if (opcode == 0xcf) {
+                current.wait = readRegister(index, take(current, 1));
+                yield = current.wait != 0;
             } else if (opcode == 0xcc || opcode == 0xd2) {
                 const auto destination = take(current, 1);
                 const auto source = take(current, 1);
