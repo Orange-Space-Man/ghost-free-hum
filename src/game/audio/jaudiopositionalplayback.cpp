@@ -11,7 +11,8 @@
 #include <stdexcept>
 
 namespace {
-    constexpr std::array<unsigned, 11> soundIds{0x839, 0x83d, 0x1809, 0x180a, 0x180b, 0x181e, 0x280f, 0x2810, 0x282b, 0x186e, 0x1841};
+    constexpr std::array<unsigned, 13> soundIds{0x839, 0x83d, 0x1809, 0x180a, 0x180b, 0x181e, 0x280f, 0x2810, 0x282b,
+        0x186e, 0x1841, 0x810, 0x811};
     constexpr unsigned effectRecordCountAddress = 0x804d78b8;
     constexpr unsigned effectParameterCountAddress = 0x804d78d4;
     constexpr unsigned maximumDistanceAddress = 0x804dd170;
@@ -109,7 +110,7 @@ struct jaudio::PositionalPlayback::Runtime : EffectAdmissionServices, EffectCate
             std::memcpy(&defaults[index].pitch, &pitchBits, sizeof(pitchBits));
             defaults[index].volume = static_cast<float>(info[12]) / 127;
             defaults[index].fxmix = static_cast<float>(info[13]) / 127;
-            if (metadata[index].flags & ~0x40008000u) throw std::runtime_error("First-area effect " + std::to_string(soundIds[index]) +
+            if (metadata[index].flags & ~0x40078000u) throw std::runtime_error("First-area effect " + std::to_string(soundIds[index]) +
                 " requires additional metadata hooks: " + std::to_string(metadata[index].flags));
         }
         master.start();

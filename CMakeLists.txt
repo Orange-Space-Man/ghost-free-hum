@@ -220,6 +220,7 @@ add_library(Game STATIC
     src/game/player/playerenvironmentframe.cpp
     src/game/player/playerequipmentframe.cpp
     src/game/player/playereventdispatch.cpp
+    src/game/player/playermoneycollection.cpp
     src/game/player/playereventpayload.cpp
     src/game/player/playergridmodels.cpp
     src/game/player/playericeeffectpool.cpp

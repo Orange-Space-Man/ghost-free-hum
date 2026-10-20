@@ -1,5 +1,6 @@
 #include "game/player/playersuctioncompletion.h"
 #include "game/player/playerattractionevent.h"
+#include "game/player/playermoneycollection.h"
 
 #include <stdexcept>
 #include <utility>
@@ -74,16 +75,9 @@ bool playerevents::completeSuction(playeractor::Player& player, const itemsuctio
         result = true;
         break;
     case 5:
-        state.fields12F4[0] += payload.amount;
-        delay = weapon.pipe->pulse(-1, 1.7f);
-        environment.sounds.actor(0x810, player.position, 0);
-        player.pulseFeedback(0.3f, 10, 0);
-        result = true;
-        break;
     case 6:
-        state.fields12F4[1] += payload.amount;
-        environment.sounds.actor(0x811, player.position, 0);
-        player.pulseFeedback(0.2f, 10, 0);
+        delay = collectSuctionMoney(player, payload.kind, payload.amount,
+            [&](unsigned id, const auto& position) { environment.sounds.actor(id, position, 0); });
         result = true;
         break;
     case 7:

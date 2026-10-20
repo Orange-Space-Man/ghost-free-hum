@@ -156,7 +156,8 @@ struct gameplay::ManagerServices::State {
         players->bindActors(*enemies, *actors, dependencies.records, &dependencies.pad, dependencies.playerContext, dependencies.audioLife);
         players->initializeAuxiliary(dependencies.executable);
         particles->refresh(nullptr);
-        events = std::make_unique<playerevents::Dispatcher>(*enemies, *actors);
+        events = std::make_unique<playerevents::Dispatcher>(*enemies, *actors, nullptr,
+            [this](unsigned id, const auto& position) { audio->playback.play(id, position); });
         capture = std::make_unique<actorcapture::Motion>(dependencies.executable, dependencies.actors.pose,
             [this] { return runtime->random(); });
         updates = std::make_unique<characterowner::UpdateServices>(characterowner::UpdateServices{
