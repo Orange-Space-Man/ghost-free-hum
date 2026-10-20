@@ -4,6 +4,20 @@ set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 set(PORT_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../ghost-free-hum" CACHE PATH "Clean port source directory")
 add_subdirectory("${PORT_SOURCE_DIR}" port)
 enable_testing()
+add_executable(jaudioleafcommandtests tests/jaudioleafcommandtests.cpp)
+target_link_libraries(jaudioleafcommandtests PRIVATE WindowsRuntime)
+add_test(NAME jaudioleafcommands COMMAND jaudioleafcommandtests)
+add_library(scattersection STATIC
+    recovered/leafscatterscene.cpp recovered/leafscatterupdate.cpp recovered/leafscatterowner.cpp recovered/leafscatterinitializer.cpp
+    recovered/scatterattraction.cpp recovered/billscatterpool.cpp recovered/billscatterinitializer.cpp recovered/billscattermodels.cpp
+    recovered/billscattermotion.cpp recovered/billscattercontact.cpp recovered/billscattercollection.cpp recovered/billscatterupdate.cpp
+    recovered/billscatterscene.cpp recovered/moneyscatterinitializer.cpp recovered/moneyscatterframe.cpp
+    recovered/moneyscatterowner.cpp recovered/moneyscatterscenebindings.cpp recovered/moneyscattermodels.cpp
+    recovered/moneyscatterpool.cpp recovered/moneyscatterupdate.cpp recovered/moneyscattercontact.cpp)
+target_link_libraries(scattersection PUBLIC WindowsRuntime)
+add_executable(leafsectiontests tests/leafsectiontests.cpp)
+target_link_libraries(leafsectiontests PRIVATE scattersection)
+add_test(NAME leafsection COMMAND leafsectiontests "${CMAKE_CURRENT_SOURCE_DIR}/../assets/glme01.ppak")
 add_executable(leafscatterownertests tests/leafscatterownertests.cpp recovered/leafscatterowner.cpp recovered/billscatterpool.cpp)
 target_link_libraries(leafscatterownertests PRIVATE WindowsRuntime)
 target_sources(leafscatterownertests PRIVATE recovered/leafscatterinitializer.cpp recovered/billscattermodels.cpp recovered/moneyscatterinitializer.cpp)

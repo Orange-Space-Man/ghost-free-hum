@@ -10,7 +10,7 @@ namespace billscatter {
         virtual void updateModel(Particle& particle) = 0;
     };
 
-    void advanceOrientation(Particle& particle, bool ordinaryMotion, const actormodel::InitialPose& pose);
+    void advanceOrientation(Particle& particle, bool ordinaryMotion, const actormodel::InitialPose& pose, unsigned airborneStep = 1000);
     bool advance(Pool& pool, Request& request, Particle& particle, float flutterStrength,
         std::uint8_t flutterThreshold, std::uint32_t& particleRandom, std::uint32_t& gameplayRandom,
         const actormodel::InitialPose& pose, UpdateServices& services);

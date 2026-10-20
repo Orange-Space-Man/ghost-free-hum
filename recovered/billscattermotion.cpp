@@ -34,8 +34,8 @@ billscatter::Vector billscatter::flutterDirection(std::uint32_t& randomState, co
 
 void billscatter::move(Particle& particle, const Request& request, bool ordinaryMotion, float flutterStrength,
     std::uint8_t flutterThreshold, std::uint32_t& particleRandom, std::uint32_t& gameplayRandom,
-    const actormodel::InitialPose& pose, ContactServices& services) {
-    if (ordinaryMotion) particle.scale = std::min(particle.scale * 1.15f, 0.75f);
+    const actormodel::InitialPose& pose, ContactServices& services, const MotionParameters& parameters) {
+    if (ordinaryMotion) particle.scale = std::min(particle.scale * 1.15f, parameters.maximumScale);
     if (particle.motion != 0) return;
     Vector force = particle.acceleration;
     if (ordinaryMotion) {
@@ -51,27 +51,28 @@ void billscatter::move(Particle& particle, const Request& request, bool ordinary
             normalize(particle.forward);
         }
         const float alignment = std::abs(-particle.forward[1]);
-        const float verticalDrag = 0.36f * (0.6f + (1.0f - 0.6f) * alignment);
-        const float horizontalDrag = 0.36f * (0.6f + (1.0f - 0.6f) * (1.0f - alignment));
+        const float verticalDrag = parameters.drag * (0.6f + (1.0f - 0.6f) * alignment);
+        const float horizontalDrag = parameters.drag * (0.6f + (1.0f - 0.6f) * (1.0f - alignment));
         particle.velocity[1] *= verticalDrag;
         particle.velocity[0] *= horizontalDrag;
         particle.velocity[2] *= horizontalDrag;
-        for (auto& component : particle.acceleration) component *= 0.95f;
+        for (auto& component : particle.acceleration) component *= parameters.accelerationDamping;
         if (flutterThreshold < particle.flutterCounter) {
             const auto direction = flutterDirection(particleRandom, pose);
             const auto sideways = cross(direction, particle.forward);
             gameplayRandom = gameplayRandom * 0x19660du + 0x3c6ef35fu;
             const float random = static_cast<float>(gameplayRandom) / 4294967296.0f;
-            const float strength = (flutterStrength + 4.0f * alignment) * (1.0f - 0.5f * 0.5f * random);
+            const float strength = (flutterStrength + parameters.flutterAlignment * alignment) *
+                (1.0f - parameters.flutterVariation * parameters.flutterVariation * random);
             for (unsigned i = 0; i < 3; ++i) particle.acceleration[i] += sideways[i] * strength;
             particle.flutterCounter = 0;
         } else ++particle.flutterCounter;
         force = particle.acceleration;
-        force[1] -= 1.5f;
+        force[1] -= parameters.gravity;
         limit(particle.acceleration, 9);
     }
     for (unsigned i = 0; i < 3; ++i) particle.velocity[i] += force[i];
     limit(particle.velocity, 33);
     for (unsigned i = 0; i < 3; ++i) particle.position[i] += particle.velocity[i];
-    collide(particle, 20, 2.3f, services);
+    collide(particle, 20, parameters.settlingSpeed, services);
 }

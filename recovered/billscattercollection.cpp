@@ -2,11 +2,11 @@
 
 #include <cmath>
 
-void billscatter::scaleSuction(Particle& particle, const Vector& suctionPosition) {
+void billscatter::scaleSuction(Particle& particle, const Vector& suctionPosition, double maximumScale, double minimumRatio) {
     Vector delta;
     for (unsigned i = 0; i < 3; ++i) delta[i] = particle.position[i] - suctionPosition[i];
     const float distance = std::sqrt((delta[0] * delta[0] + delta[1] * delta[1]) + delta[2] * delta[2]);
-    constexpr double maximumScale = 0.75f, minimumRatio = 0.1f, range = 150;
+    constexpr double range = 150;
     if (range < distance) particle.scale = static_cast<float>(maximumScale);
     else {
         const float slope = static_cast<float>(1.0 - minimumRatio);

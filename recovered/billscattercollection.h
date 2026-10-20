@@ -11,7 +11,7 @@ namespace billscatter {
         virtual void playerEvent(unsigned event, const playerevents::Payload& payload) = 0;
     };
 
-    void scaleSuction(Particle& particle, const Vector& suctionPosition);
+    void scaleSuction(Particle& particle, const Vector& suctionPosition, double maximumScale = 0.75f, double minimumRatio = 0.1f);
     bool collect(Particle& particle, CollectionServices& services);
     void collectSuction(Pool& pool, Request& request, Particle& particle, CollectionServices& services);
 }

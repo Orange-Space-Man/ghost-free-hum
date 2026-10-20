@@ -10,9 +10,9 @@ namespace {
     }
 }
 
-void billscatter::advanceOrientation(Particle& particle, bool ordinaryMotion, const actormodel::InitialPose& pose) {
+void billscatter::advanceOrientation(Particle& particle, bool ordinaryMotion, const actormodel::InitialPose& pose, unsigned airborneStep) {
     const float speed = magnitude(particle.velocity);
-    unsigned step = 1000;
+    unsigned step = airborneStep;
     if (particle.motion == 0) {
         if (speed > 0) {
             const float inverse = 1.0f / speed;
