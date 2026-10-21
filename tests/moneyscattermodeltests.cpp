@@ -61,6 +61,15 @@ int main() {
         moneyscatter::updateModel(*particle);
         check(particle->up == moneyscatter::Vector{} && particle->model->matrix[0] == 0 && particle->model->matrix[10] == 0,
             "Degenerate bases remain degenerate rather than receiving an invented fallback axis.");
+        moneyscatter::RetainedState state;
+        for (unsigned cycle = 0; cycle < 2; ++cycle) {
+            moneyscatter::Pool rebuiltPool({30, 5, 2});
+            moneyscatter::Models rebuilt(rebuiltPool, resource, state);
+            check(rebuilt.auxiliary.spin == cycle * 3, "Auxiliary spin survives scene-owned model destruction.");
+            rebuilt.updateAuxiliary({}, {0, 0, 1});
+            check(state.auxiliarySpin == (cycle + 1) * 3, "Each auxiliary update publishes original retained state.");
+        }
+        check(moneyscatter::RetainedState{}.auxiliarySpin == 0, "A new game process starts with zero-initialized BSS spin.");
         std::cout << "Money model ownership and transform checks passed.\n";
         return 0;
     } catch (const std::exception& error) {

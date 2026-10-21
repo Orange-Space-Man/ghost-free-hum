@@ -52,9 +52,15 @@ moneyscatter::Models::Models(Pool& pool, const std::shared_ptr<j3dmodel::ModelDa
     auxiliary.spin = retainedAuxiliarySpin;
 }
 
+moneyscatter::Models::Models(Pool& pool, const std::shared_ptr<j3dmodel::ModelData>& coin, RetainedState& state) :
+    Models(pool, coin, state.auxiliarySpin) {
+    retained = &state;
+}
+
 void moneyscatter::Models::updateAuxiliary(const Vector& cameraPosition, const Vector& cameraDirection) {
     auxiliary.spin += 3;
     if (auxiliary.spin > 360) auxiliary.spin -= 360;
+    if (retained) retained->auxiliarySpin = auxiliary.spin;
     auto direction = cameraDirection;
     normalize(direction);
     for (unsigned i = 0; i < 3; ++i) auxiliary.position[i] = cameraPosition[i] - 10000.0f * direction[i];

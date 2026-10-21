@@ -8,6 +8,8 @@ namespace moneyscatter {
     public:
         Owner(Timing timing, const std::shared_ptr<j3dmodel::ModelData>& coin,
             const actormodel::InitialPose& pose, SceneDependencies dependencies, float retainedAuxiliarySpin);
+        Owner(Timing timing, const std::shared_ptr<j3dmodel::ModelData>& coin,
+            const actormodel::InitialPose& pose, SceneDependencies dependencies, RetainedState& retained);
         Owner(const Owner&) = delete;
         Owner& operator=(const Owner&) = delete;
         Request* scatter(const Vector& position, const Vector& direction, std::uint8_t count,

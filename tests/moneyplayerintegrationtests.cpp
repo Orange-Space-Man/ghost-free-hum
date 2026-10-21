@@ -1,5 +1,6 @@
 #include "../recovered/moneyscatterowner.h"
 #include "../recovered/billscatterscene.h"
+#include "../recovered/moneyscatterframe.h"
 #include "game/scene/gameplayresourceowner.h"
 #include "game/player/playerliferecovery.h"
 #include "game/player/playeractorcomponents.h"
@@ -11,12 +12,35 @@
 #include <cmath>
 #include <iostream>
 #include <limits>
+#include <map>
 #include <stdexcept>
 
 namespace {
     void check(bool condition, const std::string& message) {
         if (!condition) throw std::runtime_error(message);
     }
+
+    struct Render : moneyscatter::RenderServices {
+        playermodels::SharedModels& shared;
+        j3dmodel::Matrix camera;
+        std::map<j3dmodel::ModelInstance*, int> ids;
+        std::vector<int> calls;
+        Render(playermodels::SharedModels& shared, const j3dmodel::Matrix& camera) : shared(shared), camera(camera) {}
+        void selectBuffers(playermodels::DrawBuffer& opaque, playermodels::DrawBuffer& translucent) override {
+            check(&opaque == &shared.buffer(8) && &translucent == &shared.buffer(9),
+                "Money submission selects original shared buffer slots eight and nine.");
+            calls.push_back(-1);
+        }
+        void setCamera(const j3dmodel::Matrix& value) override {
+            check(value == camera, "Each owner installs the original current camera.");
+            calls.push_back(-2);
+        }
+        void draw(j3dmodel::ModelInstance& model) override { calls.push_back(ids.at(&model)); }
+        void view(j3dmodel::ModelInstance& model, const j3dmodel::Matrix& value) override {
+            check(value == camera, "View calculation receives the current camera.");
+            calls.push_back(ids.at(&model));
+        }
+    };
 
     void drain(jaudio::PositionalPlayback& audio, jaudio::DspMixer& mixer, bool expected) {
         bool audible = false;
@@ -110,11 +134,12 @@ int main(int argc, char** argv) {
         float minimumScale = 0.3f;
         std::uint32_t random = 1, particleRandom = 2;
         auto dispatch = [&](unsigned event, const playerevents::Payload& value) { events.send(0, event, &value); };
+        moneyscatter::RetainedState retainedMoney;
         moneyscatter::Owner coins({30, 5, 2}, managers.players().models->model(playermodels::SharedModel::Coin), pose,
             {resources.rooms(), resources.visibility(), resources.roomFlags(), savedRooms, mode, managers.collision(),
                 player->position, context, minimumScale, random, managers.particles().effects(), managers.particles().batch(0),
                 dispatch, [](float, moneyscatter::Particle&) { return 0; },
-                [&](unsigned id, const auto& position, unsigned) { audio->play(id, position); }}, 0);
+                [&](unsigned id, const auto& position, unsigned) { audio->play(id, position); }}, retainedMoney);
         std::int32_t audioLife = player->life;
         playerevents::LifeEnvironment life{audioLife, managers.particles().effects(), {}, {},
             [&](const auto& position, const auto& direction, auto count, auto lifetime, double speed, auto positionMode) {
@@ -132,6 +157,8 @@ int main(int argc, char** argv) {
         }
         const auto beforeCoins = counters[0];
         coins.updateCoins(resources.camera().position, {0, 0, 1});
+        check(retainedMoney.auxiliarySpin == coins.modelStorage().auxiliary.spin,
+            "Assembled coin owner publishes its retained auxiliary state.");
         check(counters[0] == beforeCoins + 2 && coins.storage().particles.free.count == 200,
             "Coin owner update delivers both contact events and recycles through original collection flow.");
         audio->stop();
@@ -156,6 +183,51 @@ int main(int argc, char** argv) {
         bills.update();
         check(counters[1] == beforeBills + 3, "All three bill owners deliver contact events to manager-owned Luigi.");
         audio->stop();
+        coins.updateCoins(resources.camera().position, {0, 0, 1});
+        bills.update();
+        unsigned suctionMode = 0;
+        float suctionRange = 200;
+        jaudio::PositionOwners leafPositions;
+        jaudio::PositionalPlayback leafAudio(leafPositions, executable, package, audioResources);
+        leafscatter::Scene leaves(pose, {resources.rooms(), resources.visibility(), managers.collision(), player->position,
+            context, suctionMode, suctionRange, random, particleRandom, flutter, paused, blink, leafAudio, leafPositions});
+        leaves.initialize(shared.model(playermodels::SharedModel::Leaf));
+        auto& leafPool = *leaves.storage().storage();
+        auto* leafRequest = leafPool.requests.free.take();
+        auto* leaf = leafPool.particles.free.take();
+        leaf->visible = true;
+        leafRequest->particles.append(*leaf);
+        leafPool.active.append(*leafRequest);
+        const j3dmodel::Matrix camera{1, 0, 0, 17, 0, 1, 0, 23, 0, 0, 1, 31};
+        Render render(*managers.players().models, camera);
+        for (int i = 1; i <= 2; ++i) {
+            auto* drawRequest = coins.scatter(player->position, {0, 0, 1}, 2, 100, 0, 0);
+            auto* particle = drawRequest->particles.sentinel.next;
+            particle->visible = true;
+            particle->next->visible = false;
+            render.ids[particle->model.get()] = i;
+        }
+        render.ids[coins.modelStorage().auxiliary.model.get()] = 3;
+        bills.scatter(player->position, {0, 0, 1}, 0, 0, 3, 100);
+        for (unsigned i = 0; i < 3; ++i) {
+            auto* particle = bills.storage().pools[i]->active.sentinel.next->particles.sentinel.next;
+            particle->visible = true;
+            render.ids[particle->model.get()] = 4 + i;
+        }
+        render.ids[leaf->model.get()] = 7;
+        coins.storage().paused = paused = true;
+        moneyscatter::drawFrame(coins, bills, leaves, *managers.players().models, render);
+        check(render.calls == std::vector<int>{-1, 1, 2, 3, 4, 5, 6, 7},
+            "Draw traversal retains visible request order, unconditional auxiliary, three bills then active leaves under pause.");
+        render.calls.clear();
+        moneyscatter::viewFrame(coins, bills, leaves, camera, render);
+        check(render.calls == std::vector<int>{-2, 3, 1, 3, 2, 3, -2, 4, -2, 5, -2, 6, -2, 7},
+            "Camera traversal repeats auxiliary once per coin request, including empty persistent request, and copies each owner's camera.");
+        leaves.release();
+        render.calls.clear();
+        moneyscatter::viewFrame(coins, bills, leaves, camera, render);
+        check(render.calls == std::vector<int>{-2, 3, 1, 3, 2, 3, -2, 4, -2, 5, -2, 6},
+            "Inactive leaves skip their camera copy as well as model traversal.");
         counters = retainedCounters;
         std::cout << "Money collection, damage spawning, real shared models and original pickup audio verified.\n";
         return 0;

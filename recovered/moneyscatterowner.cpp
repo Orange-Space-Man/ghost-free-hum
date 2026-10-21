@@ -6,6 +6,12 @@ moneyscatter::Owner::Owner(Timing timing, const std::shared_ptr<j3dmodel::ModelD
     pool.initializePersistent();
 }
 
+moneyscatter::Owner::Owner(Timing timing, const std::shared_ptr<j3dmodel::ModelData>& coin,
+    const actormodel::InitialPose& pose, SceneDependencies dependencies, RetainedState& retained) :
+    bindings(dependencies), pool(timing, false), models(pool, coin, retained), pose(pose), sparkles(dependencies.sparkles) {
+    pool.initializePersistent();
+}
+
 moneyscatter::Request* moneyscatter::Owner::scatter(const Vector& position, const Vector& direction, std::uint8_t count,
     std::uint16_t lifetime, double speed, std::uint8_t positionMode) {
     return pool.scatter(position, direction, count, lifetime, speed, positionMode, *this);
