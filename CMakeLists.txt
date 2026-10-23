@@ -19,6 +19,8 @@ add_library(JLib STATIC
     src/jlib/j3d/j3dmodelgeometry.cpp
     src/jlib/j3d/j3dmodelhierarchy.cpp
     src/jlib/j3d/j3dmodelinstance.cpp
+    src/jlib/j3d/j3dmodelcalculation.cpp
+    src/jlib/j3d/j3ddrawbuffer.cpp
     src/jlib/j3d/j3dnametable.cpp
     src/jlib/jaudio/jaudiodspmixer.cpp
     src/jlib/jaudio/jaudioeffectconfig.cpp
