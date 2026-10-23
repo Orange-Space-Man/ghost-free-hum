@@ -1,6 +1,7 @@
 #include "../recovered/moneyscatterowner.h"
 #include "../recovered/billscatterscene.h"
 #include "../recovered/moneyscatterframe.h"
+#include "jlib/j3d/j3dmodelcalculation.h"
 #include "game/scene/gameplayresourceowner.h"
 #include "game/player/playerliferecovery.h"
 #include "game/player/playeractorcomponents.h"
@@ -23,9 +24,11 @@ namespace {
     struct Render : moneyscatter::RenderServices {
         playermodels::SharedModels& shared;
         j3dmodel::Matrix camera;
+        j3dmodel::TransformTables tables;
         std::map<j3dmodel::ModelInstance*, int> ids;
         std::vector<int> calls;
-        Render(playermodels::SharedModels& shared, const j3dmodel::Matrix& camera) : shared(shared), camera(camera) {}
+        Render(playermodels::SharedModels& shared, const j3dmodel::Matrix& camera,
+            const std::vector<std::uint8_t>& executable) : shared(shared), camera(camera), tables(executable) {}
         void selectBuffers(playermodels::DrawBuffer& opaque, playermodels::DrawBuffer& translucent) override {
             check(&opaque == &shared.buffer(8) && &translucent == &shared.buffer(9),
                 "Money submission selects original shared buffer slots eight and nine.");
@@ -35,9 +38,19 @@ namespace {
             check(value == camera, "Each owner installs the original current camera.");
             calls.push_back(-2);
         }
-        void draw(j3dmodel::ModelInstance& model) override { calls.push_back(ids.at(&model)); }
+        void draw(j3dmodel::ModelInstance& model) override {
+            j3dmodel::calculateBasic(model, tables);
+            calls.push_back(ids.at(&model));
+        }
         void view(j3dmodel::ModelInstance& model, const j3dmodel::Matrix& value) override {
             check(value == camera, "View calculation receives the current camera.");
+            j3dmodel::calculateViewMatrices(model, value);
+            const auto* matrices = reinterpret_cast<j3dmodel::Matrix*>(model.drawMatrices.data());
+            const auto* normals = reinterpret_cast<j3dmodel::NormalMatrix*>(model.normalMatrices.data());
+            for (unsigned i = 0; i < model.model->geometry.drawMatrices.size(); ++i) {
+                for (float entry : matrices[i]) check(std::isfinite(entry), "Original money draw matrix must be finite.");
+                for (float entry : normals[i]) check(std::isfinite(entry), "Original money normal matrix must be finite.");
+            }
             calls.push_back(ids.at(&model));
         }
     };
@@ -163,6 +176,13 @@ int main(int argc, char** argv) {
             "Coin owner update delivers both contact events and recycles through original collection flow.");
         audio->stop();
         const auto& shared = *managers.players().models;
+        for (auto kind : {playermodels::SharedModel::Coin, playermodels::SharedModel::Bill, playermodels::SharedModel::Bill2,
+            playermodels::SharedModel::Bill3, playermodels::SharedModel::Leaf}) {
+            const auto& data = *shared.model(kind);
+            std::cout << "Shared model " << static_cast<unsigned>(kind) << ": calculator " << data.calculator->kind
+                << ", joints " << data.geometry.joints.size() << ", envelopes " << data.geometry.envelopes.size()
+                << ", draws " << data.geometry.drawMatrices.size() << '\n';
+        }
         const std::array<std::shared_ptr<j3dmodel::ModelData>, 3> billModels{
             shared.model(playermodels::SharedModel::Bill), shared.model(playermodels::SharedModel::Bill2),
             shared.model(playermodels::SharedModel::Bill3)};
@@ -199,7 +219,7 @@ int main(int argc, char** argv) {
         leafRequest->particles.append(*leaf);
         leafPool.active.append(*leafRequest);
         const j3dmodel::Matrix camera{1, 0, 0, 17, 0, 1, 0, 23, 0, 0, 1, 31};
-        Render render(*managers.players().models, camera);
+        Render render(*managers.players().models, camera, executable);
         for (int i = 1; i <= 2; ++i) {
             auto* drawRequest = coins.scatter(player->position, {0, 0, 1}, 2, 100, 0, 0);
             auto* particle = drawRequest->particles.sentinel.next;
