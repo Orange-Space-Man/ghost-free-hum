@@ -5,18 +5,16 @@
 #include <cstring>
 #include <stdexcept>
 
-namespace {
-    j3dmodel::Matrix concatenate(const j3dmodel::Matrix& parent, const j3dmodel::Matrix& local) {
-        j3dmodel::Matrix result;
-        for (unsigned row = 0; row < 3; ++row) {
-            for (unsigned column = 0; column < 4; ++column) {
-                result[row * 4 + column] = (parent[row * 4] * local[column] + parent[row * 4 + 1] * local[4 + column]) +
-                    parent[row * 4 + 2] * local[8 + column];
-                if (column == 3) result[row * 4 + column] += parent[row * 4 + 3];
-            }
+j3dmodel::Matrix j3dmodel::concatenateMatrix(const Matrix& parent, const Matrix& local) {
+    Matrix result;
+    for (unsigned row = 0; row < 3; ++row) {
+        for (unsigned column = 0; column < 4; ++column) {
+            result[row * 4 + column] = (parent[row * 4] * local[column] + parent[row * 4 + 1] * local[4 + column]) +
+                parent[row * 4 + 2] * local[8 + column];
+            if (column == 3) result[row * 4 + column] += parent[row * 4 + 3];
         }
-        return result;
     }
+    return result;
 }
 
 j3dmodel::TransformTables::TransformTables(const std::vector<std::uint8_t>& executable) {
@@ -82,7 +80,7 @@ void j3dmodel::calculateBasic(ModelInstance& instance, const TransformTables& ta
         if (!unitScale)
             for (unsigned row = 0; row < 3; ++row)
                 for (unsigned column = 0; column < 3; ++column) local[row * 4 + column] *= joint.scale[column];
-        const auto matrix = concatenate(visit.parent, local);
+        const auto matrix = concatenateMatrix(visit.parent, local);
         instance.jointMatrices[joint.index] = matrix;
         if (links.sibling >= 0) pending.push_back({links.sibling, visit.parent, visit.scale});
         if (links.child >= 0) pending.push_back({links.child, matrix, scale});
@@ -114,7 +112,7 @@ void j3dmodel::calculateViewMatrices(ModelInstance& instance, const Matrix& came
         if (source.weighted > 1 || source.index >= (source.weighted ? geometry.envelopes.size() : geometry.joints.size()))
             throw std::runtime_error("Invalid J3D draw matrix source.");
         const auto& matrix = source.weighted ? instance.envelopeMatrices[source.index] : instance.jointMatrices[source.index];
-        draws[i] = instance.field8 & 1 ? matrix : concatenate(camera, matrix);
+        draws[i] = instance.field8 & 1 ? matrix : concatenateMatrix(camera, matrix);
     }
     for (unsigned i = 0; i < geometry.drawMatrices.size(); ++i) {
         const auto& source = geometry.drawMatrices[i];
