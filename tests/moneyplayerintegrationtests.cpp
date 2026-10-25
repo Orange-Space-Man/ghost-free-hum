@@ -4,6 +4,7 @@
 #include "jlib/j3d/j3dmodelcalculation.h"
 #include "jlib/j3d/j3dmaterialcalculation.h"
 #include "jlib/j3d/j3dtevcommands.h"
+#include "j3dmaterialloadtarget.h"
 #include "game/scene/gameplayresourceowner.h"
 #include "game/player/playerliferecovery.h"
 #include "game/player/playeractorcomponents.h"
@@ -52,6 +53,10 @@ namespace {
                         check(std::isfinite(entry), "Original money texture matrix must be finite.");
                 const auto commands = j3dmodel::buildTevCommands(*material->tev);
                 check(!commands.empty(), "Original money material emits its texture-combiner commands.");
+                materialtests::Target target;
+                j3dmodel::loadMaterialDirect(*material, 0, target);
+                check(target.calls.front() == "mode:" + std::to_string(material->mode) && target.calls.back() == "nbt",
+                    "Original money materials traverse the assembled block loader.");
             }
             calls.push_back(ids.at(&model));
         }
