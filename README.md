@@ -10,40 +10,25 @@
   <a href="#license"><img alt="License: Not specified" src="https://img.shields.io/badge/License-Not%20specified-lightgrey?style=flat-square"></a>
 </p>
 
-## About
-
-I'm working on bringing the original GameCube Luigi's Mansion to PC. The goal is to keep the game looking and playing like the original, with configurable improvements coming later.
-
-The port is written in C++ and currently runs on Windows using Direct3D 11. It uses assets imported from your own copy of the game. No game files are included.
-
 ## Progress
 
 This is still an early work in progress, not a complete playable game.
 
-There is still a lot of the game left to port.
+## Resources used
 
-## Getting started
+* https://github.com/rob646464/luigis-mansion-recompiled
+* https://github.com/SomeJakeGuy/lm-decomp
+* https://github.com/ThePlayerRolo/lm-decomp
+* https://github.com/sp00nznet/luigismansion
+  * These four projects have been a fantastic reference, especially during tracing (game boy horror map discrepancies...)
 
-Things you'll need:
-- Your own USA revision 0 ISO
-- Device with Windows, x64
-- ImGui files for building the project, not included currently with this project
+* https://github.com/NationalSecurityAgency/ghidra
+* https://github.com/Cuyler36/Ghidra-GameCube-Loader
+* https://github.com/Sage-of-Mirrors/LuigisMansion_Ghidra_NTSC
+* https://github.com/weirdmachine64/GhidraGPT
+  * ChatGPT for assistance with variable labeling through Ghidra
+  * ChatGPT for assistance with tracing and labeling addresses through Ghidra
 
-Build the `ghost-free-hum` target in Visual Studio using **x64 Release**, with the C++ desktop development and CMake tools installed. Launch `ghost-free-hum.exe` and select your ISO when prompted. The first launch imports the assets; later launches use the imported package.
-
-Some quick debugging keybinds:
-- F1 will restart the game
-- F2 will display some basic stats
-- F3 + 1, 2, or 3 will skip ahead to certain parts of the game
-
-## Future Goals
-
-- **Multiple OS support:** Ideally, I would like this project to expand its support to Linux, Steam OS (Steam Deck), and eventually the switch (Horizon OS) but I lack some of the hardware to get this possible by myself
-- **Multiple ISO support:** Currently, the project is based entirely on USA revision 0 ISO. I would really like to expand that support.
-
-## AI assistance
-
-I've used AI to help trace functions in Ghidra and work through how the original game behaves. Without this tool, this project wouldn't be possible for me. It's been a big part of understanding the game and bringing those functions into the port. 
-
-I understand if this turns you away from this project.
+* https://github.com/ocornut/imgui
+  * Self explanatory 
 

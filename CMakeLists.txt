@@ -23,6 +23,7 @@ add_library(JLib STATIC
     src/jlib/j3d/j3dmaterialcalculation.cpp
     src/jlib/j3d/j3dpixelstate.cpp
     src/jlib/j3d/j3dtevcommands.cpp
+    src/jlib/j3d/j3dmaterialloads.cpp
     src/jlib/j3d/j3ddrawbuffer.cpp
     src/jlib/j3d/j3dnametable.cpp
     src/jlib/jaudio/jaudiodspmixer.cpp

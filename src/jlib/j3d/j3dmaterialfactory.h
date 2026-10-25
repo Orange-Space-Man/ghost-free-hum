@@ -26,12 +26,18 @@ namespace j3dmodel {
         std::uint16_t matrix = 65535;
     };
 
+    struct MaterialLight {
+        std::array<float, 3> position{}, direction{};
+        std::array<std::uint8_t, 4> color{};
+        std::array<float, 6> attenuation{};
+    };
+
     struct MaterialColorBlock {
         bool lighting = false;
         std::uint8_t count = 0, cull = 255;
         std::array<std::array<std::uint8_t, 4>, 2> material{}, ambient{};
         std::array<std::uint16_t, 4> channels{};
-        std::array<void*, 8> lights{};
+        std::array<const MaterialLight*, 8> lights{};
     };
 
     struct MaterialTextureBlock {
