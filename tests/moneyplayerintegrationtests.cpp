@@ -2,6 +2,8 @@
 #include "../recovered/billscatterscene.h"
 #include "../recovered/moneyscatterframe.h"
 #include "jlib/j3d/j3dmodelcalculation.h"
+#include "jlib/j3d/j3dmaterialcalculation.h"
+#include "jlib/j3d/j3dtevcommands.h"
 #include "game/scene/gameplayresourceowner.h"
 #include "game/player/playerliferecovery.h"
 #include "game/player/playeractorcomponents.h"
@@ -40,6 +42,17 @@ namespace {
         }
         void draw(j3dmodel::ModelInstance& model) override {
             j3dmodel::calculateBasic(model, tables);
+            auto* normals = reinterpret_cast<j3dmodel::NormalMatrix*>(model.normalMatrices.data());
+            for (unsigned i = 0; i < model.model->geometry.drawMatrices.size(); ++i) normals[i].fill(17.5f);
+            check(model.model->geometry.joints.size() == 1, "Money material fixture requires the verified single-joint models.");
+            for (auto& material : model.model->materials.entries) {
+                j3dmodel::calculateMaterial(*material, model.jointMatrices[0], camera, model.field8 & 12, tables);
+                for (const auto& texture : material->texture->matrices)
+                    if (texture) for (float entry : texture->matrix)
+                        check(std::isfinite(entry), "Original money texture matrix must be finite.");
+                const auto commands = j3dmodel::buildTevCommands(*material->tev);
+                check(!commands.empty(), "Original money material emits its texture-combiner commands.");
+            }
             calls.push_back(ids.at(&model));
         }
         void view(j3dmodel::ModelInstance& model, const j3dmodel::Matrix& value) override {
@@ -49,7 +62,11 @@ namespace {
             const auto* normals = reinterpret_cast<j3dmodel::NormalMatrix*>(model.normalMatrices.data());
             for (unsigned i = 0; i < model.model->geometry.drawMatrices.size(); ++i) {
                 for (float entry : matrices[i]) check(std::isfinite(entry), "Original money draw matrix must be finite.");
-                for (float entry : normals[i]) check(std::isfinite(entry), "Original money normal matrix must be finite.");
+                for (float entry : normals[i]) check(std::isfinite(entry), "Original money normal matrix must be finite: model " + std::to_string(ids.at(&model)));
+                j3dmodel::NormalMatrix inverse;
+                const auto& source = model.model->geometry.drawMatrices[i];
+                if (!source.weighted && model.jointScaleFlags[source.index] != 1 && !j3dmodel::inverseTranspose(matrices[i], inverse))
+                    for (float entry : normals[i]) check(entry == 17.5f, "Singular money pose retains the supplied previous normal storage.");
             }
             calls.push_back(ids.at(&model));
         }
