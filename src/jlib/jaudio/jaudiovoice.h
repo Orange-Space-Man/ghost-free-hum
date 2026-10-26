@@ -62,7 +62,8 @@ namespace jaudio {
     class VoiceBank {
     public:
         bool load(gameassets::Package& package, const Resources& resources, std::string& error, unsigned instrumentBank = 4,
-            unsigned waveSystem = 1, const std::vector<unsigned>& additionalWaveSystems = {});
+            unsigned waveSystem = 1, const std::vector<unsigned>& additionalWaveSystems = {},
+            const std::vector<unsigned>& additionalInstrumentBanks = {});
         InstrumentVoice voice(unsigned bank, unsigned program, unsigned key, unsigned velocity);
         float keyPitch(const InstrumentVoice& voice, unsigned key) const;
         float pitch(float bend, unsigned range) const;
@@ -79,8 +80,7 @@ namespace jaudio {
         };
         std::shared_ptr<const Wave> wave(unsigned id);
         void loadWaveSystem(gameassets::Package& package, const Resources& resources, unsigned id);
-        std::vector<std::uint8_t> bankData;
-        unsigned bankId = 4;
+        std::map<unsigned, std::vector<std::uint8_t>> instrumentBanks;
         unsigned waveId = 1;
         std::map<unsigned, std::vector<std::uint8_t>> waveSystems;
         std::map<unsigned, WaveLocation> locations;

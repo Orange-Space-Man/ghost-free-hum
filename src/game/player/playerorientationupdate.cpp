@@ -44,7 +44,7 @@ namespace {
     }
 }
 
-playerorientation::Quaternion playerorientation::heading(const Vector& value, bool inverted) {
+actormodel::Matrix playerorientation::headingMatrix(const Vector& value, bool inverted) {
     Vector forward = value, up{0, inverted ? -1.0f : 1.0f, 0};
     normalize(forward);
     Vector difference;
@@ -54,8 +54,12 @@ playerorientation::Quaternion playerorientation::heading(const Vector& value, bo
     normalize(right);
     up = cross(forward, right);
     normalize(up);
-    return fromMatrix({right[0], up[0], forward[0], 0, right[1], up[1], forward[1], 0,
-        right[2], up[2], forward[2], 0});
+    return {right[0], up[0], forward[0], 0, right[1], up[1], forward[1], 0,
+        right[2], up[2], forward[2], 0};
+}
+
+playerorientation::Quaternion playerorientation::heading(const Vector& value, bool inverted) {
+    return fromMatrix(headingMatrix(value, inverted));
 }
 
 playerorientation::Quaternion playerorientation::multiply(const Quaternion& a, const Quaternion& b) {

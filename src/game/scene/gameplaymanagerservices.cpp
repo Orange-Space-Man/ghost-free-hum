@@ -10,11 +10,27 @@
 #include "resources/roomarchivereader.h"
 #include "game/startup/startupresources.h"
 #include "game/player/playeractioncontext.h"
+#include "game/player/playercaptureframe.h"
+#include "game/player/playersuctioncompletion.h"
+#include "resources/glme01addresses.h"
 
 #include <stdexcept>
 #include <cmath>
 
 namespace {
+    class SuctionAudio final : public playerevents::SuctionSounds {
+    public:
+        explicit SuctionAudio(jaudio::PositionalPlayback& playback) : playback(playback) {}
+        void actor(unsigned sound, const itemsuction::Vector& position, unsigned parameter) override {
+            if (parameter) throw std::runtime_error("Player suction sound requires the original default parameter.");
+            playback.play(sound, position);
+        }
+        void weapon(unsigned sound, const itemsuction::Vector& position) override { playback.play(sound, position); }
+
+    private:
+        jaudio::PositionalPlayback& playback;
+    };
+
     struct Audio {
         Audio(const gameplay::ManagerDependencies& dependencies, const mapcollision::State& collision) :
             playback(owners, dependencies.executable, dependencies.package, dependencies.audio,
@@ -44,7 +60,7 @@ struct gameplay::ManagerServices::State {
         savedDoors(dependencies.entry.inventory.data(), dependencies.entry.inventory.size()),
         commonResources(dependencies.common), mapResources(dependencies.map), collision(dependencies.mission),
         actionContext(dependencies.executable), actorCollision(dependencies.collisions, dependencies.actors.catalog),
-        padSampler(dependencies.executable) {}
+        padSampler(dependencies.executable), playerCapture(dependencies.executable) {}
 
     ~State() {
         if (placement) {
@@ -156,8 +172,12 @@ struct gameplay::ManagerServices::State {
         players->bindActors(*enemies, *actors, dependencies.records, &dependencies.pad, dependencies.playerContext, dependencies.audioLife);
         players->initializeAuxiliary(dependencies.executable);
         particles->refresh(nullptr);
+        elementDuration = static_cast<std::int32_t>(word(glme01::playerElementDuration));
+        suctionAudio = std::make_unique<SuctionAudio>(audio->playback);
+        suction = std::make_unique<playerevents::SuctionEnvironment>(playerevents::SuctionEnvironment{
+            dependencies.actors.catalog, *properties, dependencies.flags, *suctionAudio, elementDuration});
         events = std::make_unique<playerevents::Dispatcher>(*enemies, *actors, nullptr,
-            [this](unsigned id, const auto& position) { audio->playback.play(id, position); });
+            [this](unsigned id, const auto& position) { audio->playback.play(id, position); }, suction.get());
         capture = std::make_unique<actorcapture::Motion>(dependencies.executable, dependencies.actors.pose,
             [this] { return runtime->random(); });
         updates = std::make_unique<characterowner::UpdateServices>(characterowner::UpdateServices{
@@ -210,6 +230,10 @@ struct gameplay::ManagerServices::State {
     playeractions::Context actionContext;
     actorcollision::Manager actorCollision;
     playerinput::PadSampler padSampler;
+    playeractor::CaptureFrame playerCapture;
+    std::int32_t elementDuration = 0;
+    std::unique_ptr<SuctionAudio> suctionAudio;
+    std::unique_ptr<playerevents::SuctionEnvironment> suction;
     roomlighting::Pool lights;
     players::Globals playerGlobals;
     playeractor::Globals actorGlobals;
@@ -251,6 +275,23 @@ const gameplayaudio::Context& gameplay::ManagerServices::audioContext() const { 
 gameplaymusic::Owner& gameplay::ManagerServices::music() { return state->audio->music; }
 gameflags::State& gameplay::ManagerServices::flags() { return state->dependencies.flags; }
 const playerinput::Pad& gameplay::ManagerServices::controller() const { return state->dependencies.pad; }
+
+bool gameplay::ManagerServices::beginPlayerCapture(std::int32_t index, const std::array<float, 3>& position,
+    std::int32_t recipient) {
+    auto* player = state->events->player(index);
+    return player && state->playerCapture.begin(*player, position, recipient, *state->capture,
+        [this](unsigned id, const auto& origin) { state->audio->playback.play(id, origin); });
+}
+
+void gameplay::ManagerServices::updatePlayerCapture(std::int32_t index) {
+    if (auto* player = state->events->player(index)) state->playerCapture.run(*player, *state->events, state->particles->effects());
+}
+
+bool gameplay::ManagerServices::releasePlayerCapture(std::int32_t index, const std::array<float, 3>* position,
+    const std::array<float, 3>* direction, bool launched) {
+    auto* player = state->events->player(index);
+    return player && state->playerCapture.release(*player, position, direction, launched, state->dependencies.actors.pose);
+}
 
 void gameplay::ManagerServices::updateOwner(unsigned slot) { state->enemies->update(slot); }
 

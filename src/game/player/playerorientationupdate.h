@@ -19,6 +19,7 @@ namespace playerorientation {
     };
 
     Quaternion heading(const Vector& forward, bool inverted);
+    actormodel::Matrix headingMatrix(const Vector& forward, bool inverted);
     Quaternion multiply(const Quaternion& first, const Quaternion& second);
     Quaternion interpolate(double weight, const Quaternion& first, const Quaternion& second);
     float update(playercomponents::QuaternionState& state, Quaternion& output, const Quaternion& source,

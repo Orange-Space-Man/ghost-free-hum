@@ -59,7 +59,7 @@ namespace playeractor {
         std::uint8_t field100C = 0;
         actormodel::Matrix matrix1010{1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0};
         std::array<std::uint8_t, 3> flags1040{};
-        std::uint32_t field1044 = 0;
+        const std::array<float, 3>* capturePosition = nullptr;
         std::array<float, 3> field1048;
         std::int32_t field1054 = -1;
         std::uint8_t field1058 = 0;

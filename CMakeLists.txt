@@ -227,6 +227,7 @@ add_library(Game STATIC
     src/game/player/playercontrollerstate.cpp
     src/game/player/playercontrolstate.cpp
     src/game/player/playerenvironmentframe.cpp
+    src/game/player/playercaptureframe.cpp
     src/game/player/playerequipmentframe.cpp
     src/game/player/playereventdispatch.cpp
     src/game/player/playermoneycollection.cpp
@@ -328,6 +329,9 @@ add_library(WindowsRuntime STATIC
     src/platform/d3d11/modelgeometryrenderer.cpp
     src/platform/d3d11/j3dshaperenderer.cpp
     src/platform/d3d11/j3dcombinerrenderer.cpp
+    src/platform/d3d11/j3dtexturerenderer.cpp
+    src/platform/d3d11/j3dvertexrenderer.cpp
+    src/platform/d3d11/j3dpacketrenderer.cpp
     src/platform/d3d11/modelmaterialrenderer.cpp
     src/platform/d3d11/modelrenderstate.cpp
     src/platform/d3d11/modeltexturerenderer.cpp

@@ -23,6 +23,7 @@ namespace particles {
         Emitter* createLifeLoss(unsigned type, const std::array<float, 3>& position, std::int32_t amount);
         Emitter* createCoinCollection(unsigned type, const std::array<float, 3>& position);
         void createExplosion(unsigned type, const std::array<float, 3>& position);
+        void createCapture(unsigned type, const std::array<float, 3>& position, const std::array<float, 3>& vector);
         std::array<std::uint32_t, 50> history{};
 
     private:

@@ -173,13 +173,14 @@ void jaudio::VoiceBank::loadWaveSystem(gameassets::Package& package, const Resou
 }
 
 bool jaudio::VoiceBank::load(gameassets::Package& package, const Resources& resources, std::string& error, unsigned instrumentBank,
-    unsigned waveSystem, const std::vector<unsigned>& additionalWaveSystems) {
+    unsigned waveSystem, const std::vector<unsigned>& additionalWaveSystems, const std::vector<unsigned>& additionalInstrumentBanks) {
     *this = {};
     error.clear();
     try {
-        bankId = instrumentBank;
         waveId = waveSystem;
-        bankData = block(resources, 2, bankId);
+        instrumentBanks.emplace(instrumentBank, block(resources, 2, instrumentBank));
+        for (const auto id : additionalInstrumentBanks) if (!instrumentBanks.count(id))
+            instrumentBanks.emplace(id, block(resources, 2, id));
         loadWaveSystem(package, resources, waveId);
         for (const auto id : additionalWaveSystems) if (waveSystems.count(id) == 0) loadWaveSystem(package, resources, id);
         std::vector<std::uint8_t> dol, table;
@@ -254,8 +255,11 @@ std::shared_ptr<const jaudio::Wave> jaudio::VoiceBank::wave(unsigned id) {
 }
 
 jaudio::InstrumentVoice jaudio::VoiceBank::voice(unsigned bank, unsigned program, unsigned key, unsigned velocity) {
-    require(bank == bankId && (program < 128 || (program >= 228 && program < 240)) && key < 128 && velocity < 128,
-        "Unported JAudio instrument bank or program.");
+    const auto found = instrumentBanks.find(bank);
+    if (found == instrumentBanks.end() || !(program < 128 || (program >= 228 && program < 240)) || key >= 128 || velocity >= 128)
+        throw std::runtime_error("Unsupported JAudio voice: bank " + std::to_string(bank) + ", program " + std::to_string(program) +
+            ", key " + std::to_string(key) + ", velocity " + std::to_string(velocity) + ".");
+    const auto& bankData = found->second;
     const auto instrument = dword(bankData, 0x24 + program * 4);
     require(instrument != 0, "Missing JAudio instrument.");
     InstrumentVoice result;

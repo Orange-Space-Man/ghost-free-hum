@@ -33,6 +33,13 @@ namespace {
 particles::EffectFactory::EffectFactory(const std::vector<std::uint8_t>& executable, ArchiveResources& resources,
     EmitterPool& pool) : executable(executable), resources(resources), pool(pool) {}
 
+void particles::EffectFactory::createCapture(unsigned type, const std::array<float, 3>& position,
+    const std::array<float, 3>& vector) {
+    for (unsigned i = 49; i > 0; --i) history[i] = history[i - 1];
+    const unsigned first = type == 0 ? 116 : 119;
+    for (unsigned i = 0; i < 3; ++i) create(first + i, position, vector);
+}
+
 void particles::EffectFactory::createExplosion(unsigned type, const std::array<float, 3>& position) {
     if (type >= 4) throw std::out_of_range("Original explosion type is invalid.");
     for (unsigned i = 49; i > 0; --i) history[i] = history[i - 1];

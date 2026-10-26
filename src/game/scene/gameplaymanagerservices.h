@@ -74,6 +74,10 @@ namespace gameplay {
         void updateGenerators();
         void updateContacts();
         void sampleInput(const playerinput::PadStatus& pad, std::int16_t port);
+        bool beginPlayerCapture(std::int32_t index, const std::array<float, 3>& position, std::int32_t recipient);
+        void updatePlayerCapture(std::int32_t index);
+        bool releasePlayerCapture(std::int32_t index, const std::array<float, 3>* position,
+            const std::array<float, 3>* direction, bool launched);
         doors::State& doors();
         charactergenerator::Manager& generators();
         particles::GlowPool& glows();
