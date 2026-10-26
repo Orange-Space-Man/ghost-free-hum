@@ -16,7 +16,8 @@ bool j3dmodel::DrawBuffer::entryMaterial(MaterialPacket& packet, std::uint32_t t
     prepare(packet);
     auto& head = packets[textureAddress & (packets.size() - 1)];
     for (auto* current = head; current; current = current->next) {
-        if (current->field34 == packet.field34 && !(current->field34 & 0x80000000U)) {
+        if (current->materialIdentity == packet.materialIdentity && current->identityFlags == packet.identityFlags &&
+            !(current->identityFlags & 0x80000000U)) {
             current->addShape(*packet.shapes);
             return false;
         }

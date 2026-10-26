@@ -4,6 +4,7 @@
 #include "jlib/j3d/j3dmaterialfactory.h"
 
 namespace j3dmodel {
+    class MaterialDisplayList;
     using Matrix = std::array<float, 12>;
     using NormalMatrix = std::array<float, 9>;
 
@@ -55,13 +56,15 @@ namespace j3dmodel {
         void* child = nullptr;
         std::uint32_t flags = 0;
         std::array<PacketBuffer, 2> displayLists;
+        std::array<std::shared_ptr<MaterialDisplayList>, 2> nativeDisplayLists;
         std::uint32_t displayListSize = 0, displayListCapacity = 0;
         void* field20 = nullptr;
         void* field24 = nullptr;
         void* field28 = nullptr;
         ShapePacket* shapes = nullptr;
         Material* material = nullptr;
-        std::uint32_t field34 = 0xffffffff;
+        std::uintptr_t materialIdentity = 0;
+        std::uint32_t identityFlags = 0xffffffff;
         const std::vector<unsigned>* textures = nullptr;
         void addShape(ShapePacket& shape);
     };

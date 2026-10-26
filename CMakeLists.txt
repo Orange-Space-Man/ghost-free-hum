@@ -23,7 +23,10 @@ add_library(JLib STATIC
     src/jlib/j3d/j3dmaterialcalculation.cpp
     src/jlib/j3d/j3dpixelstate.cpp
     src/jlib/j3d/j3dtevcommands.cpp
+    src/jlib/j3d/j3dmaterialstate.cpp
     src/jlib/j3d/j3dmaterialloads.cpp
+    src/jlib/j3d/j3dmaterialdisplaylist.cpp
+    src/jlib/j3d/j3dshapevertices.cpp
     src/jlib/j3d/j3ddrawbuffer.cpp
     src/jlib/j3d/j3dnametable.cpp
     src/jlib/jaudio/jaudiodspmixer.cpp
@@ -323,6 +326,8 @@ add_library(WindowsRuntime STATIC
     src/platform/d3d11/gameshadowrenderer.cpp
     src/platform/d3d11/modelbatchrenderer.cpp
     src/platform/d3d11/modelgeometryrenderer.cpp
+    src/platform/d3d11/j3dshaperenderer.cpp
+    src/platform/d3d11/j3dcombinerrenderer.cpp
     src/platform/d3d11/modelmaterialrenderer.cpp
     src/platform/d3d11/modelrenderstate.cpp
     src/platform/d3d11/modeltexturerenderer.cpp
