@@ -246,13 +246,14 @@ int main(int argc, char** argv) {
         std::array<j3dmodel::ShapePacket, 4> shapes;
         for (unsigned i = 0; i < packets.size(); ++i) {
             packets[i].shapes = &shapes[i];
-            packets[i].field34 = i == 1 ? 0 : i;
+            packets[i].materialIdentity = i == 1 ? 0 : i;
+            packets[i].identityFlags = 0;
         }
         check(buffer.entryMaterial(packets[0], 0x80200002) && !buffer.entryMaterial(packets[1], 0x80200002),
             "Equal nonnegative material identities merge in their original texture-address bucket.");
         check(buffer.packets[2] == &packets[0] && packets[0].shapes == &shapes[1] && shapes[1].next == &shapes[0],
             "Merged shapes prepend without replacing the admitted material packet.");
-        packets[2].field34 = packets[3].field34 = 0xffffffff;
+        packets[2].identityFlags = packets[3].identityFlags = 0xffffffff;
         check(buffer.entryMaterial(packets[2], 2) && buffer.entryMaterial(packets[3], 2) &&
             packets[3].next == &packets[2] && packets[2].next == &packets[0],
             "Negative identities never merge and bucket collisions prepend.");

@@ -5,6 +5,10 @@
 #include "jlib/j3d/j3dmaterialcalculation.h"
 #include "jlib/j3d/j3dtevcommands.h"
 #include "j3dmaterialloadtarget.h"
+#include "jlib/j3d/j3dmaterialdisplaylist.h"
+#include "jlib/j3d/j3dshapevertices.h"
+#include "platform/d3d11/j3dshaperenderer.h"
+#include "platform/d3d11/j3dcombinerrenderer.h"
 #include "game/scene/gameplayresourceowner.h"
 #include "game/player/playerliferecovery.h"
 #include "game/player/playeractorcomponents.h"
@@ -24,14 +28,53 @@ namespace {
         if (!condition) throw std::runtime_error(message);
     }
 
+    struct PacketDraw : j3dmodel::PacketDrawTarget {
+        j3dmodel::ModelInstance& model;
+        ID3D11Device* device;
+        unsigned flushes = 0, shapes = 0;
+        PacketDraw(j3dmodel::ModelInstance& model, ID3D11Device* device) : model(model), device(device) {}
+        void select(j3dmodel::MaterialPacket& packet) override {
+            check(packet.material != nullptr, "Money packet retains its material owner.");
+        }
+        void flush() override { ++flushes; }
+        void shape(j3dmodel::ShapePacket& packet) override {
+            check(packet.shape && packet.drawMatrices == reinterpret_cast<j3dmodel::Matrix*>(model.drawMatrices.data()) &&
+                packet.normalMatrices == reinterpret_cast<j3dmodel::NormalMatrix*>(model.normalMatrices.data()),
+                "Money shape submission retains the model's actual geometry and matrix buffers.");
+            bool nbt = false;
+            for (const auto& material : model.model->materials.entries)
+                if (material->shape >= 0 && model.model->geometry.shapes.at(material->shape).get() == packet.shape)
+                    nbt = material->texture->nbtScale[0] == 1;
+            unsigned vertices = 0;
+            for (const auto& group : packet.shape->groups) {
+                for (const auto& primitive : j3dmodel::decodeShapeGroup(model.model->geometry, *packet.shape, group, nbt)) {
+                    vertices += static_cast<unsigned>(primitive.vertices.size());
+                    for (const auto& vertex : primitive.vertices) {
+                        for (auto value : vertex.position) check(std::isfinite(value), "Money shape position must decode to finite coordinates.");
+                    }
+                }
+            }
+            check(vertices != 0, "Original money shapes contain decoded vertices.");
+            j3drenderer::ShapeGeometry uploaded;
+            uploaded.load(device, model.model->geometry, *packet.shape, nbt);
+            check(uploaded.groupCount() == packet.shape->groups.size(), "Original money shape groups upload into distinct Direct3D groups.");
+            ++shapes;
+        }
+    };
+
     struct Render : moneyscatter::RenderServices {
         playermodels::SharedModels& shared;
         j3dmodel::Matrix camera;
         j3dmodel::TransformTables tables;
+        Microsoft::WRL::ComPtr<ID3D11Device> device;
         std::map<j3dmodel::ModelInstance*, int> ids;
         std::vector<int> calls;
+        j3dmodel::MaterialState materialState;
         Render(playermodels::SharedModels& shared, const j3dmodel::Matrix& camera,
-            const std::vector<std::uint8_t>& executable) : shared(shared), camera(camera), tables(executable) {}
+            const std::vector<std::uint8_t>& executable) : shared(shared), camera(camera), tables(executable) {
+            check(SUCCEEDED(D3D11CreateDevice(nullptr, D3D_DRIVER_TYPE_WARP, nullptr, 0, nullptr, 0, D3D11_SDK_VERSION,
+                device.GetAddressOf(), nullptr, nullptr)), "Cannot create money geometry upload device.");
+        }
         void selectBuffers(playermodels::DrawBuffer& opaque, playermodels::DrawBuffer& translucent) override {
             check(&opaque == &shared.buffer(8) && &translucent == &shared.buffer(9),
                 "Money submission selects original shared buffer slots eight and nine.");
@@ -53,11 +96,19 @@ namespace {
                         check(std::isfinite(entry), "Original money texture matrix must be finite.");
                 const auto commands = j3dmodel::buildTevCommands(*material->tev);
                 check(!commands.empty(), "Original money material emits its texture-combiner commands.");
+                j3dmodel::loadMaterialDirect(*material, 0, materialState);
+                j3drenderer::CombinerShader shader;
+                modelrenderer::PipelineState pipeline;
+                shader.load(device.Get(), materialState, pipeline);
+                Microsoft::WRL::ComPtr<ID3D11DeviceContext> context;
+                device->GetImmediateContext(context.GetAddressOf());
+                shader.bind(context.Get(), materialState);
                 materialtests::Target target;
                 j3dmodel::loadMaterialDirect(*material, 0, target);
                 check(target.calls.front() == "mode:" + std::to_string(material->mode) && target.calls.back() == "nbt",
                     "Original money materials traverse the assembled block loader.");
             }
+            for (auto& packet : model.materials) j3dmodel::updateMaterialPacket(packet);
             calls.push_back(ids.at(&model));
         }
         void view(j3dmodel::ModelInstance& model, const j3dmodel::Matrix& value) override {
@@ -73,6 +124,11 @@ namespace {
                 if (!source.weighted && model.jointScaleFlags[source.index] != 1 && !j3dmodel::inverseTranspose(matrices[i], inverse))
                     for (float entry : normals[i]) check(entry == 17.5f, "Singular money pose retains the supplied previous normal storage.");
             }
+            materialtests::Target target;
+            PacketDraw draw(model, device.Get());
+            for (auto& packet : model.materials) j3dmodel::drawMaterialPacket(packet, 0, 0xffffffff, target, draw);
+            check(draw.flushes == model.materials.size() && draw.shapes == model.materials.size(),
+                "Original money packets load and flush before submitting their owned shape.");
             calls.push_back(ids.at(&model));
         }
     };
