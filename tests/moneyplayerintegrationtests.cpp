@@ -9,6 +9,7 @@
 #include "jlib/j3d/j3dshapevertices.h"
 #include "platform/d3d11/j3dshaperenderer.h"
 #include "platform/d3d11/j3dcombinerrenderer.h"
+#include "platform/d3d11/j3dpacketrenderer.h"
 #include "game/scene/gameplayresourceowner.h"
 #include "game/player/playerliferecovery.h"
 #include "game/player/playeractorcomponents.h"
@@ -70,10 +71,23 @@ namespace {
         std::map<j3dmodel::ModelInstance*, int> ids;
         std::vector<int> calls;
         j3dmodel::MaterialState materialState;
+        std::map<const j3dmodel::ModelData*, j3drenderer::PacketRenderer> renderers;
+        Microsoft::WRL::ComPtr<ID3D11RenderTargetView> outputTarget;
         Render(playermodels::SharedModels& shared, const j3dmodel::Matrix& camera,
             const std::vector<std::uint8_t>& executable) : shared(shared), camera(camera), tables(executable) {
             check(SUCCEEDED(D3D11CreateDevice(nullptr, D3D_DRIVER_TYPE_WARP, nullptr, 0, nullptr, 0, D3D11_SDK_VERSION,
                 device.GetAddressOf(), nullptr, nullptr)), "Cannot create money geometry upload device.");
+            D3D11_TEXTURE2D_DESC description{};
+            description.Width = description.Height = 64; description.MipLevels = description.ArraySize = 1;
+            description.Format = DXGI_FORMAT_R8G8B8A8_UNORM; description.SampleDesc.Count = 1;
+            description.BindFlags = D3D11_BIND_RENDER_TARGET;
+            Microsoft::WRL::ComPtr<ID3D11Texture2D> image;
+            check(SUCCEEDED(device->CreateTexture2D(&description, nullptr, image.GetAddressOf())) &&
+                SUCCEEDED(device->CreateRenderTargetView(image.Get(), nullptr, outputTarget.GetAddressOf())), "Cannot create money render target.");
+            j3dmodel::MaterialLight light;
+            light.position = {1000, 2000, 3000}; light.direction = {0, 0, -1};
+            light.color = {255, 255, 255, 255}; light.attenuation = {1, 0, 0, 1, 0, 0};
+            materialState.light(0, light);
         }
         void selectBuffers(playermodels::DrawBuffer& opaque, playermodels::DrawBuffer& translucent) override {
             check(&opaque == &shared.buffer(8) && &translucent == &shared.buffer(9),
@@ -129,6 +143,15 @@ namespace {
             for (auto& packet : model.materials) j3dmodel::drawMaterialPacket(packet, 0, 0xffffffff, target, draw);
             check(draw.flushes == model.materials.size() && draw.shapes == model.materials.size(),
                 "Original money packets load and flush before submitting their owned shape.");
+            if (!renderers.count(model.model.get())) renderers[model.model.get()].load(device.Get(), model.model);
+            Microsoft::WRL::ComPtr<ID3D11DeviceContext> context;
+            device->GetImmediateContext(context.GetAddressOf());
+            context->OMSetRenderTargets(1, outputTarget.GetAddressOf(), nullptr);
+            const D3D11_VIEWPORT viewport{0, 0, 64, 64, 0, 1};
+            context->RSSetViewports(1, &viewport);
+            const std::array<float, 16> projection{0.01f, 0, 0, 0, 0, 0.01f, 0, 0, 0, 0, 0.001f, 0.5f, 0, 0, 0, 1};
+            for (auto& packet : model.materials)
+                renderers.at(model.model.get()).draw(context.Get(), model, packet, materialState, projection, 0, 0xffffffff);
             calls.push_back(ids.at(&model));
         }
     };
@@ -212,7 +235,7 @@ int main(int argc, char** argv) {
         }
         bool rejected = false;
         payload.word(0x60, 3);
-        try { events.send(0, 0x13, &payload); }
+        try { playerevents::dispatch(*player, 0x13, &payload); }
         catch (const std::runtime_error&) { rejected = true; }
         check(rejected, "Non-money capture cannot bypass its unbound original services.");
 

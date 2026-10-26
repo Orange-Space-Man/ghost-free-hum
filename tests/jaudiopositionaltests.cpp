@@ -130,7 +130,8 @@ int main(int argc, char** argv) {
                 playback.spatial({100, 0, -200}, 0).pan > 0.5f &&
                 playback.spatial({0, 0, 0}, 0).volume == 1,
                 "Original positional pan and near-distance volume.");
-            for (unsigned id : {0x839u, 0x83du, 0x1809u, 0x180au, 0x180bu, 0x181eu, 0x280fu, 0x2810u, 0x282bu}) {
+            for (unsigned id : {0x839u, 0x83du, 0x1809u, 0x180au, 0x180bu, 0x181eu, 0x280fu, 0x2810u, 0x282bu,
+                0x850u, 0x4808u, 0x4828u}) {
                 std::cout << "Checking positional sound " << std::hex << id << std::dec << '\n';
                 jaudio::PositionalSound* binding = nullptr;
                 auto* handle = playback.play(id, position, &binding);
@@ -149,8 +150,8 @@ int main(int argc, char** argv) {
                     "Original positional sound must produce PCM, complete, unlink, and clear its real binding.");
             }
             jaudio::PositionalSound* first = nullptr;
-            check(sourceQueries == 9, "Each admitted sound queries its source context.");
-            check(floorQueries == 5, "The player categories request original floor context while door effects use room context alone.");
+            check(sourceQueries == 12, "Each admitted sound queries its source context.");
+            check(floorQueries == 6, "The player categories request original floor context while door and weapon effects use room context alone.");
             {
                 std::array<jaudio::PositionalSound*, 5> requests{};
                 playback.play(0x839, position, &requests[0]);

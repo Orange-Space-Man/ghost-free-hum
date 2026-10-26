@@ -9,6 +9,7 @@
 #include "game/player/playervelocityframe.h"
 #include "game/player/playerdoorinteraction.h"
 #include "game/player/playerdoorframe.h"
+#include "game/player/playercaptureframe.h"
 #include "game/startup/keypresentationowner.h"
 #include "resources/roomarchivereader.h"
 
@@ -298,6 +299,146 @@ namespace {
         reactions.field18 = retainedReactionFlag;
         keys[savedId >> 3] = retainedKey;
         std::cout << "Original door selection, key/barrier and protected interaction states verified.\n";
+    }
+
+    void checkPlayerCapture(gameplay::ResourceOwner& owner) {
+        auto& manager = owner.managers();
+        auto& player = *manager.playerEvents().player(0);
+        const auto retained = player.state;
+        const auto actions = *player.components->actions;
+        const auto position = player.position;
+        const auto previous = player.previousPosition;
+        const auto retainedPosition = player.field5C;
+        const auto target = player.field100;
+        const auto matrix = player.matrix;
+        const auto velocity = player.velocity;
+        const auto direction = player.direction;
+        const auto speed = player.speed;
+        const auto rotation = player.rotation;
+        const auto previousRotation = player.previousRotation;
+        const auto quaternion = *player.components->quaternion;
+        const auto captureScale = player.field160;
+        const auto flags = player.flags;
+        const auto room = player.fieldB4;
+        std::array<actors::MoveActor*, 4> attachments{&player, player.state.field7A4, player.state.field7A8, player.state.field7AC};
+        std::array<std::array<std::uint32_t, 2>, 4> colors{};
+        for (unsigned i = 0; i < attachments.size(); ++i) if (attachments[i]) {
+            colors[i] = {attachments[i]->fieldE0, attachments[i]->fieldE4};
+            attachments[i]->fieldE0 = 0x12345678;
+            attachments[i]->fieldE4 = 0x9abcdef0;
+        }
+        playeractor::CaptureFrame frame(owner.executable());
+        player.state.flags1040[2] = 0;
+        player.state.capturePosition = nullptr;
+        manager.updatePlayerCapture(0);
+        require(player.position == position, "Inactive capture does not need a target or alter Luigi's position.");
+        player.components->actions->field310 = 2;
+        std::array<float, 3> destination{position[0] + 10, position[1] + 20, position[2] + 30};
+        require(!manager.beginPlayerCapture(0, destination, -1) && !player.state.capturePosition,
+            "Protected actions reject capture before retaining its target or playing audio.");
+        player.components->actions->field310 = 1;
+        player.state.field1060 = 1;
+        require(!manager.beginPlayerCapture(0, destination, -1), "Item presentation prevents capture entry.");
+        player.state.field1060 = 0;
+        playeractor::Target vacuum{};
+        player.state.field11A0 = &vacuum;
+        require(!manager.beginPlayerCapture(0, destination, -1), "An existing vacuum target prevents capture entry.");
+        player.state.field11A0 = nullptr;
+        if (!player.captureState()) player.retainCapture({});
+        const auto capture = player.captureState()->bytes;
+        require(manager.beginPlayerCapture(0, destination, -1) && player.state.capturePosition == &destination &&
+            player.state.flags1040[2] && (player.flags & 0x80000),
+            "Capture starts through the original actor motion and retains the caller-owned target.");
+        destination[0] += 25;
+        manager.updatePlayerCapture(0);
+        require(player.field100 == destination && player.position == position,
+            "Capture tracks a changing target without teleporting the actor during deformation.");
+        const auto& root = player.model->matrix(0, 0);
+        for (unsigned axis = 0; axis < 3; ++axis) {
+            const float expected = ((matrix[axis * 4] * root[3] + matrix[axis * 4 + 1] * root[7]) +
+                matrix[axis * 4 + 2] * root[11]) + matrix[axis * 4 + 3];
+            require(player.state.field1048[axis] == expected, "The player view follows the transformed root during capture.");
+        }
+        player.flags &= ~0x80000u;
+        manager.updatePlayerCapture(0);
+        require(!player.state.flags1040[2] && player.state.field1058 && player.position == destination &&
+            player.state.field1048 == destination, "Completed relocation moves Luigi and enters the original hidden state.");
+        for (auto* actor : attachments) if (actor) require(actor->fieldE0 == 0x12345600 && actor->fieldE4 == 0x9abcde00,
+            "Luigi and his attachments retain RGB while both original alpha channels become zero.");
+        player.state.field1058 = 0;
+        player.state.fieldF5C = 0x163;
+        std::vector<std::uint8_t> bytes;
+        std::string error;
+        require(dolresources::read(owner.executable(), glme01::playerCaptureConcealFrames, 4, bytes, error), error);
+        const float conceal = static_cast<float>(static_cast<std::int32_t>((unsigned(bytes[0]) << 24) |
+            (unsigned(bytes[1]) << 16) | (unsigned(bytes[2]) << 8) | bytes[3]));
+        player.state.field105C = conceal;
+        frame.updateOpacity(player);
+        require((player.fieldE0 & 255) == 0, "The exact release countdown boundary conceals Luigi.");
+        player.state.field105C = conceal - 1;
+        frame.updateOpacity(player);
+        for (auto* actor : attachments) if (actor) require(actor->fieldE0 == 0x12345663 && actor->fieldE4 == 0x9abcde63,
+            "Outside that boundary the original low alpha byte is restored, without clamping.");
+        player.state.flags1040[2] = 1;
+        player.state.field1054 = 0;
+        player.state.entryCount = 0;
+        const auto attempts = manager.particles().pool().attempts;
+        const auto history = manager.particles().effects().history;
+        manager.updatePlayerCapture(0);
+        require(!player.state.flags1040[2] && player.state.entryCount == 1 && player.state.entries[0] == player.actorType,
+            "Capture completion uses the real indexed player dispatcher and original type collection handler.");
+        require(manager.particles().pool().attempts == attempts + 3,
+            "Player capture completion submits all three original large capture emitters.");
+        const auto& updated = manager.particles().effects().history;
+        require(updated[0] == 121 && updated[1] == 120 && updated[2] == 119 && updated[3] == history[0] && updated[4] == history[0],
+            "Capture effects preserve the original extra history shift before the three submissions.");
+        manager.updatePlayerCapture(0);
+        require(player.state.entryCount == 1 && manager.particles().pool().attempts == attempts + 3,
+            "The next frame cannot repeat capture completion or its effects.");
+        const std::array<float, 3> releaseDirection{0, 0, 1};
+        require(!manager.releasePlayerCapture(0, nullptr, &releaseDirection, false) &&
+            !manager.releasePlayerCapture(0, &position, nullptr, false) && player.position == destination,
+            "Missing release vectors reject the event without moving Luigi.");
+        player.state.field1058 = 1;
+        player.components->actions->reset();
+        require(manager.releasePlayerCapture(0, &position, &releaseDirection, false) && player.position == position &&
+            player.velocity == std::array<float, 3>{} && !player.state.field1058 && player.state.field105C == 6 &&
+            player.components->actions->field314 == 4 && player.state.direction[2] < -0.999f && player.view.field863 == 0,
+            "Ordinary release stops motion, faces away, refreshes the view and requests the original six-frame recovery.");
+        frame.updateOpacity(player);
+        require((player.fieldE0 & 255) == 0, "Release stays concealed at the exact initial recovery countdown.");
+        player.components->actions->reset();
+        const std::array<float, 3> launchDirection{1, 0.5f, 0};
+        require(manager.releasePlayerCapture(0, &destination, &launchDirection, true) &&
+            player.velocity == std::array<float, 3>{40, 20, 0} && player.components->actions->field314 == 31 &&
+            player.state.direction[0] < -0.999f,
+            "Launched release retains the original unnormalized 40-times vector and separate reaction.");
+        bool rejected = false;
+        try { manager.updatePlayerCapture(-1); } catch (const std::out_of_range&) { rejected = true; }
+        require(rejected, "Capture updates use the original manager's player-index validation.");
+        player.captureState()->bytes = capture;
+        player.state = retained;
+        *player.components->actions = actions;
+        player.position = position;
+        player.previousPosition = previous;
+        player.field5C = retainedPosition;
+        player.field100 = target;
+        player.matrix = matrix;
+        player.velocity = velocity;
+        player.direction = direction;
+        player.speed = speed;
+        player.rotation = rotation;
+        player.previousRotation = previousRotation;
+        *player.components->quaternion = quaternion;
+        player.field160 = captureScale;
+        player.flags = flags;
+        player.fieldB4 = room;
+        for (unsigned i = 0; i < attachments.size(); ++i) if (attachments[i]) {
+            attachments[i]->fieldE0 = colors[i][0];
+            attachments[i]->fieldE4 = colors[i][1];
+        }
+        player.refreshView();
+        std::cout << "Original player capture entry, tracking, relocation, visibility and completion verified.\n";
     }
 
     roomportal::Matrix projection(const s3denvironment::Camera& camera) {
@@ -829,6 +970,7 @@ int main(int argc, char** argv) {
                 }
                 managers.updatePlacement(0);
                 if (!cycle) checkDoorInteraction(owner, argv[1]);
+                if (!cycle) checkPlayerCapture(owner);
                 require(managers.placements().size() == 46, "Independent production resource ownership admits the full fresh mission scan.");
                 const auto submissions = owner.prepareVisibility(projection(owner.camera()), {0, 0, 640, 480});
                 require(submissions.size() == 2 && submissions[0].room == player->room() && (submissions[1].room & 255) == 30 &&

@@ -1,5 +1,7 @@
 #include "platform/d3d11/j3dshaperenderer.h"
 #include "platform/d3d11/j3dcombinerrenderer.h"
+#include "platform/d3d11/j3dtexturerenderer.h"
+#include "platform/d3d11/j3dvertexrenderer.h"
 
 #include <d3dcompiler.h>
 #include <cstddef>
@@ -172,6 +174,75 @@ int main() {
         const bool textured = center[0] == 30 && center[1] == 20 && center[2] == 10 && center[3] == 40;
         context->Unmap(readback.Get(), 0);
         check(textured, "J3D texture sampling and retained channel swaps must reach the output pixel.");
+        model.textureHeaders = {416};
+        (*bytes)[416] = 4; (*bytes)[419] = 4; (*bytes)[421] = 4;
+        (*bytes)[440] = 1; word(*bytes, 444, 32);
+        for (unsigned i = 448; i < 480; i += 2) (*bytes)[i] = 0xf8;
+        j3drenderer::Textures originalTextures;
+        originalTextures.load(device.Get(), model);
+        auto modelData = std::make_shared<j3dmodel::ModelData>();
+        modelData->geometry.drawMatrices.resize(1);
+        j3dmodel::ModelInstance instance(modelData, 0);
+        *reinterpret_cast<j3dmodel::Matrix*>(instance.drawMatrices.data()) = {1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0};
+        *reinterpret_cast<j3dmodel::NormalMatrix*>(instance.normalMatrices.data()) = {1, 0, 0, 0, 1, 0, 0, 0, 1};
+        j3dmodel::ShapePacket matrixPacket;
+        matrixPacket.drawMatrices = reinterpret_cast<j3dmodel::Matrix*>(instance.drawMatrices.data());
+        matrixPacket.normalMatrices = reinterpret_cast<j3dmodel::NormalMatrix*>(instance.normalMatrices.data());
+        material.colorChannels = 1;
+        material.materialColors[0] = {255, 255, 255, 255};
+        material.ambientColors[0] = {32, 0, 0, 0};
+        material.channels[0] = {1, 0, 0, 1, 2, 2};
+        j3dmodel::MaterialLight lamp;
+        lamp.position = {1000000, 0, 0}; lamp.color = {128, 0, 0, 255};
+        material.light(0, lamp);
+        material.coordinates[0].info = {1, 4, 60};
+        stage.colorInputs = {15, 8, 10, 15}; stage.alphaInputs = {7, 4, 5, 7}; stage.order[2] = 4; stage.swap[1] = 0;
+        originalTextures.bind(context.Get(), material);
+        j3drenderer::VertexShader originalVertex;
+        originalVertex.load(device.Get());
+        const std::array<float, 16> projection{1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1};
+        originalVertex.bind(context.Get(), material, matrixPacket, 1, shape.groups[0], projection);
+        combiner.load(device.Get(), material, pipeline);
+        combiner.bind(context.Get(), material);
+        geometry.drawGroup(context.Get(), 0);
+        context->CopyResource(readback.Get(), output.Get());
+        check(SUCCEEDED(context->Map(readback.Get(), 0, D3D11_MAP_READ, 0, &mapped)), "Cannot read original texture and lighting pixels.");
+        center = static_cast<const std::uint8_t*>(mapped.pData) + mapped.RowPitch * 16 + 16 * 4;
+        const bool lit = center[0] == 160 && center[1] == 0 && center[2] == 0 && center[3] == 255;
+        context->Unmap(readback.Get(), 0);
+        check(lit, "Decoded RGB565 texture, rigid matrices, ambient and diffuse vertex lighting must reach the rendered pixel.");
+        material.lights[0].reset();
+        rejected = false;
+        try { originalVertex.bind(context.Get(), material, matrixPacket, 1, shape.groups[0], projection); }
+        catch (const std::runtime_error&) { rejected = true; }
+        check(rejected, "Unbound scene lights cannot be replaced by fabricated illumination.");
+        for (unsigned row = 0; row < 4; ++row) for (unsigned column = 2; column < 4; ++column) {
+            (*bytes)[448 + (row * 4 + column) * 2] = 7;
+            (*bytes)[449 + (row * 4 + column) * 2] = 0xe0;
+        }
+        originalTextures.load(device.Get(), model);
+        material.channels[0].enabled = 0;
+        lamp.position = {0, 0, 1000000}; material.light(0, lamp);
+        material.textureCoordinates = 2;
+        material.coordinates[0].info = {1, 4, 30}; material.coordinates[1].info = {2, 12, 60};
+        material.matrixRows[30] = {0, 0, 0, 0.125f}; material.matrixRows[31] = {0, 0, 0, 0.5f};
+        stage.order = {1, 0, 255}; stage.colorInputs = {15, 8, 12, 15}; stage.alphaInputs = {7, 4, 6, 7};
+        std::array<std::uint8_t, 16> nbt{1, 0, 0, 0, 0x3f, 0x80, 0, 0, 0x3f, 0x80, 0, 0, 0, 0, 0, 0};
+        material.nbtScale = &nbt;
+        originalTextures.bind(context.Get(), material);
+        combiner.load(device.Get(), material, pipeline);
+        combiner.bind(context.Get(), material);
+        for (bool shifted : {false, true}) {
+            nbt[12] = shifted ? 0x3f : 0; nbt[13] = shifted ? 0x40 : 0;
+            originalVertex.bind(context.Get(), material, matrixPacket, 1, shape.groups[0], projection);
+            geometry.drawGroup(context.Get(), 0);
+            context->CopyResource(readback.Get(), output.Get());
+            check(SUCCEEDED(context->Map(readback.Get(), 0, D3D11_MAP_READ, 0, &mapped)), "Cannot read NBT emboss pixels.");
+            center = static_cast<const std::uint8_t*>(mapped.pData) + mapped.RowPitch * 16 + 16 * 4;
+            const bool embossed = center[0] == (shifted ? 0 : 255) && center[1] == (shifted ? 255 : 0) && center[2] == 0;
+            context->Unmap(readback.Get(), 0);
+            check(embossed, "Original NBT column scaling must control light-driven emboss sampling without normalizing the tangent.");
+        }
         std::cout << "J3D vertex decoding, NBT and Direct3D combiner pixel submission verified.\n";
     } catch (const std::exception& error) { std::cerr << error.what() << '\n'; return 1; }
 }
