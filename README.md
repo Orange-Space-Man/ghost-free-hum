@@ -1,13 +1,16 @@
 <h1 align="center">ghost-free-hum</h1>
 
-<p align="center">A native PC port of Luigi's Mansion.</p>
+<p align="center">A port of Luigi's Mansion.</p>
 
 <p align="center">
-  <img alt="Language: C++17" src="https://img.shields.io/badge/Language-C%2B%2B17-00599C?style=flat-square&amp;logo=cplusplus&amp;logoColor=white">
-  <img alt="Progress: Early development" src="https://img.shields.io/badge/Progress-Early%20development-e0a526?style=flat-square">
-  <img alt="CPU: x86-64" src="https://img.shields.io/badge/CPU-x86--64-7755aa?style=flat-square">
-  <img alt="OS: Windows" src="https://img.shields.io/badge/OS-Windows-0078D4?style=flat-square">
-  <a href="#license"><img alt="License: Not specified" src="https://img.shields.io/badge/License-Not%20specified-lightgrey?style=flat-square"></a>
+  <img alt="Language: C++17" src="https://img.shields.io/badge/Language-C%2B%2B17-00599C&amp;logo=cplusplus&amp;logoColor=white">
+  <img alt="Progress: Early development" src="https://img.shields.io/badge/Progress-Early%20development-e0a526">
+  <img alt="CPU: x86-64" src="https://img.shields.io/badge/CPU-x86--64-7755aa">
+  <img alt="OS: Windows" src="https://img.shields.io/badge/OS-Windows-0078D4">
+  <img alt="Static Badge" src="https://img.shields.io/badge/NTSC--U-Supported-">
+  <img alt="Static Badge" src="https://img.shields.io/badge/NTSC--J-Planned-%23FFFF00FF">
+  <img alt="Static Badge" src="https://img.shields.io/badge/PAL-Planned-%23FFFF00FF">
+  <a href="#license"><img alt="License: Not specified" src="https://img.shields.io/badge/License-Not%20specified-lightgrey"></a>
 </p>
 
 ## Progress
