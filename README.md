@@ -7,7 +7,7 @@
   <img alt="Progress: Early development" src="https://img.shields.io/badge/Progress-Early%20development-e0a526">
   <img alt="CPU: x86-64" src="https://img.shields.io/badge/CPU-x86--64-7755aa">
   <img alt="OS: Windows" src="https://img.shields.io/badge/OS-Windows-0078D4">
-  <img alt="Static Badge" src="https://img.shields.io/badge/NTSC--U-Supported-">
+  <img alt="Static Badge" src="https://img.shields.io/badge/NTSC--U-Supported-test">
   <img alt="Static Badge" src="https://img.shields.io/badge/NTSC--J-Planned-%23FFFF00FF">
   <img alt="Static Badge" src="https://img.shields.io/badge/PAL-Planned-%23FFFF00FF">
   <a href="#license"><img alt="License: Not specified" src="https://img.shields.io/badge/License-Not%20specified-lightgrey"></a>
