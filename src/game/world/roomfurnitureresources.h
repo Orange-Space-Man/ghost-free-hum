@@ -6,6 +6,8 @@
 #include "game/events/runtimeflags.h"
 
 namespace roomfurniture {
+    std::vector<std::uint16_t> selectRows(const jmp::ToolData& table, unsigned room, const gameflags::State& flags);
+
     struct Placement {
         std::uint16_t row = 0, model = 0xffff;
         std::uint32_t behavior = 0;

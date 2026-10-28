@@ -40,9 +40,14 @@ namespace roomfurniture {
         const Object* object(unsigned row) const;
         const std::array<Object, 80>& slots() const;
         const RowState& rowState(unsigned row) const;
+        const jmp::ToolData& placementTable() const;
+        void markScanned(unsigned row);
+        void markSheetInitialized(unsigned row);
+        bool hasScanOccupant(unsigned row) const;
 
     private:
         const roomlocation::Rooms& rooms;
+        const jmp::ToolData& sourceTable;
         dooranimation::PoseTables poseTables;
         double angleBias = 0, angleScale = 0;
         float previousFrame = 0;

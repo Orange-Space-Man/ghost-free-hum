@@ -35,6 +35,20 @@ bool actors::MoveActor::attachChild(MoveActor& child, unsigned joint, const acto
     return true;
 }
 
+bool actors::MoveActor::updateChildAttachment(MoveActor& child, unsigned joint,
+    const actormodel::Matrix* transform, std::uint8_t orientation) {
+    if (parent) return false;
+    for (auto& entry : children) {
+        if (entry.actor != &child) continue;
+        entry.joint = joint;
+        entry.transformed = transform != nullptr;
+        if (transform) entry.transform = *transform;
+        entry.orientation = orientation;
+        return true;
+    }
+    return false;
+}
+
 actormodel::Matrix actors::MoveActor::childMatrix(unsigned index) const {
     const auto& entry = children.at(index);
     if (!entry.actor || !model) throw std::runtime_error("Original child transform requires an attached actor model.");

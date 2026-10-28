@@ -78,6 +78,7 @@ namespace actors {
             const actorcapture::Vector* originalScratch = nullptr, const float* originalRegister = nullptr,
             const bool* emptyCompletion = nullptr);
         bool attachChild(MoveActor& child, unsigned joint, const actormodel::Matrix* transform, std::uint8_t orientation);
+        bool updateChildAttachment(MoveActor& child, unsigned joint, const actormodel::Matrix* transform, std::uint8_t orientation);
         bool detachChild(MoveActor& child);
         actormodel::Matrix childMatrix(unsigned index) const;
         void updateChildren();

@@ -3,9 +3,7 @@
 #include <algorithm>
 #include <stdexcept>
 
-void roomfurniture::Resources::load(const gamearchive::Archive& archive, const jmp::ToolData& table, unsigned room,
-    const gameflags::State& flags, const dooranimation::PoseTables& poseTables) {
-    Resources result;
+std::vector<std::uint16_t> roomfurniture::selectRows(const jmp::ToolData& table, unsigned room, const gameflags::State& flags) {
     std::vector<std::uint16_t> selected;
     for (unsigned row = 0; row < table.count(); ++row) {
         std::uint32_t number = 0, appear = 0, disappear = 0;
@@ -16,6 +14,13 @@ void roomfurniture::Resources::load(const gamearchive::Archive& archive, const j
         if (selected.size() == 64) throw std::runtime_error("Furniture selection exceeds the original room scratch capacity.");
         selected.push_back(static_cast<std::uint16_t>(row));
     }
+    return selected;
+}
+
+void roomfurniture::Resources::load(const gamearchive::Archive& archive, const jmp::ToolData& table, unsigned room,
+    const gameflags::State& flags, const dooranimation::PoseTables& poseTables) {
+    Resources result;
+    const auto selected = selectRows(table, room, flags);
     if (selected.empty()) {
         *this = std::move(result);
         return;

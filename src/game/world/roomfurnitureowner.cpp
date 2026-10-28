@@ -25,7 +25,7 @@ namespace {
 }
 
 roomfurniture::Owner::Owner(const std::vector<std::uint8_t>& executable, const roomlocation::Rooms& rooms,
-    const jmp::ToolData& table, const std::array<std::uint8_t, 0x220>& inventory, unsigned map) : rooms(rooms),
+    const jmp::ToolData& table, const std::array<std::uint8_t, 0x220>& inventory, unsigned map) : rooms(rooms), sourceTable(table),
     rows(table.count(), -1), states(table.count()) {
     std::string error;
     if (!poseTables.read(executable, error)) throw std::runtime_error(error);
@@ -226,3 +226,7 @@ const roomfurniture::Object* roomfurniture::Owner::object(unsigned row) const {
 
 const std::array<roomfurniture::Object, 80>& roomfurniture::Owner::slots() const { return objects; }
 const roomfurniture::RowState& roomfurniture::Owner::rowState(unsigned row) const { return states.at(row); }
+const jmp::ToolData& roomfurniture::Owner::placementTable() const { return sourceTable; }
+void roomfurniture::Owner::markScanned(unsigned row) { states.at(row).flags |= 0x20; }
+void roomfurniture::Owner::markSheetInitialized(unsigned row) { states.at(row).flags |= 2; }
+bool roomfurniture::Owner::hasScanOccupant(unsigned row) const { return states.at(row).occupant != -1; }
