@@ -17,6 +17,10 @@
 #include <iostream>
 #include <stdexcept>
 
+void checkScannerGeometry();
+void checkScannerInteraction(gameplay::ResourceOwner& owner);
+void checkItemPresentation(gameplay::ResourceOwner& owner);
+
 namespace {
     void require(bool condition, const std::string& message) {
         if (!condition) throw std::runtime_error(message);
@@ -520,6 +524,7 @@ namespace {
 
 int main(int argc, char** argv) {
     try {
+        checkScannerGeometry();
         gameentry::State absent;
         bool rejected = false;
         try { gameplay::ResourceOwner owner("missing.ppak", absent); }
@@ -1018,6 +1023,7 @@ int main(int argc, char** argv) {
                 managers.updatePlacement(0);
                 if (!cycle) {
                     checkLadderInteraction(owner);
+                    checkItemPresentation(owner);
                     checkDoorInteraction(owner, argv[1]);
                 }
                 if (!cycle) checkPlayerCapture(owner);
@@ -1092,6 +1098,7 @@ int main(int argc, char** argv) {
                         "All sixty manager-owned pose passes execute capture and active-actor sound stages.");
                     std::cout << "Registry pose passes: " << capturePasses << ", animation sound requests: " << soundEvents << '\n';
                 }
+                if (!cycle) checkScannerInteraction(owner);
                 furniture.releaseAll();
                 for (const auto& object : furniture.slots()) require(!(object.flags & 2), "Furniture release returns every pool slot.");
                 require(bool(furniture.rowState(207).flags & 8) == bool(cycle) && furniture.rowState(270).height == 2,
