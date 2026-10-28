@@ -22,6 +22,53 @@ namespace {
         if (!condition) throw std::runtime_error(message);
     }
 
+    void checkLadderInteraction(gameplay::ResourceOwner& owner) {
+        auto services = owner.managers().preparePlayerLadder(0);
+        const auto& paths = services.paths;
+        for (unsigned ladder = 0; ladder < paths.count(); ++ladder) {
+            const float length = paths.length(ladder);
+            require(paths.entryCount(ladder) >= 2 && length > 0, "Mission ladders contain paired path points.");
+            actormodel::Matrix matrix{};
+            require(paths.sample(ladder, 0, matrix), "Original ladder start can be sampled.");
+            const auto start = matrix;
+            require(!paths.sample(ladder, length, matrix) && matrix == start,
+                "Exact ladder endpoint preserves the original failed sample and untouched output.");
+            require(paths.sampleSmoothed(ladder, length * 0.5, 37.5, matrix), "Interior ladder orientation can be blended.");
+            for (float value : matrix) require(std::isfinite(value), "Mission ladder basis remains finite.");
+        }
+        playerinteraction::LadderInteraction interaction(owner.executable());
+        playercomponents::LadderState state;
+        playeractions::Actions actions(owner.executable(), 0);
+        playerinteraction::LadderInput input;
+        playerinteraction::LadderOutput output;
+        output.displacement = {9, 8, 7};
+        actions.field310 = 1;
+        require(!interaction.run(state, actions, input, output, services) && output.displacement[0] == 9,
+            "Ineligible ladder interaction leaves player movement untouched.");
+        actions.field310 = 2;
+        actions.field314 = 0x21;
+        actions.fields31C[1] = 1;
+        state.approachPosition = {10, 3, 0};
+        input.speed = 2;
+        require(interaction.run(state, actions, input, output, services) && output.displacement == ladders::Vector{2, 0, 0},
+            "Ladder approach advances horizontally at the original approach speed.");
+        input.contact = true;
+        const ladders::Vector retained{4, 5, 6};
+        services.retainedDisplacement = &retained;
+        require(interaction.run(state, actions, input, output, services) && output.displacement == retained,
+            "Blocked ladder approach preserves the original unwritten displacement.");
+        actions.field310 = 2;
+        actions.field314 = 0x21;
+        actions.fields31C[1] = 1;
+        input.contact = false;
+        input.position = {9, 0, 0};
+        state.entrySide = 2;
+        state.step = 4;
+        require(interaction.run(state, actions, input, output, services) && state.step == 5 &&
+            output.displacement == ladders::Vector{1, 3, 0}, "Ladder arrival publishes full displacement and advances its entry step.");
+        std::cout << "Ladder paths checked: " << paths.count() << '\n';
+    }
+
     void checkDoorInteraction(gameplay::ResourceOwner& owner, const std::filesystem::path& packagePath) {
         const auto& executable = owner.executable();
         auto& manager = owner.managers();
@@ -969,7 +1016,10 @@ int main(int argc, char** argv) {
                     *player->components->quaternion = quaternion;
                 }
                 managers.updatePlacement(0);
-                if (!cycle) checkDoorInteraction(owner, argv[1]);
+                if (!cycle) {
+                    checkLadderInteraction(owner);
+                    checkDoorInteraction(owner, argv[1]);
+                }
                 if (!cycle) checkPlayerCapture(owner);
                 require(managers.placements().size() == 46, "Independent production resource ownership admits the full fresh mission scan.");
                 const auto submissions = owner.prepareVisibility(projection(owner.camera()), {0, 0, 640, 480});
