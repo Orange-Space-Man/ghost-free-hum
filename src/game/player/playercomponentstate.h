@@ -28,13 +28,11 @@ namespace playercomponents {
         actors::MoveActor* fakeDoor;
     };
 
-    struct State28 {
-        State28();
-        void* field0;
-        std::uint32_t field4;
-        float field8;
-        std::array<float, 3> fieldC, field18;
-        std::uint32_t field24;
+    struct LadderState {
+        std::uint32_t ladder = 0, step = 0;
+        float distance = 0;
+        std::array<float, 3> approachPosition{}, facing{0, 0, 1};
+        std::uint32_t entrySide = 0;
     };
 
     struct State80 {

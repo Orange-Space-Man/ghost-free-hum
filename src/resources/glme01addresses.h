@@ -3,6 +3,8 @@
 #include <cstdint>
 
 namespace glme01 {
+    inline constexpr std::uint32_t playerLadderConstants = 0x804da988;
+    inline constexpr std::uint32_t playerLadderMovementThreshold = 0x804d2b3c;
     inline constexpr std::uint32_t playerCaptureConcealFrames = 0x804d2c70;
     inline constexpr std::uint32_t playerCaptureLaunchSpeed = 0x804db558;
     inline constexpr std::uint32_t playerDirectionEpsilon = 0x804da8fc;

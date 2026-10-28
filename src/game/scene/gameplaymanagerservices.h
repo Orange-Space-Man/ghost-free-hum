@@ -16,6 +16,7 @@
 #include "game/effects/particleglowpool.h"
 #include "game/player/playerpadsampler.h"
 #include "game/player/playerdoorinteraction.h"
+#include "game/player/playerladderinteraction.h"
 
 namespace playeractions { struct Input; }
 
@@ -89,6 +90,7 @@ namespace gameplay {
         void updateAudio(const std::array<float, 12>& listener);
         playeractions::Input preparePlayerAction(unsigned index);
         playerinteraction::DoorServices preparePlayerDoor(unsigned index);
+        playerinteraction::LadderServices preparePlayerLadder(unsigned index);
 
     private:
         struct State;

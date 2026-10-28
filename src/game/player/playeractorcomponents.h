@@ -22,7 +22,7 @@ namespace playeractor {
         std::unique_ptr<playercomponents::EmptyState> empty;
         std::unique_ptr<playercomponents::QuaternionState> quaternion;
         std::unique_ptr<playercomponents::DoorState> door;
-        std::unique_ptr<playercomponents::State28> state28;
+        std::unique_ptr<playercomponents::LadderState> ladder;
         std::unique_ptr<playercomponents::State80> state80;
         std::unique_ptr<playermodels::ScannerModels> scanner;
         std::unique_ptr<playermodels::GridOwner> grids;

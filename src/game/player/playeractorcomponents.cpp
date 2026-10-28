@@ -6,7 +6,7 @@ playeractor::Components::Components(const std::vector<std::uint8_t>& executable,
     empty = std::make_unique<playercomponents::EmptyState>();
     quaternion = std::make_unique<playercomponents::QuaternionState>(state.quaternion);
     door = std::make_unique<playercomponents::DoorState>();
-    state28 = std::make_unique<playercomponents::State28>();
+    ladder = std::make_unique<playercomponents::LadderState>();
     state80 = std::make_unique<playercomponents::State80>();
     scanner = std::make_unique<playermodels::ScannerModels>(*manager.models, camera);
     grids = std::make_unique<playermodels::GridOwner>(*manager.models);
@@ -38,7 +38,7 @@ playeractor::Components::~Components() {
     grids.reset();
     scanner.reset();
     state80.reset();
-    state28.reset();
+    ladder.reset();
     door.reset();
     quaternion.reset();
     empty.reset();

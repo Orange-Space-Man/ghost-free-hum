@@ -60,7 +60,7 @@ struct gameplay::ManagerServices::State {
         savedDoors(dependencies.entry.inventory.data(), dependencies.entry.inventory.size()),
         commonResources(dependencies.common), mapResources(dependencies.map), collision(dependencies.mission),
         actionContext(dependencies.executable), actorCollision(dependencies.collisions, dependencies.actors.catalog),
-        padSampler(dependencies.executable), playerCapture(dependencies.executable) {}
+        padSampler(dependencies.executable), playerCapture(dependencies.executable), ladderPaths(dependencies.mission) {}
 
     ~State() {
         if (placement) {
@@ -231,6 +231,7 @@ struct gameplay::ManagerServices::State {
     actorcollision::Manager actorCollision;
     playerinput::PadSampler padSampler;
     playeractor::CaptureFrame playerCapture;
+    ladders::Paths ladderPaths;
     std::int32_t elementDuration = 0;
     std::unique_ptr<SuctionAudio> suctionAudio;
     std::unique_ptr<playerevents::SuctionEnvironment> suction;
@@ -310,6 +311,13 @@ playerinteraction::DoorServices gameplay::ManagerServices::preparePlayerDoor(uns
     return {state->doors, state->savedDoors, *player->components->flags, state->roomIds, *state->enemies,
         state->dependencies.actors.catalog, state->dependencies.actors.resources, state->dependencies.flags.value(0x53) == 1};
 }
+playerinteraction::LadderServices gameplay::ManagerServices::preparePlayerLadder(unsigned index) {
+    if (index >= state->dependencies.playerCount) throw std::out_of_range("Player ladder index exceeds the bound player count.");
+    auto* player = dynamic_cast<playeractor::Player*>(state->actors->actor(state->enemies->appearPoint(index).actor));
+    if (!player) throw std::runtime_error("Ladder interaction requires its registered player owner.");
+    return {state->ladderPaths, state->dependencies.actors.catalog, state->dependencies.actors.resources};
+}
+
 void gameplay::ManagerServices::sampleInput(const playerinput::PadStatus& pad, std::int16_t port) {
     state->dependencies.pad.port = port;
     state->padSampler.update(state->dependencies.pad, pad);
