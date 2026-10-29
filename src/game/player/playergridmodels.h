@@ -3,6 +3,14 @@
 #include "game/player/playersharedmodels.h"
 
 namespace playermodels {
+    struct GridTexture {
+        std::shared_ptr<const std::vector<std::uint8_t>> primary, secondary;
+        unsigned width = 0, height = 0, format = 0, imageOffset = 0;
+        unsigned wrapS = 0, wrapT = 0, minFilter = 1, magFilter = 1;
+        float minLod = 0, maxLod = 0, lodBias = 0;
+        bool mipmap = false;
+    };
+
     struct GridPoint {
         GridPoint();
         std::array<std::uint8_t, 5> flags;
@@ -40,6 +48,7 @@ namespace playermodels {
         GridModels(const GridModels&) = delete;
         GridModels& operator=(const GridModels&) = delete;
         GridParameters parameters;
+        GridTexture texture;
         std::unique_ptr<GridPoint[]> points;
         unsigned width, height, count;
         std::array<float, 4> fields118{};

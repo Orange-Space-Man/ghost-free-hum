@@ -51,6 +51,7 @@ namespace j3dmodel {
         std::vector<DrawMatrix> drawMatrices;
         std::unique_ptr<NameTable> jointNames, materialNames, shapeNames, textureNames;
         std::vector<unsigned> textureHeaders;
+        std::vector<std::shared_ptr<const std::vector<std::uint8_t>>> textureReplacements;
         Hierarchy hierarchy;
     };
 

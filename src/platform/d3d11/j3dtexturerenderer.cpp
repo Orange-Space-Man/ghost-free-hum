@@ -21,8 +21,10 @@ void j3drenderer::Textures::load(ID3D11Device* device, const j3dmodel::Geometry&
     if (!device || !geometry.bytes) throw std::runtime_error("J3D texture upload requires a device and owned resource.");
     Textures result;
     result.owner = device;
-    const auto& bytes = *geometry.bytes;
-    for (unsigned header : geometry.textureHeaders) {
+    for (unsigned index = 0; index < geometry.textureHeaders.size(); ++index) {
+        const auto replacement = index < geometry.textureReplacements.size() ? geometry.textureReplacements[index] : nullptr;
+        const auto& bytes = replacement ? *replacement : *geometry.bytes;
+        const unsigned header = replacement ? 0 : geometry.textureHeaders[index];
         const auto byte = [&](unsigned index) { return bytes.at(std::size_t(header) + index); };
         const unsigned format = byte(0), baseWidth = half(bytes, header + 2), baseHeight = half(bytes, header + 4);
         if (!baseWidth || !baseHeight || baseWidth > 1024 || baseHeight > 1024 || (format > 6 && format != 14))
