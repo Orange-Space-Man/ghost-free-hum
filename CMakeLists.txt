@@ -157,9 +157,10 @@ add_executable(gameparametertests tests/gameparametertests.cpp)
 target_link_libraries(gameparametertests PRIVATE WindowsRuntime)
 add_executable(gameplaycameratests tests/gameplaycameratests.cpp)
 target_link_libraries(gameplaycameratests PRIVATE WindowsRuntime)
-add_executable(gameplayresourcetests tests/gameplayresourcetests.cpp tests/playerscannerchecks.cpp tests/playerpresentationchecks.cpp
+add_executable(gameplayresourcetests tests/gameplayresourcetests.cpp tests/playerscannerchecks.cpp tests/playerpresentationchecks.cpp tests/playersheetmotionchecks.cpp
     recovered/playerscannerinteraction.cpp recovered/playeritempresentation.cpp recovered/playerfurniturescancache.cpp
-    recovered/playeractorscanbindings.cpp)
+    recovered/playeractorscanbindings.cpp recovered/playersheetlayout.cpp recovered/playersheettextures.cpp recovered/playersheetmotion.cpp
+    recovered/playersheetsuction.cpp tests/playersheetsuctionchecks.cpp recovered/playersheetmaterial.cpp tests/playersheetmaterialchecks.cpp)
 target_link_libraries(gameplayresourcetests PRIVATE WindowsRuntime)
 add_executable(gameplayspawntests tests/gameplayspawntests.cpp)
 target_link_libraries(gameplayspawntests PRIVATE WindowsRuntime)

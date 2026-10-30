@@ -1,6 +1,9 @@
 #include "../recovered/playerscannerinteraction.h"
 #include "../recovered/playerfurniturescancache.h"
 #include "../recovered/playeractorscanbindings.h"
+#include "../recovered/playersheetlayout.h"
+#include "../recovered/playersheettextures.h"
+#include "platform/d3d11/j3dtexturerenderer.h"
 #include "game/scene/gameplayresourceowner.h"
 
 #include <stdexcept>
@@ -63,7 +66,119 @@ void checkScannerGeometry() {
     require(actorTarget({actor}, {}, {0, 0, 1}, 100).index == -1, "Actor behind scanner is excluded.");
 }
 
+void checkSheetMotion(const std::vector<std::uint8_t>& executable);
+void checkSheetSuction(const std::vector<std::uint8_t>& executable);
+void checkSheetMaterial(gameplay::ResourceOwner& owner);
+
 void checkScannerInteraction(gameplay::ResourceOwner& owner) {
+    checkSheetMotion(owner.executable());
+    checkSheetSuction(owner.executable());
+    checkSheetMaterial(owner);
+    playersheets::Builder sheetBuilder(owner.executable());
+    const auto& shared = *owner.managers().players().models;
+    playermodels::GridModels textureGrid(shared, 16, 16);
+    playermodels::GridModels otherGrid(shared, 16, 16);
+    Microsoft::WRL::ComPtr<ID3D11Device> textureDevice;
+    require(SUCCEEDED(D3D11CreateDevice(nullptr, D3D_DRIVER_TYPE_WARP, nullptr, 0, nullptr, 0,
+        D3D11_SDK_VERSION, textureDevice.GetAddressOf(), nullptr, nullptr)), "Sheet texture validation device.");
+    for (unsigned mode = 0; mode <= 3; ++mode) {
+        for (unsigned texture = 0; texture < 16; ++texture) {
+            playersheets::Layout parameters;
+            parameters.mode = mode;
+            parameters.texture = texture;
+            parameters.secondaryTexture = 13;
+            const auto binding = playersheets::bindTextures(parameters, shared, textureGrid);
+            require(binding.primary == shared.texture(texture) && binding.secondary == shared.texture(13),
+                "Sheet textures retain the original manager-owned resources.");
+            require(binding.wrapS == 0 && binding.wrapT == 0 && binding.minFilter == 1 && binding.magFilter == 1 &&
+                !binding.mipmap && binding.minLod == 0 && binding.maxLod == 0 && binding.lodBias == 0,
+                "Direct cloth sampling uses the original clamp, linear and zero-LOD settings.");
+            if (!mode) {
+                for (const auto& instance : textureGrid.instances)
+                    require(instance->model->geometry.textureReplacements.empty(),
+                        "Direct cloth mode does not overwrite any model texture table.");
+                continue;
+            }
+            auto& geometry = textureGrid.instances[mode - 1]->model->geometry;
+            require(!geometry.textureHeaders.empty(), "Original sheet model has a texture table.");
+            require(otherGrid.instances[mode - 1]->model.get() == textureGrid.instances[mode - 1]->model.get(),
+                "Sheet instances share the original mutable model texture table.");
+            for (const auto& replacement : geometry.textureReplacements)
+                require(replacement == binding.primary, "Every original model texture entry receives the selected sheet image.");
+            j3drenderer::Textures uploaded;
+            uploaded.load(textureDevice.Get(), geometry);
+            D3D11_SAMPLER_DESC sampler{};
+            uploaded.sampler(0)->GetDesc(&sampler);
+            const auto& source = *binding.primary;
+            const D3D11_TEXTURE_ADDRESS_MODE addresses[]{D3D11_TEXTURE_ADDRESS_CLAMP, D3D11_TEXTURE_ADDRESS_WRAP, D3D11_TEXTURE_ADDRESS_MIRROR};
+            require(sampler.AddressU == addresses[source.at(6)] && sampler.AddressV == addresses[source.at(7)],
+                "Model sampling preserves the copied BTI wrap modes independently of direct cloth sampling.");
+        }
+    }
+    playersheets::Layout invalidTexture;
+    invalidTexture.texture = 16;
+    const auto previousTexture = textureGrid.texture.primary;
+    bool rejectedTexture = false;
+    try { playersheets::bindTextures(invalidTexture, shared, textureGrid); }
+    catch (const std::out_of_range&) { rejectedTexture = true; }
+    require(rejectedTexture && textureGrid.texture.primary == previousTexture,
+        "Invalid resource selection cannot partially replace the owned texture binding.");
+    for (auto& instance : textureGrid.instances) instance->model->geometry.textureReplacements.clear();
+    playerscanner::SheetInput sample{0, 0, 0, 1, 0, {1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0}, {100, 50, 100}, false, false};
+    playersheets::Grid grid(256);
+    for (unsigned kind = 1; kind <= 24; ++kind) {
+        sample.kind = kind;
+        const auto layout = sheetBuilder.build(sample, 256, 3, 13, false);
+        require(layout.secondaryTexture == 13 && layout.lifetime == 45,
+            "Secondary resource selection does not overwrite the original timing default.");
+        grid.initialize(layout);
+        require(layout.width * layout.height == 256, "Sheet orientation preserves original point capacity.");
+        require(layout.mode == (kind >= 13 && kind <= 16 ? 2u : kind >= 17 && kind <= 20 ? 3u : 0u),
+            "All sheet kinds preserve their original presentation mode.");
+        for (const auto& point : grid.points()) {
+            require(point.active && point.velocity == playerscanner::Vector{}, "Initial sheet points are active and stationary.");
+            for (float value : point.position) require(std::isfinite(value), "Sheet initialization produces finite positions.");
+            for (unsigned link = 0; link < point.linkCount; ++link)
+                require(std::isfinite(point.links[link].length), "Sheet constraint lengths are finite.");
+        }
+        const bool vertical = (kind >= 9 && kind <= 12) || kind >= 21;
+        require(layout.splitRows == vertical && layout.anchored == (kind < 21), "Vertical sheet modes retain split-row and anchoring flags.");
+    }
+    sample.kind = 1;
+    auto layout = sheetBuilder.build(sample, 256, 3, 45, false);
+    require(layout.corners[0] == playerscanner::Vector{-100, 50, -100} &&
+        layout.corners[3] == playerscanner::Vector{100, 50, 100} && layout.border == std::array<std::int16_t, 4>{4, 4, 10, 10},
+        "First sheet kind preserves original winding and asymmetric fixed border.");
+    grid.initialize(layout);
+    require(grid.points()[4 * 16 + 4].fixed && !grid.points()[0].fixed && grid.points()[0].position[1] < 50,
+        "Interior anchors stay fixed while hanging corners sag.");
+    require(std::abs(grid.points()[4 * 16 + 4].weight - 1.0f / 7) < 0.00001f,
+        "Original border weight uses inclusive grid bounds.");
+    sample.extent = {1000, 50, 100};
+    layout = sheetBuilder.build(sample, 256, 3, 45, false);
+    require(layout.width == 32 && layout.height == 8, "Wide sheet reshapes the existing point allocation.");
+    sample.extent = {100, 50, 1000};
+    layout = sheetBuilder.build(sample, 256, 3, 45, false);
+    require(layout.width == 8 && layout.height == 32, "Long sheet reshapes the existing point allocation.");
+    sample.extent = {200, 50, 100};
+    layout = sheetBuilder.build(sample, 256, 3, 45, false);
+    require(layout.width == 16 && layout.height == 16, "Exact aspect threshold does not reshape the grid.");
+    sample.kind = 9;
+    sample.extent = {100, 50, 100};
+    layout = sheetBuilder.build(sample, 256, 3, 45, false);
+    grid.initialize(layout);
+    require(layout.corners[0] == playerscanner::Vector{-100, 50, 100} &&
+        layout.corners[3] == playerscanner::Vector{100, -50, 100}, "Vertical sheet corner winding matches the original face selector.");
+    const auto normal = grid.planes()[0].normal;
+    layout.reversePlanes = true;
+    grid.initialize(layout);
+    for (unsigned i = 0; i < 3; ++i) require(grid.planes()[0].normal[i] == -normal[i],
+        "Room orientation flag reverses collision plane winding.");
+    sample.kind = 1;
+    sample.elastic = true;
+    layout = sheetBuilder.build(sample, 256, 3, 45, false);
+    require(layout.elasticity == 450 && layout.range == layout.drops[0] * 0.5f,
+        "Elastic sheets retain the original range and response constants.");
     const auto& models = owner.managers().preparePlayerDoor(0).catalog;
     actorcollision::Catalog collisions(owner.executable(), models);
     playerscanner::ActorBindings actorBindings(owner.managers().enemies(), owner.managers().actors(), models, collisions, owner.visibility());
@@ -75,6 +190,15 @@ void checkScannerInteraction(gameplay::ResourceOwner& owner) {
     std::vector<playerscanner::SheetInput> sheets;
     const auto initializeSheet = [&](const playerscanner::SheetInput& input) {
         require(input.slot < 4 && input.kind >= 1 && input.kind <= 24, "Original sheet binding range.");
+        const auto layout = sheetBuilder.build(input, 256, input.texture, 13, false);
+        auto& ownedGrid = *player->components->grids->grids.at(input.slot);
+        const auto& binding = playersheets::bindTextures(layout, shared, ownedGrid);
+        require(binding.primary == shared.texture(input.texture) && layout.lifetime == 45,
+            "Actual foyer texture selection retains the independent timing default.");
+        require(&binding == &ownedGrid.texture, "The original player grid owns the retained texture binding.");
+        grid.initialize(layout);
+        for (const auto& point : grid.points()) for (float value : point.position)
+            require(std::isfinite(value), "Actual foyer sheet geometry initializes without nonfinite points.");
         sheets.push_back(input);
     };
     require(cache.refresh(2, initializeSheet), "First room builds actual mission furniture scan entries.");
