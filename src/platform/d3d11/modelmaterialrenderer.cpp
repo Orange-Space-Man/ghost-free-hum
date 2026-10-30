@@ -6,6 +6,23 @@
 #include <utility>
 
 namespace {
+    bool supportedOperation(unsigned operation) {
+        return operation <= 1 || (operation >= 8 && operation <= 15);
+    }
+
+    std::string comparison(unsigned operation, bool alpha) {
+        const unsigned width = (operation - 8) / 2;
+        const auto operand = [&](unsigned input) {
+            const auto name = "c" + std::to_string(input);
+            if (width == 3) return alpha ? "(a" + std::to_string(input) + " & 255)" : "(" + name + "[channel] & 255)";
+            std::string value = "(" + name + ".r & 255)";
+            if (width >= 1) value += " | ((" + name + ".g & 255) << 8)";
+            if (width >= 2) value += " | ((" + name + ".b & 255) << 16)";
+            return "(" + value + ")";
+        };
+        return operand(0) + (operation & 1 ? " == " : " > ") + operand(1);
+    }
+
     std::string compare(unsigned function, unsigned reference) {
         static const char* operations[] = {"", "<", "==", "<=", ">", "!=", ">=", ""};
         if (function > 7 || reference > 255) throw std::runtime_error("Invalid original alpha comparison.");
@@ -73,6 +90,7 @@ struct Input {
     float3 viewPosition : TEXCOORD4;
     float2 generated[8] : TEXCOORD5;
     float4 secondaryColor : COLOR1;
+    float4 generatedQ[2] : TEXCOORD13;
 };
 int combine(int a, int b, int c, int d, int subtract) {
     a &= 255; b &= 255; c &= 255;
@@ -87,7 +105,7 @@ int combine(int a, int b, int c, int d, int subtract) {
     source << "float4 main(Input input) : SV_TARGET { int4 r[4]; for(int i=0;i<4;++i) r[i]=initial[i];\n";
     unsigned expected = 0;
     for (const auto& stage : program.stages) {
-        if (stage.index != expected++ || stage.colorOperation > 1 || stage.alphaOperation > 1 || stage.colorOutput > 3 || stage.alphaOutput > 3)
+        if (stage.index != expected++ || !supportedOperation(stage.colorOperation) || !supportedOperation(stage.alphaOperation) || stage.colorOutput > 3 || stage.alphaOutput > 3)
             throw std::runtime_error("Unsupported model combiner stage ordering or operation.");
         auto settings = retained[stage.index];
         if (stage.resetSwap) settings.textureSwap = settings.rasterSwap = {0, 1, 2, 3};
@@ -102,7 +120,10 @@ int combine(int a, int b, int c, int d, int subtract) {
             for (const auto& value : program.coordinates) if (value.index == stage.coordinate) coordinate = &value;
             if (!coordinate || coordinate->index >= 8)
                 throw std::runtime_error("Model material references an absent texture coordinate.");
-            source << "texel=int4(round(image" << stage.texture << ".Sample(sampler" << stage.texture << ",input.generated[" << coordinate->index << "])*255));\n";
+            source << "texel=int4(round(image" << stage.texture << ".Sample(sampler" << stage.texture << ",input.generated[" << coordinate->index << "]";
+            if (coordinate->type == 0)
+                source << "/input.generatedQ[" << coordinate->index / 4 << "][" << coordinate->index % 4 << "]";
+            source << ")*255));\n";
         }
         source << "texel=texel." << swizzle(settings.textureSwap) << "; int4 raster=";
         if (stage.raster == 4) source << "int4(round(saturate(input.color)*255))";
@@ -113,8 +134,16 @@ int combine(int a, int b, int c, int d, int subtract) {
         source << "int3 kc=" << constant(settings.colorConstant, false) << "; int ka=" << constant(settings.alphaConstant, true) << ";\n";
         for (unsigned i = 0; i < 4; ++i)
             source << "int3 c" << i << "=" << color(stage.color[i]) << "; int a" << i << "=" << alpha(stage.alpha[i]) << ";\n";
-        source << "int3 result; for(int channel=0;channel<3;++channel) result[channel]=combine(c0[channel],c1[channel],c2[channel],c3[channel]," << stage.colorOperation << ");\n";
-        source << "int opacity=combine(a0,a1,a2,a3," << stage.alphaOperation << ");\n";
+        source << "int3 result; for(int channel=0;channel<3;++channel) result[channel]=";
+        if (stage.colorOperation <= 1)
+            source << "combine(c0[channel],c1[channel],c2[channel],c3[channel]," << stage.colorOperation << ");\n";
+        else
+            source << "c3[channel]+((" << comparison(stage.colorOperation, false) << ") ? (c2[channel] & 255) : 0);\n";
+        source << "int opacity=";
+        if (stage.alphaOperation <= 1)
+            source << "combine(a0,a1,a2,a3," << stage.alphaOperation << ");\n";
+        else
+            source << "a3+((" << comparison(stage.alphaOperation, true) << ") ? (a2 & 255) : 0);\n";
         source << "r[" << stage.colorOutput << "].rgb=clamp(result," << (stage.colorClamp ? 0 : -1024) << "," << (stage.colorClamp ? 255 : 1023) << ");\n";
         source << "r[" << stage.alphaOutput << "].a=clamp(opacity," << (stage.alphaClamp ? 0 : -1024) << "," << (stage.alphaClamp ? 255 : 1023) << "); }\n";
     }

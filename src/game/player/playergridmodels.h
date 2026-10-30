@@ -3,6 +3,7 @@
 #include "game/player/playersharedmodels.h"
 
 namespace playermodels {
+    class VacuumVolume;
     struct GridTexture {
         std::shared_ptr<const std::vector<std::uint8_t>> primary, secondary;
         unsigned width = 0, height = 0, format = 0, imageOffset = 0;
@@ -17,7 +18,7 @@ namespace playermodels {
         std::uint16_t field8, fieldA;
         float fieldC;
         std::array<std::uint32_t, 2> fields10;
-        void* field18;
+        std::uint32_t linkCount;
         std::array<float, 3> field1C;
         float field28;
         std::array<float, 3> field2C, field38, field44;
@@ -52,7 +53,8 @@ namespace playermodels {
         std::unique_ptr<GridPoint[]> points;
         unsigned width, height, count;
         std::array<float, 4> fields118{};
-        std::uint32_t field140 = 0;
+        const VacuumVolume* suctionVolume = nullptr;
+        const std::array<float, 3>* suctionPosition = nullptr;
         std::int32_t field148 = -1;
         std::array<std::uint8_t, 3> fields14C{};
         float field150 = 0, field154 = 0;

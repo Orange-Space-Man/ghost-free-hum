@@ -23,26 +23,6 @@ namespace {
         result.sourceBlend = pixels.blend[1]; result.destinationBlend = pixels.blend[2];
         return result;
     }
-    std::vector<int> shaderKey(const j3dmodel::MaterialState& state) {
-        std::vector<int> key{int(state.combiner.count), int(state.textureCoordinates), int(state.cullMode)};
-        for (unsigned i = 0; i < state.combiner.count; ++i) {
-            const auto& s = state.combiner.stages[i];
-            key.insert(key.end(), s.order.begin(), s.order.end());
-            key.insert(key.end(), s.colorInputs.begin(), s.colorInputs.end());
-            key.insert(key.end(), s.alphaInputs.begin(), s.alphaInputs.end());
-            key.insert(key.end(), s.colorOperation.begin(), s.colorOperation.end());
-            key.insert(key.end(), s.alphaOperation.begin(), s.alphaOperation.end());
-            key.insert(key.end(), s.swap.begin(), s.swap.end());
-            key.insert(key.end(), s.indirect.begin(), s.indirect.end());
-            key.push_back(s.colorSelection); key.push_back(s.alphaSelection);
-        }
-        for (const auto& swap : state.combiner.swaps) key.insert(key.end(), swap.begin(), swap.end());
-        key.insert(key.end(), state.pixels.alpha.begin(), state.pixels.alpha.end());
-        key.insert(key.end(), state.pixels.blend.begin(), state.pixels.blend.end());
-        key.insert(key.end(), state.pixels.depth.begin(), state.pixels.depth.end());
-        key.push_back(state.pixels.depthLocation);
-        return key;
-    }
 }
 
 void j3drenderer::PacketRenderer::load(ID3D11Device* device, std::shared_ptr<const j3dmodel::ModelData> model) {
@@ -76,7 +56,7 @@ void j3drenderer::PacketRenderer::draw(ID3D11DeviceContext* context, j3dmodel::M
     Draw draw;
     draw.bind = [&] {
         const auto raster = pipeline(state);
-        const auto key = shaderKey(state);
+        const auto key = combinerKey(state);
         auto found = shaders.find(key);
         if (found == shaders.end()) {
             CombinerShader shader;

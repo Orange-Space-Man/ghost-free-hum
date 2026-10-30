@@ -10,6 +10,7 @@ namespace j3drenderer {
     };
 
     CombinerProgram buildCombinerProgram(const j3dmodel::MaterialState& state);
+    std::vector<int> combinerKey(const j3dmodel::MaterialState& state);
 
     class CombinerShader {
     public:

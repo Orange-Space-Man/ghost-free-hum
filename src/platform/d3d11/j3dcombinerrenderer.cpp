@@ -5,7 +5,8 @@
 
 namespace {
     void checkOperation(const std::array<int, 5>& operation) {
-        if (operation[0] < 0 || operation[0] > 1 || operation[1] != 0 || operation[2] != 0 ||
+        const bool supported = operation[0] == 0 || operation[0] == 1 || (operation[0] >= 8 && operation[0] <= 15);
+        if (!supported || operation[1] != 0 || operation[2] != 0 ||
             operation[3] < 0 || operation[3] > 1 || operation[4] < 0 || operation[4] > 3)
             throw std::runtime_error("J3D combiner requires an unimplemented arithmetic mode.");
     }
@@ -19,6 +20,32 @@ namespace {
         }
         return result;
     }
+}
+
+std::vector<int> j3drenderer::combinerKey(const j3dmodel::MaterialState& state) {
+    if (state.combiner.count > 16 || state.textureCoordinates > 8)
+        throw std::runtime_error("Invalid J3D shader state counts.");
+    std::vector<int> key{int(state.combiner.count), int(state.textureCoordinates), int(state.cullMode)};
+    const auto append = [&](const auto& values) { key.insert(key.end(), values.begin(), values.end()); };
+    for (unsigned i = 0; i < state.textureCoordinates; ++i) append(state.coordinates[i].info);
+    for (unsigned i = 0; i < state.combiner.count; ++i) {
+        const auto& stage = state.combiner.stages[i];
+        append(stage.order);
+        append(stage.colorInputs);
+        append(stage.alphaInputs);
+        append(stage.colorOperation);
+        append(stage.alphaOperation);
+        append(stage.swap);
+        append(stage.indirect);
+        key.push_back(stage.colorSelection);
+        key.push_back(stage.alphaSelection);
+    }
+    for (const auto& swap : state.combiner.swaps) append(swap);
+    append(state.pixels.alpha);
+    append(state.pixels.blend);
+    append(state.pixels.depth);
+    key.push_back(state.pixels.depthLocation);
+    return key;
 }
 
 j3drenderer::CombinerProgram j3drenderer::buildCombinerProgram(const j3dmodel::MaterialState& state) {

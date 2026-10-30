@@ -33,6 +33,7 @@ struct Output {
     float3 normal:NORMAL0; float3 binormal:NORMAL1; float3 tangent:NORMAL2;
     float2 uv0:TEXCOORD0; float2 uv1:TEXCOORD1; float2 uv2:TEXCOORD2; float2 uv3:TEXCOORD3;
     float3 viewPosition:TEXCOORD4; float2 generated[8]:TEXCOORD5; float4 secondaryColor:COLOR1;
+    float4 generatedQ[2]:TEXCOORD13;
 };
 float3 normalTransform(float3 value) {
     return float3(dot(normalMatrix[0].xyz,value),dot(normalMatrix[1].xyz,value),dot(normalMatrix[2].xyz,value));
@@ -50,7 +51,8 @@ Output main(Input input) {
     output.uv0=input.uv[0]; output.uv1=input.uv[1]; output.uv2=input.uv[2]; output.uv3=input.uv[3];
     for(uint i=0;i<counts.x;++i) {
         uint type=coordinates[i].control.x, origin=coordinates[i].control.y;
-        if(type==1) {
+        output.generatedQ[i/4][i%4]=1;
+        if(type<=1) {
             float4 value;
             if(origin==0) value=float4(input.position,1);
             else if(origin==1) value=float4(input.normal,1);
@@ -58,6 +60,7 @@ Output main(Input input) {
             else if(origin==3) value=float4(input.tangent,1);
             else value=float4(input.uv[origin-4],1,1);
             output.generated[i]=float2(dot(coordinates[i].transform[0],value),dot(coordinates[i].transform[1],value));
+            if(type==0) output.generatedQ[i/4][i%4]=dot(coordinates[i].transform[2],value);
         } else {
             float3 direction=normalize(lights[type-2].position.xyz-view.xyz);
             output.generated[i]=output.generated[origin-12]+float2(dot(direction,output.tangent),dot(direction,output.binormal));
@@ -126,14 +129,19 @@ void j3drenderer::VertexShader::bind(ID3D11DeviceContext* context, const j3dmode
     const j3dmodel::ShapePacket& packet, std::size_t matrixCount, const j3dmodel::ShapeGroup& group, const std::array<float, 16>& projection) const {
     if (!context || !owner || !packet.drawMatrices || !packet.normalMatrices || group.matrixKind != 0 || group.matrix >= matrixCount)
         throw std::runtime_error("J3D vertex binding requires an owned rigid matrix group.");
+    bindMatrices(context, state, packet.drawMatrices[group.matrix], packet.normalMatrices[group.matrix], projection);
+}
+
+void j3drenderer::VertexShader::bindMatrices(ID3D11DeviceContext* context, const j3dmodel::MaterialState& state,
+    const j3dmodel::Matrix& position, const j3dmodel::NormalMatrix& normal, const std::array<float, 16>& projection) const {
+    if (!context || !owner) throw std::runtime_error("J3D vertex matrices require an initialized renderer.");
     Microsoft::WRL::ComPtr<ID3D11Device> device;
     context->GetDevice(device.GetAddressOf());
     if (device.Get() != owner.Get()) throw std::runtime_error("J3D vertex context belongs to another device.");
     if (state.textureCoordinates > 8 || state.colorChannels > 2) throw std::runtime_error("Invalid J3D vertex channel counts.");
     const auto lights = prepareLighting(state);
     Constants data{};
-    data.position = packet.drawMatrices[group.matrix];
-    const auto& normal = packet.normalMatrices[group.matrix];
+    data.position = position;
     std::array<float, 3> scale{1, 1, 1};
     if (state.nbtScale) for (unsigned i = 0; i < 3; ++i) {
         const auto& bytes = *state.nbtScale;
@@ -151,7 +159,7 @@ void j3drenderer::VertexShader::bind(ID3D11DeviceContext* context, const j3dmode
         if (input.normalize || input.postMatrix != 125) throw std::runtime_error("J3D vertex shader requires an unimplemented post-texture transform.");
         auto& output = data.coordinates[i];
         output.control = {type, source, 0, 0};
-        if (type == 1 && source <= 11) {
+        if (type <= 1 && source <= 11) {
             if (matrix == 60) output.matrix = {{{1, 0, 0, 0}, {0, 1, 0, 0}, {0, 0, 1, 0}}};
             else {
                 if (matrix > 61) throw std::runtime_error("Invalid J3D texture matrix row.");

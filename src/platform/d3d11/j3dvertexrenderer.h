@@ -15,6 +15,9 @@ namespace j3drenderer {
         void bind(ID3D11DeviceContext* context, const j3dmodel::MaterialState& state,
             const j3dmodel::ShapePacket& packet, std::size_t matrixCount, const j3dmodel::ShapeGroup& group,
             const std::array<float, 16>& projection) const;
+        void bindMatrices(ID3D11DeviceContext* context, const j3dmodel::MaterialState& state,
+            const j3dmodel::Matrix& position, const j3dmodel::NormalMatrix& normal,
+            const std::array<float, 16>& projection) const;
 
     private:
         Microsoft::WRL::ComPtr<ID3D11Device> owner;

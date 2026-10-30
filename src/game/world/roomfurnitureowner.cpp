@@ -229,4 +229,5 @@ const roomfurniture::RowState& roomfurniture::Owner::rowState(unsigned row) cons
 const jmp::ToolData& roomfurniture::Owner::placementTable() const { return sourceTable; }
 void roomfurniture::Owner::markScanned(unsigned row) { states.at(row).flags |= 0x20; }
 void roomfurniture::Owner::markSheetInitialized(unsigned row) { states.at(row).flags |= 2; }
+void roomfurniture::Owner::markSheetCollected(unsigned row) { states.at(row).flags = (states.at(row).flags & ~2U) | 4U; }
 bool roomfurniture::Owner::hasScanOccupant(unsigned row) const { return states.at(row).occupant != -1; }

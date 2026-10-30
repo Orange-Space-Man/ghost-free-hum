@@ -3,7 +3,7 @@
 #include <limits>
 #include <stdexcept>
 
-playermodels::GridPoint::GridPoint() : flags{}, field8(0), fieldA(0), fieldC(0), field18(nullptr), field28(0),
+playermodels::GridPoint::GridPoint() : flags{}, field8(0), fieldA(0), fieldC(0), linkCount(0), field28(0),
     field2C{}, field38{}, field44{0, 1, 0}, field50(0), field54(0) {}
 
 playermodels::GridParameters::GridParameters() : width(16), height(16), field8{-100, 150, -200}, field14{-100, 150, 0},

@@ -43,6 +43,7 @@ namespace roomfurniture {
         const jmp::ToolData& placementTable() const;
         void markScanned(unsigned row);
         void markSheetInitialized(unsigned row);
+        void markSheetCollected(unsigned row);
         bool hasScanOccupant(unsigned row) const;
 
     private:
