@@ -121,7 +121,7 @@ namespace playeractor {
         float field1340 = 0, field1344 = 0, field1348 = 0;
         std::array<std::uint8_t, 3> flags134C{};
         std::array<float, 3> field1350{};
-        std::uint32_t field135C = 0;
+        const void* pullOwner = nullptr;
         float field1360 = 0, field1364 = 0;
         std::array<std::uint8_t, 3> flags1388{};
         std::array<std::uint32_t, 6> fields138C{};

@@ -23,7 +23,21 @@ float playerevents::Payload::number(unsigned offset) const {
     return value;
 }
 
+void playerevents::Payload::pull(const std::array<float, 3>* center, const void* owner, float range, float elasticity) {
+    pullCenter = center;
+    pullOwner = owner;
+    word(0xec, 0);
+    word(0xf0, 0);
+    std::uint32_t bits;
+    std::memcpy(&bits, &range, sizeof(bits));
+    word(0xf4, bits);
+    std::memcpy(&bits, &elasticity, sizeof(bits));
+    word(0xf8, bits);
+}
+
 void playerevents::Payload::reset() {
+    pullCenter = nullptr;
+    pullOwner = nullptr;
     for (unsigned offset : {0x04u, 0x0cu, 0x10u, 0x24u, 0x2cu, 0x34u, 0x3cu, 0x40u, 0x44u, 0x50u,
         0x5cu, 0x60u, 0x64u, 0x68u, 0x70u, 0x78u, 0x7cu, 0x80u, 0x84u, 0x8cu, 0x90u, 0x94u,
         0x98u, 0xa4u, 0xacu, 0xc0u, 0xd4u, 0xd8u, 0xdcu, 0xecu, 0xf0u, 0xf4u, 0xf8u, 0x104u}) word(offset, 0);

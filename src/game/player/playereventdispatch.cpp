@@ -11,10 +11,29 @@ unsigned playerevents::dispatch(playeractor::Player& player, unsigned message, c
     if (!message || message > 0x40) return 0;
     const Payload defaults;
     const auto& values = payload ? *payload : defaults;
+    if (message == 0x34 || message == 0x35) {
+        if (values.word(0xec) || values.word(0xf0))
+            throw std::runtime_error("Player pull events require native references rather than encoded game addresses.");
+        auto& state = player.state;
+        if (message == 0x34) {
+            if (!values.pullCenter || (state.flags134C[2] &&
+                !(!values.pullOwner && state.pullOwner) && !(values.pullOwner && state.pullOwner == values.pullOwner))) return 0;
+            state.flags134C[2] = 1;
+            state.field1350 = *values.pullCenter;
+            state.pullOwner = values.pullOwner;
+            state.field1360 = values.number(0xf4);
+            state.field1364 = values.number(0xf8);
+            return 1;
+        }
+        if (!state.flags134C[2] || (state.pullOwner && state.pullOwner != values.pullOwner)) return 0;
+        state.flags134C[2] = 0;
+        state.pullOwner = nullptr;
+        return 1;
+    }
     if (message == 0x26 || message == 0x27 ||
         (message == 0x13 && (values.word(0x60) == 5 || values.word(0x60) == 6)))
         return collectMoney(player, message, values, collectionSound);
-    if (message == 0x13 && values.word(0x60) == 3) {
+    if (message == 0x13 && (values.word(0x60) == 3 || values.word(0x60) == 7)) {
         if (!suction) throw std::runtime_error("Player suction completion services are not bound.");
         return completeSuction(player, {values.word(0x60), values.word(0x64), values.word(0x68),
             static_cast<std::int32_t>(values.word(0x6c)), values.word(0x70), values.word(0x74)}, *suction);
