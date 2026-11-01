@@ -127,6 +127,12 @@ void playersheets::Suction::requestRetraction(bool hasOwner) {
 
 void playersheets::Suction::updateFeedback(bool hasPlayer, bool hasVolume, bool playerHolding, bool playerPulling,
     SheetServices& services) {
+    updateFeedback(hasPlayer, hasVolume, [playerHolding]() { return playerHolding; },
+        [playerPulling]() { return playerPulling; }, services);
+}
+
+void playersheets::Suction::updateFeedback(bool hasPlayer, bool hasVolume, const std::function<bool()>& playerHolding,
+    const std::function<bool()>& playerPulling, SheetServices& services) {
     if (!hasPlayer) return;
     const auto& layout = grid.layout();
     const auto& border = layout.border;
@@ -150,7 +156,7 @@ void playersheets::Suction::updateFeedback(bool hasPlayer, bool hasVolume, bool 
         }
     }
     if (!count) {
-        release = playerHolding;
+        release = playerHolding();
         pullFrames = 0;
         releaseStarted = false;
     } else {
@@ -159,7 +165,7 @@ void playersheets::Suction::updateFeedback(bool hasPlayer, bool hasVolume, bool 
         if (!services.requestPull(grid, captureCenter, pullRange + layout.range, layout.elasticity)) {
             for (auto& point : grid.points()) point.touched = false;
         } else {
-            if (!playerPulling && !releaseStarted && !motion.halfway) pullFrames = 0;
+            if (!playerPulling() && !releaseStarted && !motion.halfway) pullFrames = 0;
             else {
                 pullFrames += 1;
                 if (float(static_cast<std::int32_t>(layout.lifetime)) < pullFrames || releaseStarted || motion.halfway) {

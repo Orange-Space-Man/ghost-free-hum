@@ -69,11 +69,14 @@ void checkScannerGeometry() {
 void checkSheetMotion(const std::vector<std::uint8_t>& executable);
 void checkSheetSuction(const std::vector<std::uint8_t>& executable);
 void checkSheetMaterial(gameplay::ResourceOwner& owner);
+void checkSheetFrame(gameplay::ResourceOwner& owner);
+void checkSheetDraw(gameplay::ResourceOwner& owner);
 
 void checkScannerInteraction(gameplay::ResourceOwner& owner) {
     checkSheetMotion(owner.executable());
     checkSheetSuction(owner.executable());
     checkSheetMaterial(owner);
+    checkSheetDraw(owner);
     playersheets::Builder sheetBuilder(owner.executable());
     const auto& shared = *owner.managers().players().models;
     playermodels::GridModels textureGrid(shared, 16, 16);
@@ -268,4 +271,5 @@ void checkScannerInteraction(gameplay::ResourceOwner& owner) {
         "Early cancellation does not query targets.");
     state.state = savedState; state.field8 = saved8; state.fieldC = savedC;
     state.field10 = savedTimer; state.camera = savedCamera;
+    checkSheetFrame(owner);
 }

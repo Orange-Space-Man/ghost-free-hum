@@ -146,6 +146,64 @@ int main() {
         const bool subtracted = center[0] == 51 && center[1] == 25 && center[2] == 13 && center[3] == 61;
         context->Unmap(readback.Get(), 0);
         check(subtracted, "Later J3D stages must read earlier outputs and retain subtract rounding.");
+        const auto savedMaterial = material;
+        for (unsigned operation = 8; operation <= 15; ++operation) {
+            for (unsigned sample = 0; sample < 5; ++sample) {
+                material = savedMaterial;
+                material.combiner.count = 2;
+                auto& compare = material.combiner.stages[0];
+                compare.colorInputs = {2, 4, 6, 0};
+                compare.alphaInputs = {1, 2, 3, 0};
+                compare.colorOperation = {int(operation), 0, 0, int(sample != 4), 2};
+                compare.alphaOperation = {int(operation), 0, 0, int(sample != 4), 3};
+                material.combiner.colors = {{{10, 20, 30, 40}, {255, 1, 3, 1}, {1, 2, 2, 200}, {70, 80, 90, 100}}};
+                if (sample == 1) material.combiner.colors[2] = material.combiner.colors[1];
+                if (sample == 2) material.combiner.colors[1] = {257, -254, 258, 456};
+                if (sample >= 3) material.combiner.colors[0] = {230, 240, 250, 230};
+                auto& forward = material.combiner.stages[1];
+                forward = compare;
+                forward.colorInputs = {15, 15, 15, 4};
+                forward.alphaInputs = {7, 7, 7, 3};
+                forward.colorOperation = forward.alphaOperation = {0, 0, 0, 0, 0};
+                const auto inputs = material.combiner.colors;
+                std::array<unsigned, 4> expectedPixel{};
+                const unsigned width = (operation - 8) / 2;
+                for (unsigned channel = 0; channel < 4; ++channel) {
+                    unsigned first = 0, second = 0;
+                    if (width == 3) {
+                        first = inputs[1][channel] & 255;
+                        second = inputs[2][channel] & 255;
+                    } else for (unsigned component = 0; component <= width; ++component) {
+                        first += (inputs[1][component] & 255) << (component * 8);
+                        second += (inputs[2][component] & 255) << (component * 8);
+                    }
+                    const bool matches = operation & 1 ? first == second : first > second;
+                    int value = inputs[0][channel] + (matches ? inputs[3][channel] & 255 : 0);
+                    if (sample != 4 && value > 255) value = 255;
+                    expectedPixel[channel] = value & 255;
+                }
+                combiner.load(device.Get(), material, pipeline);
+                combiner.bind(context.Get(), material);
+                geometry.drawGroup(context.Get(), 0);
+                context->CopyResource(readback.Get(), output.Get());
+                check(SUCCEEDED(context->Map(readback.Get(), 0, D3D11_MAP_READ, 0, &mapped)), "Cannot read compare-mode pixels.");
+                center = static_cast<const std::uint8_t*>(mapped.pData) + mapped.RowPitch * 16 + 16 * 4;
+                const bool compared = std::equal(expectedPixel.begin(), expectedPixel.end(), center);
+                context->Unmap(readback.Get(), 0);
+                if (!compared) std::cerr << "TEV comparison " << operation << ", sample " << sample << '\n';
+                check(compared, "TEV comparisons preserve byte packing, alpha predicates, clamping and independent register writes.");
+            }
+        }
+        material = savedMaterial;
+        auto cacheState = material;
+        cacheState.textureCoordinates = 1;
+        cacheState.coordinates[0].info = {1, 4, 30};
+        const auto affineKey = j3drenderer::combinerKey(cacheState);
+        cacheState.combiner.colors[0][0] += 1;
+        cacheState.matrixRows[30][3] = 42;
+        check(affineKey == j3drenderer::combinerKey(cacheState), "Animated values reuse the compiled combiner.");
+        cacheState.coordinates[0].info[0] = 0;
+        check(affineKey != j3drenderer::combinerKey(cacheState), "Projective and affine sampling cannot share a pixel shader cache entry.");
         description.Width = description.Height = 1; description.BindFlags = D3D11_BIND_SHADER_RESOURCE;
         description.Usage = D3D11_USAGE_IMMUTABLE; description.CPUAccessFlags = 0;
         const std::array<std::uint8_t, 4> texel{10, 20, 30, 40};
@@ -243,6 +301,29 @@ int main() {
             context->Unmap(readback.Get(), 0);
             check(embossed, "Original NBT column scaling must control light-driven emboss sampling without normalizing the tangent.");
         }
-        std::cout << "J3D vertex decoding, NBT and Direct3D combiner pixel submission verified.\n";
+        material.nbtScale = nullptr;
+        material.textureCoordinates = 1;
+        material.coordinates[0].info = {0, 0, 30};
+        material.matrixRows[30] = {0, 0, 0, 0.6f};
+        material.matrixRows[31] = {0, 0, 0, 0.5f};
+        material.matrixRows[32] = {1, 0, 0, 1.5f};
+        stage.order = {0, 0, 255};
+        combiner.load(device.Get(), material, pipeline);
+        combiner.bind(context.Get(), material);
+        originalVertex.bind(context.Get(), material, matrixPacket, 1, shape.groups[0], projection);
+        geometry.drawGroup(context.Get(), 0);
+        context->CopyResource(readback.Get(), output.Get());
+        check(SUCCEEDED(context->Map(readback.Get(), 0, D3D11_MAP_READ, 0, &mapped)), "Cannot read projective texture pixels.");
+        const auto pixel = [&](unsigned x, unsigned y) {
+            const auto* value = static_cast<const std::uint8_t*>(mapped.pData) + mapped.RowPitch * y + x * 4;
+            return std::array<unsigned, 2>{value[0], value[1]};
+        };
+        const bool projected = pixel(9, 23) == std::array<unsigned, 2>{0, 255} &&
+            pixel(12, 23) == std::array<unsigned, 2>{255, 0} && pixel(21, 23) == std::array<unsigned, 2>{255, 0};
+        if (!projected) for (unsigned x : {9U, 12U, 21U})
+            std::cerr << "Projective pixel " << x << ": " << pixel(x, 23)[0] << ", " << pixel(x, 23)[1] << '\n';
+        context->Unmap(readback.Get(), 0);
+        check(projected, "Projective sampling divides interpolated S/T by interpolated Q after rasterization.");
+        std::cout << "J3D vertex decoding, NBT, projective textures and Direct3D combiner pixel submission verified.\n";
     } catch (const std::exception& error) { std::cerr << error.what() << '\n'; return 1; }
 }

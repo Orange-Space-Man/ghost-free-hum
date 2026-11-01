@@ -4,6 +4,8 @@
 #include "game/player/playereventpayload.h"
 #include "game/player/playervacuummodel.h"
 
+#include <functional>
+
 namespace playersheets {
     struct SuctionOwner {
         const playermodels::VacuumVolume* volume;
@@ -32,6 +34,8 @@ namespace playersheets {
         void attract(const SuctionOwner* owner, SheetServices& services);
         void requestRetraction(bool hasOwner);
         void updateFeedback(bool hasPlayer, bool hasVolume, bool playerHolding, bool playerPulling, SheetServices& services);
+        void updateFeedback(bool hasPlayer, bool hasVolume, const std::function<bool()>& playerHolding,
+            const std::function<bool()>& playerPulling, SheetServices& services);
         void collide(SheetServices& services, bool hasSecondaryTexture);
         void updateSound(SheetServices& services);
         bool completed = false, impactReady = false, releaseStarted = false;
