@@ -1,4 +1,5 @@
 #include "../recovered/playersheetframe.h"
+#include "../recovered/playersheetplayerbinding.h"
 #include "game/scene/gameplayresourceowner.h"
 
 #include <cmath>
@@ -48,6 +49,41 @@ namespace {
 }
 
 void checkSheetFrame(gameplay::ResourceOwner& resources) {
+    {
+        auto& dispatcher = resources.managers().playerEvents();
+        auto& state = dispatcher.player(0)->state;
+        const auto retained = state;
+        int firstOwner, secondOwner;
+        const playerscanner::Vector center{10, 20, 30};
+        playerevents::Payload request;
+        request.pull(&center, &firstOwner, 140, 80);
+        state.flags134C[2] = 0;
+        state.pullOwner = nullptr;
+        require(dispatcher.send(0, 0x34, &request) == 1 && state.pullOwner == &firstOwner &&
+            state.field1350 == center && state.field1360 == 140 && state.field1364 == 80,
+            "Cloth pull enters the real manager-owned player's event dispatcher and retained motion state.");
+        require(dispatcher.send(0, 0x34, &request) == 1, "The current cloth owner can refresh its pull center.");
+        request.pull(&center, &secondOwner, 999, 999);
+        require(dispatcher.send(0, 0x34, &request) == 0 && state.field1360 == 140 &&
+            dispatcher.send(0, 0x35, &request) == 0 && state.flags134C[2],
+            "Another cloth cannot overwrite or release the retained pull owner.");
+        request.pull(nullptr, &firstOwner, 0, 0);
+        require(dispatcher.send(0, 0x34, &request) == 0 && dispatcher.send(0, 0x35, &request) == 1 &&
+            !state.flags134C[2] && !state.pullOwner && state.field1350 == center && state.field1360 == 140,
+            "Release clears ownership and the active flag while preserving the original retained geometry.");
+        require(dispatcher.send(0, 0x35, &request) == 0, "Repeated pull release returns the original inactive result.");
+        request.pull(&center, &firstOwner, 100, 0);
+        require(dispatcher.send(0, 0x34, &request) == 1, "Pull can be reacquired after release.");
+        request.pull(&center, nullptr, 200, 50);
+        require(dispatcher.send(0, 0x34, &request) == 1 && !state.pullOwner && state.field1360 == 200,
+            "Original anonymous pull preempts a non-null owner.");
+        require(dispatcher.send(0, 0x34, &request) == 0, "Original active anonymous pull cannot refresh itself.");
+        request.pull(nullptr, &secondOwner, 0, 0);
+        require(dispatcher.send(0, 0x35, &request) == 1, "Any release can clear an anonymous pull.");
+        request.reset();
+        require(!request.pullCenter && !request.pullOwner, "Reset clears native payload references with the original pointer fields.");
+        state = retained;
+    }
     auto& models = *resources.managers().playerEvents().player(0)->components->grids;
     const auto& shared = *resources.managers().players().models;
     playersheets::Owner owner(models, shared, resources.furniture(), resources.executable());
@@ -61,6 +97,24 @@ void checkSheetFrame(gameplay::ResourceOwner& resources) {
     require(slot < 4 && row == 208, "Actual foyer cloth placement is initialized through its scanner and manager slot.");
     auto& frame = owner.sheet(slot);
     auto& model = *models.grids[slot];
+    {
+        auto& player = *resources.managers().playerEvents().player(0);
+        const auto retained = player.state;
+        playersheets::PlayerBinding binding(resources.managers().playerEvents(), 0);
+        const auto& suction = binding.owner();
+        require(&suction.position == player.view.field8A4 && &suction.direction == player.view.field8A8 &&
+            suction.volume == player.view.field8B4, "Cloth uses the real player's published weapon and vacuum references.");
+        player.state.flags134C[2] = 0;
+        player.state.pullOwner = nullptr;
+        const auto holding = binding.holding(), pulling = binding.pulling();
+        require(binding.request(frame.grid, {1, 2, 3}, 200, 80) && player.state.pullOwner == &frame.grid,
+            "The recovered cloth service connects pull ownership to its native grid identity.");
+        require(binding.holding() == holding && binding.pulling() == pulling,
+            "Pull dispatch does not invent an immediate player-view refresh absent from the original event.");
+        binding.release(frame.grid);
+        require(!player.state.flags134C[2] && !player.state.pullOwner, "Cloth release reaches the same original owner route.");
+        player.state = retained;
+    }
     require(models.fields16BC[slot] && model.count == frame.grid.points().size() &&
         model.points[0].linkCount == frame.grid.points()[0].linkCount && model.points[0].field2C == frame.grid.points()[0].position,
         "Owned sheet initialization publishes point constraints into the existing player allocation.");
@@ -101,4 +155,8 @@ void checkSheetFrame(gameplay::ResourceOwner& resources) {
         "The following owner update retires the slot and replaces only the original sheet furniture bits.");
     owner.update(services);
     require(services.events.empty(), "Retired cloth slots no longer query player services.");
+    playersheets::PlayerBinding playerBinding(resources.managers().playerEvents(), 0);
+    playerevents::Payload completion;
+    completion.word(0x60, 7);
+    playerBinding.complete(completion);
 }

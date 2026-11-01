@@ -162,7 +162,7 @@ add_executable(gameplayresourcetests tests/gameplayresourcetests.cpp tests/playe
     recovered/playeractorscanbindings.cpp recovered/playersheetlayout.cpp recovered/playersheettextures.cpp recovered/playersheetmotion.cpp
     recovered/playersheetsuction.cpp tests/playersheetsuctionchecks.cpp recovered/playersheetmaterial.cpp tests/playersheetmaterialchecks.cpp
     recovered/playersheetframe.cpp tests/playersheetframechecks.cpp recovered/playersheetdraw.cpp tests/playersheetdrawchecks.cpp
-    recovered/playersheetshadow.cpp recovered/playersheetrenderer.cpp)
+    recovered/playersheetshadow.cpp recovered/playersheetrenderer.cpp recovered/playersheetplayerbinding.cpp)
 target_link_libraries(gameplayresourcetests PRIVATE WindowsRuntime)
 add_executable(gameplayspawntests tests/gameplayspawntests.cpp)
 target_link_libraries(gameplayspawntests PRIVATE WindowsRuntime)
