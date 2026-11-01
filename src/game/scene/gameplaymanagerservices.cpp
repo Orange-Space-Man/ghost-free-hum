@@ -276,6 +276,7 @@ const gameplayaudio::Context& gameplay::ManagerServices::audioContext() const { 
 gameplaymusic::Owner& gameplay::ManagerServices::music() { return state->audio->music; }
 gameflags::State& gameplay::ManagerServices::flags() { return state->dependencies.flags; }
 const playerinput::Pad& gameplay::ManagerServices::controller() const { return state->dependencies.pad; }
+bool gameplay::ManagerServices::roomCleared(unsigned room) const { return state->runtime->roomCleared(room); }
 
 bool gameplay::ManagerServices::beginPlayerCapture(std::int32_t index, const std::array<float, 3>& position,
     std::int32_t recipient) {
@@ -295,6 +296,17 @@ bool gameplay::ManagerServices::releasePlayerCapture(std::int32_t index, const s
 }
 
 void gameplay::ManagerServices::updateOwner(unsigned slot) { state->enemies->update(slot); }
+
+void gameplay::ManagerServices::updatePoses() {
+    state->actors->updatePoses([&] {
+        for (const auto* actor : state->actors->entries()) {
+            if (actor && (actor->flags & 0x80000))
+                throw std::runtime_error("Live captured-actor poses require the original capture path binding.");
+        }
+    }, [&](actors::MoveActor& actor) {
+        actor.updateAnimationSound(state->audio->playback.animationServices(actor.position));
+    });
+}
 
 playeractions::Input gameplay::ManagerServices::preparePlayerAction(unsigned index) {
     if (index >= state->dependencies.playerCount) throw std::out_of_range("Player action index exceeds the bound player count.");

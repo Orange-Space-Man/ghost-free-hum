@@ -55,7 +55,7 @@ void playerenvironment::Frame::run(playeractor::Player& player, const Services& 
     state.flagsFC0[1] = (state.field11A0 && ((state.field11A0->flags & 0x40) ||
         (!controls.settings.flags && !controls.flags30[2]))) || (state.field1180 == 1 && state.flagsFC0[2]) ||
         std::any_of(vacuum.begin(), vacuum.end(), [](auto value) { return value != 0; });
-    state.field119D = !services.roomDark(player.fieldB4 >> 24);
+    state.field119D = !services.roomCleared(player.fieldB4 >> 24);
     const bool wasInverted = state.flags1330[1] != 0;
     state.flags1330[1] = (state.field1324 & 0x20) && !(actions.field310 == 2 && actions.field314 == 0x20);
     if (wasInverted != bool(state.flags1330[1])) {

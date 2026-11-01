@@ -45,7 +45,7 @@ namespace gameplay {
         std::uint32_t& randomState;
         std::int32_t& audioLife;
         unsigned appearPoint = 0;
-        unsigned playerCount = 2;
+        unsigned playerCount = 1;
         unsigned variant = 0;
         void* playerContext = nullptr;
         std::function<void(const enemies::Manager&)> prepareRooms;
@@ -70,10 +70,12 @@ namespace gameplay {
         gameplaymusic::Owner& music();
         gameflags::State& flags();
         const playerinput::Pad& controller() const;
+        bool roomCleared(unsigned room) const;
         void updateOwner(unsigned slot);
         void updatePlacement(std::int32_t elapsedSeconds);
         void updateGenerators();
         void updateContacts();
+        void updatePoses();
         void sampleInput(const playerinput::PadStatus& pad, std::int16_t port);
         bool beginPlayerCapture(std::int32_t index, const std::array<float, 3>& position, std::int32_t recipient);
         void updatePlayerCapture(std::int32_t index);

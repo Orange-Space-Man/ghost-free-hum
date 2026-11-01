@@ -81,8 +81,10 @@ playerorientation::Quaternion playerorientation::interpolate(double weight, cons
 float playerorientation::update(playercomponents::QuaternionState& state, Quaternion& output, const Quaternion& source,
     const Input& input, const actormodel::InitialPose& pose) {
     const auto original = source;
-    if (!state.field10) throw std::runtime_error("Player orientation requires the original retained angular-velocity value.");
-    auto& angularVelocity = *state.field10;
+    const bool usesAngularVelocity = input.mode >= 1 && input.mode <= 3;
+    if (usesAngularVelocity && !state.field10)
+        throw std::runtime_error("Player orientation requires the original retained angular-velocity value.");
+    float angularVelocity = usesAngularVelocity ? *state.field10 : 0;
     bool changed = false;
     unsigned mode = input.mode;
     angularVelocity *= input.damping;
@@ -155,7 +157,7 @@ float playerorientation::update(playercomponents::QuaternionState& state, Quater
         break;
     }
     }
-    if (input.mode != 3) angularVelocity = 0;
+    state.field10 = input.mode == 3 ? angularVelocity : 0;
     if (changed && input.reverse) {
         auto matrix = toMatrix(state.quaternion);
         for (unsigned i : {0u, 2u, 4u, 6u, 8u, 10u}) matrix[i] = -matrix[i];

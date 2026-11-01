@@ -111,6 +111,7 @@ void gameplay::Scene::update(const playerinput::PadStatus& pad, std::int16_t por
     resources.furniture().updateIdle(resources.visibility(), 0);
     rooms = resources.prepareVisibility(visibilityProjection, fullBounds);
     updateOpacity();
+    managers.updatePoses();
     managers.updateAudio(view);
     ++ticks;
 }

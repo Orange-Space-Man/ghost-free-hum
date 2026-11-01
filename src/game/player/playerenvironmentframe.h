@@ -15,7 +15,7 @@ namespace playerenvironment {
         const playermodels::VacuumEntries& capture;
         std::function<void(playeractor::Player&)> refreshType;
         std::function<playeractor::Target*(const playeractor::Player&)> captureTarget;
-        std::function<bool(unsigned)> roomDark;
+        std::function<bool(unsigned)> roomCleared;
         std::function<void(bool)> captureSound;
         std::function<void(unsigned)> roomSound;
     };

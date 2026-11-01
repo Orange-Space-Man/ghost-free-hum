@@ -227,6 +227,7 @@ add_library(Game STATIC
     src/game/player/playercontrollerstate.cpp
     src/game/player/playercontrolstate.cpp
     src/game/player/playerenvironmentframe.cpp
+    src/game/player/playerfinishframe.cpp
     src/game/player/playercaptureframe.cpp
     src/game/player/playerladderinteraction.cpp
     src/game/world/ladderpaths.cpp

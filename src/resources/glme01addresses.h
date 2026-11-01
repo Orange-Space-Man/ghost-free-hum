@@ -6,6 +6,11 @@ namespace glme01 {
     inline constexpr std::uint32_t playerLadderConstants = 0x804da988;
     inline constexpr std::uint32_t playerLadderMovementThreshold = 0x804d2b3c;
     inline constexpr std::uint32_t playerCaptureConcealFrames = 0x804d2c70;
+    inline constexpr std::uint32_t playerPowerScaleDuration = 0x804d2c60;
+    inline constexpr std::uint32_t playerPowerRecoveryDuration = 0x804d2c64;
+    inline constexpr std::uint32_t playerScaleAngleParameters = 0x804db5e4;
+    inline constexpr std::uint32_t playerScaleCosineOffset = 0x804db534;
+    inline constexpr std::uint32_t playerScaleAmplitude = 0x804db528;
     inline constexpr std::uint32_t playerCaptureLaunchSpeed = 0x804db558;
     inline constexpr std::uint32_t playerDirectionEpsilon = 0x804da8fc;
     inline constexpr std::uint32_t playerElementDuration = 0x804d2c2c;
