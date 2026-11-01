@@ -44,6 +44,7 @@ namespace jaudio {
     struct InstrumentVoice {
         std::shared_ptr<const Wave> wave;
         float volume = 1;
+        float baseVolume = 1;
         float pitch = 1;
         float basePitch = 1;
         bool percussion = false;

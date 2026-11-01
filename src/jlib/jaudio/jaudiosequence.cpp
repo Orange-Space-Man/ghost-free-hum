@@ -113,26 +113,33 @@ void jaudio::Interpreter::update(unsigned index, const Listener& listener) {
                 auto key = static_cast<std::uint8_t>(opcode + current.combinedTranspose);
                 const auto mode = take(current, 1);
                 if (mode & 0x80) key = static_cast<std::uint8_t>(readRegister(index, key) + current.combinedTranspose);
-                const auto slot = mode & 0x3f;
+                auto slot = mode & 7;
                 auto velocity = take(current, 1);
                 if (velocity >= 128) velocity = readRegister(index, velocity - 128) & 255;
-                if (slot == 0 || (slot > 8 && slot != 16) || ((mode & 0x40) && slot != 8 && slot != 16))
-                    throw std::runtime_error("Unported JAudio note mode " + std::to_string(mode) + " at " + std::to_string(position));
-                if (slot == 8 || slot == 16) {
+                const auto type = current.gateOn ? EventType::gateOn : EventType::noteOn;
+                if (slot == 0) {
                     auto gate = take(current, 1);
                     if (gate >= 128) gate = readRegister(index, gate - 128) & 255;
                     if (!gate) throw std::runtime_error("Unported JAudio zero note gate.");
-                    current.wait = take(current, slot >> 3);
-                    if (slot == 8 && current.wait >= 128) current.wait = readRegister(index, current.wait - 128);
+                    const auto durationBytes = (mode >> 3) & 3;
+                    current.wait = take(current, durationBytes);
+                    if (durationBytes == 1 && current.wait >= 128) current.wait = readRegister(index, current.wait - 128);
                     if (current.wait == 0) throw std::runtime_error("Unported JAudio zero note duration.");
                     const auto clock = (static_cast<float>(tracks[0].tempo * tracks[0].timebase) / ((60.0f * 32028.5f) / 80.0f)) * tempoScale;
-                    listener({EventType::noteOn, index, 0, mode & 0x40 ? current.lastNote : key, velocity,
-                        static_cast<unsigned>(((static_cast<float>(current.wait) * gate) / 100.0f) / clock),
-                        mode & 0x40 ? static_cast<int>(static_cast<std::uint8_t>(key + current.combinedTranspose)) : -1});
+                    const auto duration = static_cast<unsigned>(((static_cast<float>(current.wait) * gate) / 100.0f) / clock);
+                    listener({type, index, 0, mode & 0x40 ? current.lastNote : key, velocity,
+                        mode & 0x20 ? 0 : duration,
+                        mode & 0x40 ? static_cast<int>(static_cast<std::uint8_t>(key + current.combinedTranspose)) : -1, duration});
                     yield = true;
                 } else {
-                    listener({EventType::noteOn, index, slot, key, velocity});
+                    if (mode & 0x18) {
+                        slot = readRegister(index, slot - 1) & 255;
+                        if (slot > 7) break;
+                    }
+                    if (mode & 0x40) throw std::runtime_error("JAudio register-slot pitch slide requires a finite duration.");
+                    listener({type, index, slot, key, velocity});
                 }
+                current.gateOn = (mode & 0x20) != 0;
                 current.lastNote = key;
             } else if (opcode == 0x80 || opcode == 0x88) {
                 current.wait = take(current, opcode == 0x80 ? 1 : 2);

@@ -114,7 +114,7 @@ void playeractor::Player::bind(const Binding& binding, characterowner::Owner& ow
     else state.fieldF58 = 200;
     state.flags792 = binding.flags;
     state.field794 = binding.controller;
-    state.field798 = binding.field798;
+    state.camera = binding.camera;
     state.record = binding.record;
     state.field7A0 = binding.field7A0;
     state.field7A4 = binding.first;

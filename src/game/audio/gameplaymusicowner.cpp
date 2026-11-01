@@ -8,7 +8,6 @@ gameplaymusic::Owner::Owner(gameassets::Package& package, const jaudio::Resource
 
 void gameplaymusic::Owner::refreshContext() {
     roomParameters = context.parameters(room, soundPolygon);
-    state.room = room & 255;
     state.playerHealth = static_cast<std::uint32_t>(health);
 }
 
@@ -16,6 +15,21 @@ void gameplaymusic::Owner::setRoom(unsigned value, std::int16_t polygon) {
     room = value;
     soundPolygon = polygon;
     refreshContext();
+}
+
+void gameplaymusic::Owner::notifyRoom(unsigned packedRoom, unsigned mapMode) {
+    roomAudio.enter(packedRoom, mapMode, state.roomVariant != 0, {
+        [this] { return currentSound(); },
+        []() -> std::uint32_t { throw std::runtime_error("Room transition requires auxiliary sequence ownership."); },
+        [] { throw std::runtime_error("Room transition requires mansion pause and delayed-resume ownership."); },
+        [] { throw std::runtime_error("Room transition requires auxiliary sequence release."); },
+        [](unsigned) { throw std::runtime_error("Special-room audio requires its original sequence services."); },
+        [](unsigned) { throw std::runtime_error("Room transition requires category-four sound-port publication."); },
+        [this](unsigned notifiedRoom) {
+            refreshContext();
+            state.room = notifiedRoom;
+            state.updateRoomVolumes(*this);
+        }});
 }
 
 void gameplaymusic::Owner::start() {

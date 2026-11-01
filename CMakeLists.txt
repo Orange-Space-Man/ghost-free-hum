@@ -95,6 +95,7 @@ add_library(Game STATIC
     src/game/actors/characterplacementruntime.cpp
     src/game/actors/moveactor.cpp
     src/game/audio/gameplaymusicrouting.cpp
+    src/game/audio/gameplayroomaudio.cpp
     src/game/audio/gameplaymusicowner.cpp
     src/game/audio/gameplayaudiocontext.cpp
     src/game/audio/jaudiopositionalplayback.cpp
@@ -228,6 +229,11 @@ add_library(Game STATIC
     src/game/player/playercontrolstate.cpp
     src/game/player/playerenvironmentframe.cpp
     src/game/player/playerfinishframe.cpp
+    src/game/player/playerheadtracking.cpp
+    src/game/player/playerreactioneffects.cpp
+    src/game/player/playercontactreactions.cpp
+    src/game/player/playerbreathframe.cpp
+    src/game/player/playeraudioframe.cpp
     src/game/player/playercaptureframe.cpp
     src/game/player/playerladderinteraction.cpp
     src/game/world/ladderpaths.cpp

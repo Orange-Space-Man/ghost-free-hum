@@ -142,6 +142,10 @@ void modeleffects::Pool::update(const roomlocation::Rooms& rooms, const roomtrav
     }
 }
 
+void modeleffects::Pool::setPaused(bool paused) {
+    for (auto& owner : owners) if (owner->flags & 1) owner->setPaused(paused);
+}
+
 void modeleffects::Factory::clear() {
     pools.fill(nullptr);
     count = 0;

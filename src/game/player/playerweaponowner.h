@@ -3,6 +3,10 @@
 #include "game/actors/actoreffectstate.h"
 #include "game/player/playerweaponparameters.h"
 #include "game/player/playerpipemodel.h"
+#include <functional>
+
+namespace actors { class MoveActor; }
+namespace actormodel { class InitialPose; }
 
 namespace playerweapons {
     class Owner {
@@ -12,6 +16,11 @@ namespace playerweapons {
         ~Owner();
         Owner(const Owner&) = delete;
         Owner& operator=(const Owner&) = delete;
+        void update(const std::vector<std::uint8_t>& executable, actors::MoveActor& player,
+            actors::MoveActor* firstActor, actors::MoveActor* secondActor, unsigned action,
+            unsigned attachedAnimation, unsigned attachedState, bool alternate, double shake,
+            const actormodel::InitialPose& pose, const std::function<std::uint32_t()>& random);
+        void updateEndpoints(const actors::MoveActor& firstActor, const actors::MoveActor& secondActor);
         std::int32_t actorType = -1, firstType = -1, secondType = -1;
         std::uint32_t fieldC;
         std::unique_ptr<Part> first, second;

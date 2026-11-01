@@ -14,6 +14,7 @@ namespace modeleffects {
         void setAttachmentPosition(const std::array<float, 3>& position, const std::array<float, 3>& vector) override;
         void setVisible(bool visible) override;
         void setRunning(bool running) override;
+        void setPaused(bool paused);
         virtual void setPosition(const std::array<float, 3>& position);
         void setScale(const std::array<float, 3>& scale);
         virtual void setFrame(double frame);

@@ -4,6 +4,10 @@
 #include "game/player/playerorientationupdate.h"
 
 namespace playerorientation {
+    struct Globals {
+        float damping = 0, scannerDamping = 0;
+    };
+
     struct FrameSignals {
         bool attachedTurn;
         float damping, scannerDamping;

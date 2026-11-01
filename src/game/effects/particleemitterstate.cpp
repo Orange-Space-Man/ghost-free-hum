@@ -66,6 +66,10 @@ namespace particles {
         if (running) flags |= 6;
         else flags &= 0xfff9;
     }
+    void Emitter::setPaused(bool paused) {
+        if (paused) flags |= 0x100;
+        else flags &= 0xfeff;
+    }
     bool Emitter::empty() const { return nodes.count + shortNodes.count == 0; }
 
     void Emitter::clearParticles() {
@@ -126,6 +130,11 @@ namespace particles {
         }
         ++attempts;
         return emitter;
+    }
+
+    void EmitterPool::setPaused(bool paused) {
+        for (auto* emitter = destination->sentinel.next; emitter != &destination->sentinel; emitter = emitter->next)
+            emitter->setPaused(paused);
     }
 
     void EmitterPool::enterAlternate() {

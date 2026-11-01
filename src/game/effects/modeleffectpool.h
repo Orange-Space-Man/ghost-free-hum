@@ -27,6 +27,7 @@ namespace modeleffects {
         virtual Owner* available(const j3dmodel::Matrix& matrix);
         virtual void advance(Owner& owner, bool visible);
         virtual void update(const roomlocation::Rooms& rooms, const roomtraversal::State& visibility);
+        void setPaused(bool paused);
         const Definition definition;
         std::vector<std::unique_ptr<Owner>> owners;
         std::shared_ptr<j3dmodel::Animation> transform;

@@ -228,6 +228,11 @@ const std::array<roomfurniture::Object, 80>& roomfurniture::Owner::slots() const
 const roomfurniture::RowState& roomfurniture::Owner::rowState(unsigned row) const { return states.at(row); }
 const jmp::ToolData& roomfurniture::Owner::placementTable() const { return sourceTable; }
 void roomfurniture::Owner::markScanned(unsigned row) { states.at(row).flags |= 0x20; }
+void roomfurniture::Owner::markStruck(unsigned row, bool reactionTwo) {
+    auto& state = states.at(row);
+    state.flags |= 1;
+    state.reactionTwo = reactionTwo;
+}
 void roomfurniture::Owner::markSheetInitialized(unsigned row) { states.at(row).flags |= 2; }
 void roomfurniture::Owner::markSheetCollected(unsigned row) { states.at(row).flags = (states.at(row).flags & ~2U) | 4U; }
 bool roomfurniture::Owner::hasScanOccupant(unsigned row) const { return states.at(row).occupant != -1; }

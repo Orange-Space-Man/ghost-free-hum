@@ -28,6 +28,7 @@ namespace modeleffects {
             const j3dmodel::MaterialDefaults& defaults);
         void clear();
         void update(const roomlocation::Rooms& rooms, const roomtraversal::State& visibility);
+        void setPaused(bool paused);
         const std::vector<Pool*>& registered() const;
         Factory factory;
         std::array<std::unique_ptr<j3dmodel::DrawBuffer>, 2> drawBuffers;

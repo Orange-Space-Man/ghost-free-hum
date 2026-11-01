@@ -8,6 +8,7 @@
 
 namespace enemies { class Manager; }
 namespace actors { class Registry; }
+namespace gameplaycamera { struct CameraOwner; }
 
 namespace players {
     struct Globals {
@@ -34,7 +35,7 @@ namespace players {
         void initializeAuxiliary(const std::vector<std::uint8_t>& executable);
         void bindActors(enemies::Manager& enemies, actors::Registry& actors,
             const std::array<playerrecord::Record*, 2>& playerRecords, playerinput::Pad* pad,
-            void* field798, std::int32_t& audioLife);
+            gameplaycamera::CameraOwner* camera, std::int32_t& audioLife);
         std::array<std::unique_ptr<playerinput::ControllerState>, 4> controllers;
         std::unique_ptr<playerresources::EffectState1C> state;
         std::unique_ptr<playerresources::PointPool> points;

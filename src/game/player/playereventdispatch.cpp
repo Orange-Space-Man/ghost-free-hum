@@ -9,6 +9,10 @@
 unsigned playerevents::dispatch(playeractor::Player& player, unsigned message, const Payload* payload,
     const CollectionSound& collectionSound, const SuctionEnvironment* suction) {
     if (!message || message > 0x40) return 0;
+    if (message == 0x3a) {
+        player.flags &= ~0x40u;
+        return 0;
+    }
     const Payload defaults;
     const auto& values = payload ? *payload : defaults;
     if (message == 0x34 || message == 0x35) {

@@ -71,6 +71,15 @@ namespace glme01 {
     inline constexpr std::uint32_t streamOutputLevel = 0x804dd16c;
     inline constexpr std::uint32_t playerTurningParameters = 0x804d2b30;
     inline constexpr std::uint32_t playerTurnCompletionThreshold = 0x804db5b8;
+    inline constexpr std::uint32_t playerBreathJointParameters = 0x804db5c8;
+    inline constexpr std::uint32_t playerWallReactionAlignment = 0x80219a38;
+    inline constexpr std::uint32_t playerWallImpactHeight = 0x804db59c;
+    inline constexpr std::uint32_t playerWallImpactForwardOffset = 0x804db5a0;
+    inline constexpr std::uint32_t playerTargetTurnBlend = 0x804d2ba4;
+    inline constexpr std::uint32_t playerLandingFeedbackAmplitude = 0x804db5c4;
+    inline constexpr std::uint32_t playerSlipFeedbackAmplitude = 0x804db580;
+    inline constexpr std::uint32_t playerMovementSoundParameters = 0x804dd0f0;
+    inline constexpr std::uint32_t playerScrapingSoundPitch = 0x804dd140;
     inline constexpr std::uint32_t nullCharacterConstructor = 0x800ebd50;
     inline constexpr std::uint32_t ordinaryCharacterConstructor = 0x800ebd90;
     inline constexpr std::uint32_t barrierFactory = 0x800efc28;

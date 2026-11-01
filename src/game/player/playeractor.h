@@ -9,7 +9,7 @@ namespace playeractor {
         playerrecord::Record* record;
         std::uint16_t flags;
         void* controller;
-        void* field798;
+        gameplaycamera::CameraOwner* camera;
         playerinput::ControllerState* field7A0;
         actors::MoveActor* first;
         actors::MoveActor* second;

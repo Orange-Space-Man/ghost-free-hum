@@ -118,3 +118,7 @@ void modeleffects::Manager::update(const roomlocation::Rooms& rooms, const roomt
 }
 
 const std::vector<modeleffects::Pool*>& modeleffects::Manager::registered() const { return registry; }
+
+void modeleffects::Manager::setPaused(bool paused) {
+    for (auto* pool : registry) pool->setPaused(paused);
+}

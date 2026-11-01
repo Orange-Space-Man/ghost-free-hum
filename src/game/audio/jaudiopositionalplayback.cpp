@@ -4,6 +4,7 @@
 #include "jlib/jaudio/jaudioeffectselection.h"
 #include "jlib/jaudio/jaudioeffectrelease.h"
 #include "jlib/jaudio/jaudioeffectvoice.h"
+#include "jlib/jaudio/jaudiosequencerandom.h"
 
 #include <algorithm>
 #include <cmath>
@@ -11,8 +12,9 @@
 #include <stdexcept>
 
 namespace {
-    constexpr std::array<unsigned, 16> soundIds{0x839, 0x83d, 0x1809, 0x180a, 0x180b, 0x181e, 0x280f, 0x2810, 0x282b,
-        0x186e, 0x1841, 0x810, 0x811, 0x850, 0x4808, 0x4828};
+    constexpr std::array<unsigned, 31> soundIds{0x839, 0x83d, 0x1809, 0x180a, 0x180b, 0x181e, 0x280f, 0x2810, 0x282b,
+        0x186e, 0x1841, 0x810, 0x811, 0x850, 0x4808, 0x4828, 0x828, 0x3b, 0x43, 0x801, 2, 0x805, 9,
+        0x288a, 0x1028, 0x837, 0x84c, 0x813, 0x2814, 0x2805, 0x281c};
     constexpr unsigned effectRecordCountAddress = 0x804d78b8;
     constexpr unsigned effectParameterCountAddress = 0x804d78d4;
     constexpr unsigned maximumDistanceAddress = 0x804dd170;
@@ -66,6 +68,7 @@ struct jaudio::PositionalPlayback::Runtime : EffectAdmissionServices, EffectCate
     std::function<std::uint32_t(const std::array<float, 3>&, bool)> sourceContext;
     std::vector<EffectReleaseSequence> sequences;
     std::uint32_t duckMask = 0;
+    std::uint32_t playerContext = 0;
     struct Category {
         std::vector<EffectRecord> records;
         EffectPool pool;
@@ -110,7 +113,7 @@ struct jaudio::PositionalPlayback::Runtime : EffectAdmissionServices, EffectCate
             std::memcpy(&defaults[index].pitch, &pitchBits, sizeof(pitchBits));
             defaults[index].volume = static_cast<float>(info[12]) / 127;
             defaults[index].fxmix = static_cast<float>(info[13]) / 127;
-            if (metadata[index].flags & ~0x40078000u) throw std::runtime_error("First-area effect " + std::to_string(soundIds[index]) +
+            if (metadata[index].flags & ~0x50078cd7u) throw std::runtime_error("First-area effect " + std::to_string(soundIds[index]) +
                 " requires additional metadata hooks: " + std::to_string(metadata[index].flags));
         }
         master.start();
@@ -161,7 +164,7 @@ struct jaudio::PositionalPlayback::Runtime : EffectAdmissionServices, EffectCate
         float pan() override { return runtime.owner.spatial(relative, 0).pan; }
         float dopplerPitch() override { throw std::runtime_error("Doppler effect is outside the first-area sound set."); }
         float roomFxmix() override { return static_cast<float>((record.context & 63) * 2) / 127; }
-        std::uint32_t random() override { throw std::runtime_error("Randomized effect is outside the first-area sound set."); }
+        std::uint32_t random() override { return sequenceRandom(); }
         unsigned variant() override { return (record.context >> 16) & 15; }
         unsigned distanceVariant() override { throw std::runtime_error("Distance variant is outside the first-area sound set."); }
         unsigned roomSize() override { return (record.context >> 6) & 3; }
@@ -207,6 +210,19 @@ void jaudio::PositionalPlayback::remove(Handle& handle) {
 }
 
 jaudio::PositionalSound* jaudio::PositionalPlayback::play(unsigned id, const std::array<float, 3>& position, PositionalSound** binding) {
+    return playAt(id, &position, binding);
+}
+
+jaudio::PositionalSound* jaudio::PositionalPlayback::playGlobal(unsigned id, PositionalSound** binding) {
+    return playAt(id, nullptr, binding);
+}
+
+void jaudio::PositionalPlayback::setPlayerContext(std::uint32_t context) {
+    std::lock_guard<std::recursive_mutex> lock(owners.mutex);
+    runtime->playerContext = context;
+}
+
+jaudio::PositionalSound* jaudio::PositionalPlayback::playAt(unsigned id, const std::array<float, 3>* position, PositionalSound** binding) {
     std::lock_guard<std::recursive_mutex> lock(owners.mutex);
     const auto found = std::find(soundIds.begin(), soundIds.end(), id);
     if (found == soundIds.end()) throw std::runtime_error("Positional sound is outside the recovered first-area sound scope.");
@@ -220,13 +236,14 @@ jaudio::PositionalSound* jaudio::PositionalPlayback::play(unsigned id, const std
     }
     if (!runtime->started) { runtime->master.start(); runtime->started = true; }
     if (binding && *binding) (*binding)->stop(0);
-    for (auto& existing : handles) if (existing->active && existing->id == id && existing->ownerPosition == &position) existing->stop(0);
+    for (auto& existing : handles) if (existing->active && existing->id == id && existing->ownerPosition == position) existing->stop(0);
     const unsigned index = static_cast<unsigned>(found - soundIds.begin());
     auto handle = std::make_unique<Handle>(*this, id, soundFlags[index]);
-    handle->ownerPosition = handle->position = &position;
+    handle->ownerPosition = handle->position = position;
     handle->binding = binding;
     const bool queryFloor = (id & 0xff000) == 0 || (id & 0xff000) == 0x2000 || (soundFlags[index] & 0x80000000);
-    const EffectActorSource source{&position, &position, nullptr, runtime->sourceContext ? runtime->sourceContext(position, queryFloor) : 0};
+    const EffectActorSource source{position, position, nullptr,
+        position && runtime->sourceContext ? runtime->sourceContext(*position, queryFloor) : runtime->playerContext};
     const EffectRequest request{id, 0, 4, &source, &runtime->metadata[index]};
     admitEffect(category.pool, &handle->record, request, static_cast<std::uint8_t>(category.actorLimit), *runtime);
     for (auto& existing : handles) if (existing->active && !existing->record) remove(*existing);

@@ -37,6 +37,7 @@ namespace particles {
         void setMatrix(const std::array<float, 12>& matrix) override;
         void setVisible(bool visible) override;
         void setRunning(bool running) override;
+        void setPaused(bool paused);
         void stop();
         bool inactive() const;
         bool empty() const;
@@ -70,6 +71,7 @@ namespace particles {
         EmitterPool(unsigned emitters, unsigned nodes, unsigned shortNodes);
         Emitter* create(Resource parameters, Resource texture, Resource alternateTexture = {});
         void update(Simulation& simulation);
+        void setPaused(bool paused);
         void enterAlternate();
         void leaveAlternate();
         Pool<Emitter> emitters;

@@ -15,6 +15,8 @@ namespace jaudio {
         PositionalPlayback(const PositionalPlayback&) = delete;
         PositionalPlayback& operator=(const PositionalPlayback&) = delete;
         PositionalSound* play(unsigned id, const std::array<float, 3>& position, PositionalSound** binding = nullptr);
+        PositionalSound* playGlobal(unsigned id, PositionalSound** binding = nullptr);
+        void setPlayerContext(std::uint32_t context);
         void setPort(PositionalSound& sound, unsigned port, std::uint16_t value);
         void playDeathEffects(const std::array<float, 3>& position);
         actoranimation::SoundServices animationServices(const std::array<float, 3>& position);
@@ -29,6 +31,7 @@ namespace jaudio {
         struct Runtime;
         Handle& owned(actoranimation::SoundHandle& sound);
         void remove(Handle& handle);
+        PositionalSound* playAt(unsigned id, const std::array<float, 3>* position, PositionalSound** binding);
         PositionOwners& owners;
         std::unique_ptr<Runtime> runtime;
         std::vector<std::uint32_t> soundFlags;

@@ -76,6 +76,8 @@ namespace playercomponents {
         ~AttachedSingle();
         AttachedSingle(const AttachedSingle&) = delete;
         AttachedSingle& operator=(const AttachedSingle&) = delete;
+        void update(unsigned mode, const std::array<float, 3>& target, double blend, double verticalScale,
+            double horizontalScale, const actormodel::InitialPose& pose);
         std::array<std::uint32_t, 10> parameters;
         actors::MoveActor* actor;
         std::uint8_t field28 = 0, field29 = 1;

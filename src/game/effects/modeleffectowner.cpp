@@ -45,6 +45,11 @@ void modeleffects::Owner::setRunning(bool running) {
     else flags &= 0xfd;
 }
 
+void modeleffects::Owner::setPaused(bool paused) {
+    if (paused) flags |= 0x10;
+    else flags &= 0xef;
+}
+
 void modeleffects::Owner::setPosition(const std::array<float, 3>& position) {
     if (!model) throw std::runtime_error("Original model effect has no model instance.");
     model->matrix = {1, 0, 0, position[0], 0, 1, 0, position[1], 0, 0, 1, position[2]};

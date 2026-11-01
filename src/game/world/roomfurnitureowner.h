@@ -9,6 +9,7 @@ namespace roomfurniture {
         std::uint32_t flags = 0;
         std::int16_t occupant = -1;
         std::uint8_t height = 0;
+        bool reactionTwo = false;
     };
 
     struct Object {
@@ -42,6 +43,7 @@ namespace roomfurniture {
         const RowState& rowState(unsigned row) const;
         const jmp::ToolData& placementTable() const;
         void markScanned(unsigned row);
+        void markStruck(unsigned row, bool reactionTwo);
         void markSheetInitialized(unsigned row);
         void markSheetCollected(unsigned row);
         bool hasScanOccupant(unsigned row) const;

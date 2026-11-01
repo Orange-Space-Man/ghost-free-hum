@@ -23,6 +23,7 @@ namespace mapcollision {
         std::array<std::uint16_t, 4> floorPolygons(const std::array<float, 3>& position, float distance) const;
         bool projectFloor(std::array<float, 3>& position) const;
         bool polygonNormal(int polygon, std::array<float, 3>& normal) const;
+        std::array<float, 2> polygonHeightRange(unsigned polygon) const;
         bool ladderContact(std::uint16_t polygon, const std::array<float, 3>& position) const;
         SphereContact sphereContact(const std::array<float, 3>& position, float radius) const;
         SphereContact sweepSphere(const std::array<float, 3>& position, float radius,

@@ -17,6 +17,8 @@
 #include "game/player/playerpadsampler.h"
 #include "game/player/playerdoorinteraction.h"
 #include "game/player/playerladderinteraction.h"
+#include "game/player/playerfinishframe.h"
+#include "game/player/playerliferecovery.h"
 
 namespace playeractions { struct Input; }
 
@@ -47,7 +49,6 @@ namespace gameplay {
         unsigned appearPoint = 0;
         unsigned playerCount = 1;
         unsigned variant = 0;
-        void* playerContext = nullptr;
         std::function<void(const enemies::Manager&)> prepareRooms;
     };
 
@@ -77,6 +78,9 @@ namespace gameplay {
         void updateContacts();
         void updatePoses();
         void sampleInput(const playerinput::PadStatus& pad, std::int16_t port);
+        void updatePlayerInput(unsigned index, bool inputAvailable,
+            const std::function<void(playeractor::Player&, bool)>& scannerTransition);
+        void updatePlayerOrientation(unsigned index, const playercomponents::AttachedOutput& attachment, unsigned frame);
         bool beginPlayerCapture(std::int32_t index, const std::array<float, 3>& position, std::int32_t recipient);
         void updatePlayerCapture(std::int32_t index);
         bool releasePlayerCapture(std::int32_t index, const std::array<float, 3>* position,
@@ -93,6 +97,9 @@ namespace gameplay {
         playeractions::Input preparePlayerAction(unsigned index);
         playerinteraction::DoorServices preparePlayerDoor(unsigned index);
         playerinteraction::LadderServices preparePlayerLadder(unsigned index);
+        playeractor::FinishServices preparePlayerFinish(unsigned index, playerevents::LifeEnvironment& life,
+            bool doubledDamage, std::function<void(bool)> interactionEvents,
+            std::function<void(actors::MoveActor&)> interactionOwner);
 
     private:
         struct State;

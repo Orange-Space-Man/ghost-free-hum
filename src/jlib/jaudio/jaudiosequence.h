@@ -24,6 +24,7 @@ namespace jaudio {
         unsigned program = 240;
         unsigned bendRange = 12;
         std::uint8_t lastNote = 0;
+        bool gateOn = false;
         std::uint8_t transpose = 0, combinedTranspose = 0;
         unsigned tempo = 48;
         unsigned timebase = 120;
@@ -58,7 +59,7 @@ namespace jaudio {
         Track();
     };
 
-    enum class EventType { noteOn, noteOff, finish, sync };
+    enum class EventType { noteOn, noteOff, finish, sync, gateOn };
 
     struct SequenceEvent {
         EventType type;
@@ -68,6 +69,7 @@ namespace jaudio {
         unsigned velocity = 0;
         unsigned duration = 0;
         int targetKey = -1;
+        unsigned targetDuration = 0;
     };
 
     class Interpreter {

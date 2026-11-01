@@ -12,10 +12,14 @@
 #include "game/player/playeractioncontext.h"
 #include "game/player/playercaptureframe.h"
 #include "game/player/playersuctioncompletion.h"
+#include "game/player/playerdamageframe.h"
+#include "game/player/playerinputrouting.h"
+#include "game/player/playerorientationframe.h"
 #include "resources/glme01addresses.h"
 
 #include <stdexcept>
 #include <cmath>
+#include <utility>
 
 namespace {
     class SuctionAudio final : public playerevents::SuctionSounds {
@@ -60,7 +64,10 @@ struct gameplay::ManagerServices::State {
         savedDoors(dependencies.entry.inventory.data(), dependencies.entry.inventory.size()),
         commonResources(dependencies.common), mapResources(dependencies.map), collision(dependencies.mission),
         actionContext(dependencies.executable), actorCollision(dependencies.collisions, dependencies.actors.catalog),
-        padSampler(dependencies.executable), playerCapture(dependencies.executable), ladderPaths(dependencies.mission) {}
+        padSampler(dependencies.executable), playerDecoder(dependencies.executable),
+        playerCapture(dependencies.executable), playerDamage(dependencies.executable),
+        playerOrientation(dependencies.executable, dependencies.actors.pose),
+        ladderPaths(dependencies.mission) {}
 
     ~State() {
         if (placement) {
@@ -169,7 +176,7 @@ struct gameplay::ManagerServices::State {
             collision, dependencies.randomState, sound, {}});
         models->initialize(dependencies.executable, mapMode, mapResources, dependencies.materials);
         effects->bindModels(models->factory);
-        players->bindActors(*enemies, *actors, dependencies.records, &dependencies.pad, dependencies.playerContext, dependencies.audioLife);
+        players->bindActors(*enemies, *actors, dependencies.records, &dependencies.pad, &dependencies.camera, dependencies.audioLife);
         players->initializeAuxiliary(dependencies.executable);
         particles->refresh(nullptr);
         elementDuration = static_cast<std::int32_t>(word(glme01::playerElementDuration));
@@ -230,7 +237,11 @@ struct gameplay::ManagerServices::State {
     playeractions::Context actionContext;
     actorcollision::Manager actorCollision;
     playerinput::PadSampler padSampler;
+    playerinput::Decoder playerDecoder;
     playeractor::CaptureFrame playerCapture;
+    playerevents::DamageFrame playerDamage;
+    playerorientation::Frame playerOrientation;
+    playerorientation::Globals turning;
     ladders::Paths ladderPaths;
     std::int32_t elementDuration = 0;
     std::unique_ptr<SuctionAudio> suctionAudio;
@@ -333,6 +344,49 @@ playerinteraction::LadderServices gameplay::ManagerServices::preparePlayerLadder
 void gameplay::ManagerServices::sampleInput(const playerinput::PadStatus& pad, std::int16_t port) {
     state->dependencies.pad.port = port;
     state->padSampler.update(state->dependencies.pad, pad);
+}
+
+void gameplay::ManagerServices::updatePlayerInput(unsigned index, bool inputAvailable,
+    const std::function<void(playeractor::Player&, bool)>& scannerTransition) {
+    if (index >= state->dependencies.playerCount) throw std::out_of_range("Player input index exceeds the bound player count.");
+    auto* player = state->events->player(static_cast<std::int32_t>(index));
+    if (!player) throw std::runtime_error("Player input requires its registered owner.");
+    playerinput::route(*player, state->playerDecoder,
+        {state->dependencies.camera, inputAvailable, state->mapMode, scannerTransition});
+}
+
+void gameplay::ManagerServices::updatePlayerOrientation(unsigned index,
+    const playercomponents::AttachedOutput& attachment, unsigned frame) {
+    if (index >= state->dependencies.playerCount) throw std::out_of_range("Player orientation index exceeds the bound player count.");
+    auto* player = state->events->player(static_cast<std::int32_t>(index));
+    if (!player) throw std::runtime_error("Player orientation requires its registered owner.");
+    state->playerOrientation.run(*player,
+        {attachment.limits[1] != 0, state->turning.damping, state->turning.scannerDamping, frame});
+}
+
+playeractor::FinishServices gameplay::ManagerServices::preparePlayerFinish(unsigned index,
+    playerevents::LifeEnvironment& life, bool doubledDamage, std::function<void(bool)> interactionEvents,
+    std::function<void(actors::MoveActor&)> interactionOwner) {
+    if (index >= state->dependencies.playerCount) throw std::out_of_range("Player completion index exceeds the bound player count.");
+    auto* player = state->events->player(static_cast<std::int32_t>(index));
+    if (!player) throw std::runtime_error("Player frame completion requires its registered owner.");
+    return {state->dependencies.actors.catalog, state->dependencies.actors.resources,
+        [this, player, &life, doubledDamage](auto& recipient, const auto& payload) {
+            if (&recipient != player) throw std::logic_error("Player completion services used with another actor.");
+            state->playerDamage.run(recipient, payload, false, *state->actors,
+                state->dependencies.actors.catalog, doubledDamage, life);
+        },
+        [this, interactionEvents = std::move(interactionEvents)](bool active) {
+            if (!interactionEvents) throw std::runtime_error("Player interaction requires mission event scheduling ownership.");
+            interactionEvents(active);
+            state->particles->pool().setPaused(active);
+            state->models->setPaused(active);
+            state->actors->setInteractionPaused(active);
+        },
+        [this, player, index](auto& recipient) {
+            if (&recipient != player) throw std::logic_error("Player completion services used with another actor.");
+            state->events->send(static_cast<std::int32_t>(index), 0x3a);
+        }, std::move(interactionOwner)};
 }
 void gameplay::ManagerServices::updateContacts() {
     state->actors->updateContacts(*state->enemies, state->actorCollision, *state->players->records,

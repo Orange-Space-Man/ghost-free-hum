@@ -35,6 +35,13 @@ void actors::Registry::destroyActors() {
     for (unsigned i = 0; i < used; ++i) owned[i].reset();
 }
 
+void actors::Registry::setInteractionPaused(bool paused) {
+    for (unsigned i = 0; i < used; ++i) {
+        if (paused) objects[i]->flags |= 0x40;
+        else objects[i]->flags &= ~0x40u;
+    }
+}
+
 void actors::Registry::updateCaptures(actorcapture::Motion& motion, const playermodels::VacuumPath* path,
     const actorcapture::Vector* suctionDirection, actormodel::Matrix& retainedTransform,
     const actorcapture::Vector* originalScratch, const float* originalRegister, const bool* emptyCompletion) {

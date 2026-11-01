@@ -85,3 +85,29 @@ void playerweapons::Part::reset(const std::vector<std::uint8_t>& executable, int
     field61C = {0, 0, 0};
     field628 = {1, 0, 0};
 }
+
+unsigned playerweapons::Part::animation(unsigned action, unsigned attachedAnimation, unsigned attachedState, bool alternate) const {
+    const auto fallback = parameters[6];
+    auto selected = first.at(action);
+    if (selected == fallback) {
+        selected = field5BC.at(attachedState);
+        if (selected == fallback) {
+            if (!attachedState) selected = field574.at(attachedAnimation);
+            if (selected == fallback && alternate) selected = parameters[8];
+        }
+    }
+    return selected;
+}
+
+unsigned playerweapons::Part::joint(unsigned action, unsigned attachedAnimation, unsigned attachedState, bool alternate) const {
+    const auto fallback = parameters[7];
+    auto selected = second.at(action);
+    if (selected == fallback) {
+        selected = field5E0.at(attachedState);
+        if (selected == fallback) {
+            if (!attachedState) selected = field598.at(attachedAnimation);
+            if (selected == fallback && alternate) selected = parameters[9];
+        }
+    }
+    return selected;
+}

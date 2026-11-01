@@ -95,3 +95,16 @@ bool playerinput::ControllerState::play(const std::vector<std::uint8_t>& executa
     }
     return feedback.scripts.play(script);
 }
+
+std::int32_t playerinput::ControllerState::repeats(const std::vector<std::uint8_t>& executable, unsigned preset) const {
+    const std::uint64_t address = 0x803520bcull + std::uint64_t(preset) * 4;
+    if (address > 0xfffffffc) throw std::runtime_error("Controller preset address exceeds original address space.");
+    std::vector<std::uint8_t> bytes;
+    std::string error;
+    if (!dolresources::read(executable, static_cast<std::uint32_t>(address), 4, bytes, error)) throw std::runtime_error(error);
+    const auto identity = (std::uint32_t(bytes[0]) << 24) | (std::uint32_t(bytes[1]) << 16) |
+        (std::uint32_t(bytes[2]) << 8) | bytes[3];
+    for (const auto& slot : feedback.scripts.slots)
+        if (slot.active && slot.looping && slot.script.identity == identity) return static_cast<std::int32_t>(slot.repeats);
+    return -1;
+}

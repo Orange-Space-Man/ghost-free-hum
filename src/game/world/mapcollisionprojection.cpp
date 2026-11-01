@@ -114,6 +114,16 @@ bool mapcollision::State::polygonNormal(int polygon, std::array<float, 3>& norma
     return true;
 }
 
+std::array<float, 2> mapcollision::State::polygonHeightRange(unsigned polygon) const {
+    const auto record = std::size_t(word(collision, 0x2c)) + std::size_t(polygon & 0xffff) * 24;
+    const float first = vector(collision, 0x24, half(collision, record))[1];
+    const float second = vector(collision, 0x24, half(collision, record + 2))[1];
+    const float third = vector(collision, 0x24, half(collision, record + 4))[1];
+    const float minimum = first < second ? first : second;
+    const float maximum = second < first ? first : second;
+    return {minimum < third ? minimum : third, third < maximum ? maximum : third};
+}
+
 bool mapcollision::State::ladderContact(std::uint16_t polygon, const std::array<float, 3>& position) const {
     if (polygon == 0xffff) return false;
     const auto* table = polygonInfo();

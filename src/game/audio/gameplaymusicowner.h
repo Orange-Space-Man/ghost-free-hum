@@ -2,6 +2,7 @@
 
 #include "game/audio/gameplayaudiocontext.h"
 #include "game/audio/gameplaymusicrouting.h"
+#include "game/audio/gameplayroomaudio.h"
 #include "jlib/jaudio/jaudioplayback.h"
 
 namespace gameplaymusic {
@@ -10,6 +11,7 @@ namespace gameplaymusic {
         Owner(gameassets::Package& package, const jaudio::Resources& resources,
             const gameplayaudio::Context& context, const std::int32_t& playerHealth);
         void setRoom(unsigned room, std::int16_t soundPolygon);
+        void notifyRoom(unsigned packedRoom, unsigned mapMode);
         void start();
         bool requestDeath(std::uint32_t audioFrame);
         void stop();
@@ -35,6 +37,7 @@ namespace gameplaymusic {
         const std::int32_t& health;
         jaudio::Playback sequence;
         State state;
+        RoomAudio roomAudio;
         gameplayaudio::RoomParameters roomParameters;
         unsigned room = 0xffffffff, soundState = 0;
         std::int16_t soundPolygon = -1;

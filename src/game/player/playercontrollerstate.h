@@ -47,6 +47,7 @@ namespace playerinput {
         void pause();
         void update(std::uint32_t frame);
         bool play(const std::vector<std::uint8_t>& executable, unsigned preset);
+        std::int32_t repeats(const std::vector<std::uint8_t>& executable, unsigned preset) const;
         Pad* pad;
         controllerfeedback::State feedback;
 

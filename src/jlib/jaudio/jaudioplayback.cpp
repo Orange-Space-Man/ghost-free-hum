@@ -292,6 +292,24 @@ void jaudio::Playback::event(const SequenceEvent& event) {
         }
         return;
     }
+    if (event.type == EventType::gateOn) {
+        for (auto& voice : voices) {
+            if (voice.track != event.track || voice.slot != event.slot || !voice.noteAttached || voice.ended) continue;
+            if (!voice.remaining && !voice.envelope.released) {
+                voice.remaining = event.duration;
+                voice.instrument.pitch = bank.keyPitch(voice.instrument, event.key);
+                const float gain = event.velocity / 127.0f;
+                voice.instrument.volume = voice.instrument.baseVolume * gain * gain;
+            }
+            if (event.targetKey >= 0) {
+                voice.pitchTarget = bank.keyPitch(voice.instrument, static_cast<unsigned>(event.targetKey));
+                voice.pitchRemaining = static_cast<std::uint16_t>(event.targetDuration);
+                if (!voice.pitchRemaining) voice.instrument.pitch = voice.pitchTarget;
+            }
+            break;
+        }
+        return;
+    }
     for (auto& voice : voices) {
         if (voice.track == event.track && (voice.slot == event.slot || event.type == EventType::finish)) {
             voice.noteAttached = false;
@@ -308,8 +326,8 @@ void jaudio::Playback::event(const SequenceEvent& event) {
     voice.instrument = bank.voice(track.bank, track.program, event.key, event.velocity);
     if (event.targetKey >= 0) {
         voice.pitchTarget = bank.keyPitch(voice.instrument, static_cast<unsigned>(event.targetKey));
-        voice.pitchRemaining = static_cast<std::uint16_t>(event.duration);
-        if (!event.duration) voice.instrument.pitch = voice.pitchTarget;
+        voice.pitchRemaining = static_cast<std::uint16_t>(event.targetDuration ? event.targetDuration : event.duration);
+        if (!voice.pitchRemaining) voice.instrument.pitch = voice.pitchTarget;
     }
     if (track.adsr && track.envelopeRoute == 0) {
         const auto& values = *track.adsr;

@@ -7,6 +7,10 @@
 
 namespace playermodels { class VacuumVolume; }
 namespace playerinput { class ControllerState; }
+namespace particles { struct Emitter; }
+namespace modeleffects { class Owner; }
+namespace gameplaycamera { struct CameraOwner; }
+namespace jaudio { class PositionalSound; }
 
 namespace playeractor {
     struct Target {
@@ -26,7 +30,7 @@ namespace playeractor {
         std::uint8_t field790 = 0;
         std::uint16_t flags792 = 0;
         void* field794 = nullptr;
-        void* field798 = nullptr;
+        gameplaycamera::CameraOwner* camera = nullptr;
         playerrecord::Record* record = nullptr;
         playerinput::ControllerState* field7A0 = nullptr;
         actors::MoveActor* field7A4 = nullptr;
@@ -98,7 +102,9 @@ namespace playeractor {
         float field116C = 0, field1170 = 0, field1174 = 0, field1178 = 1, field117C = 0;
         std::uint32_t field1180 = 0, field1184 = 1;
         float field1188 = 0, field118C = 0;
-        std::uint32_t field1190 = 0, field1194 = 0, field1198 = 0;
+        std::uint32_t field1190 = 0;
+        jaudio::PositionalSound* slidingSound = nullptr;
+        jaudio::PositionalSound* scrapingSound = nullptr;
         std::uint8_t field119D = 1, field119E = 1;
         Target* field11A0 = nullptr;
         std::array<float, 3> field11A4{};
@@ -124,6 +130,8 @@ namespace playeractor {
         const void* pullOwner = nullptr;
         float field1360 = 0, field1364 = 0;
         std::array<std::uint8_t, 3> flags1388{};
-        std::array<std::uint32_t, 6> fields138C{};
+        std::array<particles::Emitter*, 4> burningEffects{};
+        modeleffects::Owner* iceEffect = nullptr;
+        particles::Emitter* poisonEffect = nullptr;
     };
 }

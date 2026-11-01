@@ -15,6 +15,7 @@ namespace actors {
         MoveActor& create(unsigned type, unsigned capacity);
         void resetIndex();
         void destroyActors();
+        void setInteractionPaused(bool paused);
         void updatePoses(const std::function<void()>& captureUpdate,
             const std::function<void(MoveActor&)>& animationSound);
         void updateContacts(enemies::Manager& manager, const actorcollision::Manager& collision,

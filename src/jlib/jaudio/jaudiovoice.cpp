@@ -302,6 +302,7 @@ jaudio::InstrumentVoice jaudio::VoiceBank::voice(unsigned bank, unsigned program
         if ((dword(bankData, entry) >> 24) < velocity) continue;
         result.wave = wave(dword(bankData, entry + 4));
         const auto gain = velocity / 127.0f;
+        result.baseVolume = result.volume * real(bankData, entry + 8);
         result.volume *= real(bankData, entry + 8) * gain * gain;
         result.pitch *= real(bankData, entry + 12) * (result.wave->sampleRate / 32028.5f);
         result.basePitch = result.pitch;

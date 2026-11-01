@@ -11,6 +11,8 @@ namespace playerweapons {
     struct Part {
         Part(const std::vector<std::uint8_t>& executable, int actorType, int partType);
         void reset(const std::vector<std::uint8_t>& executable, int actorType, int partType);
+        unsigned animation(unsigned action, unsigned attachedAnimation, unsigned attachedState, bool alternate) const;
+        unsigned joint(unsigned action, unsigned attachedAnimation, unsigned attachedState, bool alternate) const;
         std::array<std::uint32_t, 19> parameters;
         std::array<std::uint32_t, 165> first, second;
         std::array<std::uint32_t, 9> field574, field598, field5BC, field5E0;

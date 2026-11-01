@@ -5,7 +5,7 @@
 
 void players::Manager::bindActors(enemies::Manager& enemies, actors::Registry& actors,
     const std::array<playerrecord::Record*, 2>& playerRecords, playerinput::Pad* pad,
-    void* field798, std::int32_t& audioLife) {
+    gameplaycamera::CameraOwner* camera, std::int32_t& audioLife) {
     if (!enemies.actorsInitialized()) throw std::runtime_error("Player binding requires the original actor pool.");
     for (unsigned i = 0; i < enemies.playerCount(); ++i) {
         const auto first = enemies.createActor(6, -1);
@@ -22,7 +22,7 @@ void players::Manager::bindActors(enemies::Manager& enemies, actors::Registry& a
         if (!player) throw std::runtime_error("Original Player binding references a non-Player actor.");
         auto* owner = dynamic_cast<characterowner::Owner*>(enemies.activeOwner(*player));
         if (!owner) throw std::runtime_error("Original Player binding requires its active character owner.");
-        player->bind({static_cast<std::int32_t>(i), playerRecords.at(i), flags, playerPad, field798,
+        player->bind({static_cast<std::int32_t>(i), playerRecords.at(i), flags, playerPad, camera,
             controllers[i].get(), firstActor, secondActor, thirdActor}, *owner, audioLife);
     }
 }
