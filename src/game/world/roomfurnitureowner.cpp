@@ -150,6 +150,11 @@ void roomfurniture::Owner::refreshPose(Object& object) {
 }
 
 void roomfurniture::Owner::updateIdle(const roomtraversal::State& visibility, unsigned buffer) {
+    update(visibility, buffer, {});
+}
+
+void roomfurniture::Owner::update(const roomtraversal::State& visibility, unsigned buffer,
+    const std::function<bool(Object&, RowState&, bool)>& behavior) {
     for (auto& object : objects) {
         if (!(object.flags & 2)) continue;
         if (!object.updates) {
@@ -157,8 +162,9 @@ void roomfurniture::Owner::updateIdle(const roomtraversal::State& visibility, un
         } else {
             const bool visible = visibility.marked(object.room >> 24, buffer, buffer);
             object.flags = visible ? object.flags | 1 : object.flags & ~1u;
-            if (visible) {
-                auto& state = states.at(object.row);
+            auto& state = states.at(object.row);
+            const bool handled = behavior && behavior(object, state, visible);
+            if (!handled && visible) {
                 if ((state.flags & 0x21) || state.occupant != -1)
                     throw std::runtime_error("Furniture interaction requires its reaction and event services.");
                 if (object.behavior == 0 || object.behavior == 15 || object.behavior == 22) {

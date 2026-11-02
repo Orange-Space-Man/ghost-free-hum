@@ -68,6 +68,11 @@ float dooranimation::PoseTables::sineAngle(std::uint32_t angle) const {
     return sine[(angle >> 4) & 4095];
 }
 
+float dooranimation::PoseTables::cosineAngle(std::uint32_t angle) const {
+    if (!loaded) throw std::runtime_error("Door pose tables are not loaded.");
+    return cosine[(angle >> 4) & 4095];
+}
+
 dooranimation::Matrix dooranimation::PoseTables::local(const std::array<float, 9>& v,
     double conversionBias, double conversionScale) const {
     if (!loaded) throw std::runtime_error("Door pose tables are not loaded.");

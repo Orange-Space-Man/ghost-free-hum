@@ -4,6 +4,8 @@
 #include "game/world/roomlocation.h"
 #include "game/world/roomtraversalstate.h"
 
+#include <functional>
+
 namespace roomfurniture {
     struct RowState {
         std::uint32_t flags = 0;
@@ -20,6 +22,8 @@ namespace roomfurniture {
         std::array<std::int32_t, 3> angles{}, arguments{};
         std::uint32_t moveLevel = 0, generate = 0, sound = 0, itemTable = 0, generateCount = 0, counter = 0;
         std::int32_t itemOffset = 0;
+        std::int32_t strikeTicks = 0, suctionTicks = 0;
+        std::uint32_t collectionFlags = 0;
         float frame = 0, previousFrame = 0, frameDelta = 0;
         std::array<float, 2> swing{}, swingVelocity{};
         const doors::ModelResource* model = nullptr;
@@ -35,6 +39,8 @@ namespace roomfurniture {
         void create(const Resources& resources, const jmp::ToolData& table);
         void initializeObjects();
         void updateIdle(const roomtraversal::State& visibility, unsigned buffer);
+        void update(const roomtraversal::State& visibility, unsigned buffer,
+            const std::function<bool(Object&, RowState&, bool)>& behavior);
         void updateOpacity(float playerZ);
         void release(unsigned row);
         void releaseAll();

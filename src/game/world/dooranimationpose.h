@@ -13,6 +13,7 @@ namespace dooranimation {
         Matrix world(const std::array<float, 3>& position, const std::array<std::int32_t, 3>& angles,
             const std::array<float, 3>& scale) const;
         float sineAngle(std::uint32_t angle) const;
+        float cosineAngle(std::uint32_t angle) const;
 
     private:
         std::array<float, 4096> sine{}, cosine{};
