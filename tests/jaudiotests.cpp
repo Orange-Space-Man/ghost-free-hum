@@ -92,6 +92,30 @@ int main(int argc, char** argv) {
         for (unsigned i = 0; i < 8; ++i) tick(sequence, collect);
         check(sequence.finished(), "Timed note call did not return after its wait.");
 
+        events.clear();
+        sequence.start({60, 0x28, 100, 100, 2, 64, 0x28, 80, 100, 2, 67, 8, 60, 100, 2, 0xff});
+        tick(sequence, collect);
+        check(events.size() == 1 && events[0].type == jaudio::EventType::noteOn && events[0].duration == 0,
+            "A tied note must leave its voice open while retaining the sequence wait.");
+        tick(sequence, collect);
+        check(events.size() == 1, "A tied note must not discard its original wait duration.");
+        tick(sequence, collect);
+        check(events.size() == 2 && events[1].type == jaudio::EventType::gateOn && events[1].key == 64 &&
+            events[1].velocity == 80 && events[1].duration == 0,
+            "The next tied note updates the retained voice instead of starting another voice.");
+        tick(sequence, collect); tick(sequence, collect);
+        check(events.size() == 3 && events[2].type == jaudio::EventType::gateOn && events[2].duration > 0,
+            "The final untied note must close the existing voice with its original finite gate.");
+        tick(sequence, collect); tick(sequence, collect);
+        check(sequence.finished(), "A completed tied phrase must release its track.");
+
+        events.clear();
+        sequence.start({60, 0x30, 100, 100, 0, 2, 64, 0x10, 80, 100, 0, 2, 0xff});
+        tick(sequence, collect);
+        tick(sequence, collect); tick(sequence, collect);
+        check(events.size() == 2 && events[1].type == jaudio::EventType::gateOn && events[1].key == 64,
+            "Two-byte tied-note duration must not be confused with the slot number.");
+
         sequence.start({0x9e, 1, 0x40, 0, 4, 0x80, 1, 0x9c, 1, 0, 0, 0x80, 1, 0xff});
         tick(sequence, collect);
         check(sequence.track(0).parameters[1].value == 0.125f, "Parameter interpolation failed.");

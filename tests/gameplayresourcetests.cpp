@@ -544,6 +544,8 @@ int main(int argc, char** argv) {
                 require(gameentry::selectNewFile(saves, 0, entry, error), error);
                 if (cycle) entry.inventory[0x1a0 + 207 / 8] |= 0x80 >> (207 & 7);
                 gameplay::ResourceOwner owner(argv[1], entry);
+                require(owner.managers().enemies().playerCount() == 1,
+                    "Fresh single-player startup creates only the original player owner.");
                 const auto& residents = owner.residentRooms().slots();
                 require(residents[0].room == 2 && residents[1].room == 30,
                     "Original portal order loads the foyer and its open neighbor.");
@@ -647,6 +649,9 @@ int main(int argc, char** argv) {
                 {
                     auto& music = managers.music();
                     music.setRoom(player->room(), -1);
+                    music.notifyRoom(player->room(), entry.map);
+                    require(music.currentSound() == 0 && music.routing().room == 2,
+                        "Original foyer notification must update room identity without allocating a sequence.");
                     music.start();
                     const unsigned selectedMusicTrack = music.routing().playerHealth < 41 ? 6 : music.routing().playerHealth < 71 ? 5 : 4;
                     require(music.playback().rootPort(0) == 1 && music.routing().selectedTrack == selectedMusicTrack && music.routing().room == 2,
@@ -654,7 +659,10 @@ int main(int argc, char** argv) {
                     music.updateSequenceControls();
                     require(!music.playback().sequenceControls().track(selectedMusicTrack).muted && music.playback().sequenceControls().track(7).muted,
                         "Mansion startup selects from the manager's shared audio health value.");
+                    music.notifyRoom(0x13, 0);
                     music.setCutsceneActive(true);
+                    require(music.routing().room == 0x13,
+                        "Refreshing sound-polygon context must not overwrite the separately notified room ID.");
                     music.updateSequenceControls();
                     for (unsigned track = 4; track < 8; ++track)
                         require(music.playback().sequenceControls().track(track).muted,
@@ -663,6 +671,7 @@ int main(int argc, char** argv) {
                     music.updateSequenceControls();
                     require(!music.playback().sequenceControls().track(selectedMusicTrack).muted,
                         "Owned key-cutscene release restores the original selected track.");
+                    music.notifyRoom(player->room(), 0);
                     jaudio::DspMixer mixer;
                     std::array<std::int16_t, 160> samples{};
                     std::string musicError;
@@ -672,6 +681,16 @@ int main(int argc, char** argv) {
                         mixer.end(samples, music.playback().outputLevel());
                     }
                     require(music.playback().notes() > 0, "Owned mansion sequence executes original notes.");
+                    const auto notesBeforeNotification = music.playback().notes();
+                    const auto sectionBeforeNotification = music.playback().rootPort(1);
+                    music.notifyRoom(player->room(), entry.map);
+                    require(music.currentSound() == gameplaymusic::mansionSequence &&
+                        music.playback().notes() == notesBeforeNotification && music.playback().rootPort(1) == sectionBeforeNotification,
+                        "Repeated foyer notifications must refresh music layers without restarting sequence execution.");
+                    require(music.playback().sequenceControls().track(8).volume.target == 1 &&
+                        music.playback().sequenceControls().track(10).volume.target == 1 &&
+                        music.playback().sequenceControls().track(9).volume.target == 0,
+                        "Foyer notification must reach the real sequence's original room-layer targets.");
                     const unsigned section = music.playback().rootPort(1);
                     music.retainSection();
                     music.stop();
@@ -886,18 +905,37 @@ int main(int argc, char** argv) {
                         "Airborne turning retains the original flattened direction target.");
                     player->state.quaternion = {0, 0, 0, 1};
                     player->components->quaternion->quaternion = player->state.quaternion;
-                    player->components->quaternion->field10 = 0.0f;
+                    player->components->quaternion->field10.reset();
                     frame.run(*player, signals);
-                    require(player->state.field1070 == 0 && player->rotation == player->previousRotation,
+                    require(player->state.field1070 == 0 && player->rotation == player->previousRotation &&
+                        player->components->quaternion->field10 == 0,
                         "Completed direction locks restore ordinary orientation and publish matching previous rotation.");
 
                     playercomponents::QuaternionState turn({0, 0, 0, 1});
                     playerorientation::Quaternion output{0, 0, 0, 1};
                     input = {};
+                    input.mode = 1;
                     bool unresolved = false;
                     try { playerorientation::update(turn, output, output, input, pose); }
                     catch (const std::runtime_error&) { unresolved = true; }
                     require(unresolved, "An originally unwritten angular-velocity slot must not acquire an invented native default.");
+                    for (const unsigned mode : {0u, 4u, 5u, 6u, 7u}) {
+                        playerorientation::Input lock;
+                        lock.mode = mode;
+                        lock.blend = 1;
+                        lock.damping = 0.5f;
+                        lock.target = {0, 1, 0, 0};
+                        lock.targetPosition = {10, 0, 0};
+                        lock.targetDirection = {0, 0, -1};
+                        playercomponents::QuaternionState unknown({0, 0, 0, 1}), known({0, 0, 0, 1});
+                        known.field10 = 12345.0f;
+                        playerorientation::Quaternion unknownOutput{0, 0, 0, 1}, knownOutput = unknownOutput;
+                        const auto unknownAlignment = playerorientation::update(unknown, unknownOutput, unknownOutput, lock, pose);
+                        const auto knownAlignment = playerorientation::update(known, knownOutput, knownOutput, lock, pose);
+                        require(unknownOutput == knownOutput && unknownAlignment == knownAlignment &&
+                            unknown.field10 == 0 && known.field10 == 0,
+                            "Direction-lock modes discard old angular velocity without affecting orientation or alignment.");
+                    }
                     turn.field10 = 0.0f;
                     input.mode = 1;
                     input.enabled = true;
@@ -1100,6 +1138,18 @@ int main(int argc, char** argv) {
                 }
                 if (!cycle) checkScannerInteraction(owner);
                 furniture.releaseAll();
+                const auto poseFrame = player->animationFrame;
+                const auto poseMatrix = player->model->matrix(0, 7);
+                bool clockAdvanced = false, jointChanged = false;
+                for (unsigned frame = 0; frame < 30; ++frame) {
+                    managers.updatePoses();
+                    clockAdvanced |= player->animationFrame != poseFrame;
+                    jointChanged |= player->model->matrix(0, 7) != poseMatrix;
+                    for (const auto value : player->model->matrix(0, 7))
+                        require(std::isfinite(value), "Production pose scheduling retains finite player joint transforms.");
+                }
+                require(clockAdvanced && jointChanged,
+                    "Production manager pose scheduling advances the player clock and rendered joint transforms.");
                 for (const auto& object : furniture.slots()) require(!(object.flags & 2), "Furniture release returns every pool slot.");
                 require(bool(furniture.rowState(207).flags & 8) == bool(cycle) && furniture.rowState(270).height == 2,
                     "Releasing resident objects preserves persistent furniture row state.");

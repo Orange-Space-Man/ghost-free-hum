@@ -208,6 +208,29 @@ void checkScannerInteraction(gameplay::ResourceOwner& owner) {
     require(cache.targets().size() == 8 && cache.row(0) == 99 && cache.row(7) == 296,
         "Foyer scanner retains mission order including model-less furniture.");
     require(!cache.refresh(2, {}), "Unchanged room retains the original scan cache.");
+    require(cache.contacts().size() == cache.targets().size(), "Furniture interaction retains one contact bound per selected row.");
+    bool contactFound = false;
+    for (unsigned i = 0; i < cache.contacts().size(); ++i) {
+        const auto& bounds = cache.contacts()[i];
+        require(bounds.minimumY <= bounds.center[1] && bounds.maximumY >= bounds.center[1],
+            "Rotated furniture contact bounds must include the retained center.");
+        auto position = bounds.center;
+        position[1] = bounds.minimumY;
+        position[2] -= 10;
+        const playerscanner::FurnitureInput input{position, {0, 0, 1}, 40, 120, 84, 200, false};
+        const auto hit = cache.press(input, {}, [] { return 0u; });
+        if (hit.target < 0) continue;
+        contactFound = true;
+        require(hit.reaction >= 1 && hit.reaction <= 5 && !hit.invert,
+            "Furniture button contact must select an original action reaction.");
+        float length = 0;
+        for (float value : hit.direction) length += value * value;
+        require(std::abs(length - 1) < 0.001f, "Furniture contact publishes a normalized facing direction.");
+    }
+    require(contactFound, "Actual foyer furniture must be reachable by the original interaction query.");
+    const playerscanner::FurnitureInput distant{{100000, 100000, 100000}, {0, 0, 1}, 40, 120, 84, 200, false};
+    require(cache.press(distant, {}, {}).target == -1 && cache.automatic(distant).target == -1,
+        "Out-of-room player positions must not activate furniture or inversion volumes.");
     bool foundMirror = false, foundHit = false;
     for (unsigned i = 0; i < cache.targets().size(); ++i) {
         if (cache.row(i) == 208) {

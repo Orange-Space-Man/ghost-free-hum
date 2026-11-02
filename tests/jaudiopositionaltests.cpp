@@ -153,6 +153,38 @@ int main(int argc, char** argv) {
             check(sourceQueries == 12, "Each admitted sound queries its source context.");
             check(floorQueries == 6, "The player categories request original floor context while door and weapon effects use room context alone.");
             {
+                const auto queries = sourceQueries;
+                playback.setPlayerContext(0x00010000);
+                jaudio::PositionalSound* global = nullptr;
+                playback.playGlobal(0x801, &global);
+                check(global && !global->position && !global->ownerPosition && sourceQueries == queries,
+                    "Global player sounds use retained player context without querying a nonexistent source position.");
+                admit();
+                owners.release(&position);
+                check(global != nullptr, "Releasing an actor must not release global player sounds.");
+                playback.stop();
+                check(!global, "Global sound teardown must clear the caller's retained handle.");
+            }
+            for (unsigned id : {0x828u, 0x3bu, 0x43u, 0x801u, 2u, 0x805u, 9u, 0x288au, 0x1028u,
+                0x837u, 0x84cu, 0x813u, 0x2814u, 0x2805u, 0x281cu}) {
+                std::cout << "Checking player-frame sound " << std::hex << id << std::dec << '\n';
+                jaudio::PositionalSound* binding = nullptr;
+                check(playback.play(id, position, &binding) != nullptr, "Player-frame sound must acquire an original handle.");
+                if (id == 0x828) playback.setPort(*binding, 8, 1);
+                bool audible = false;
+                for (unsigned block = 0; block < 4000 && !playback.finished(); ++block) {
+                    if (block % 8 == 0) playback.update(listener);
+                    mixer.begin();
+                    check(playback.mix(mixer, error), error);
+                    std::array<std::int16_t, 160> samples{};
+                    mixer.end(samples, level.outputLevel());
+                    audible |= std::any_of(samples.begin(), samples.end(), [](auto sample) { return sample != 0; });
+                }
+                check(audible, "Player-frame sound must render its original wave-bank samples.");
+                playback.stop();
+                check(!binding, "Player-frame audio release must clear retained handles.");
+            }
+            {
                 std::array<jaudio::PositionalSound*, 5> requests{};
                 playback.play(0x839, position, &requests[0]);
                 playback.play(0x1809, position, &requests[1]);

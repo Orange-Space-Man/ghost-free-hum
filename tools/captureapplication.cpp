@@ -151,6 +151,8 @@ int CaptureApplication::run(HINSTANCE instance) {
                 if (!gameplayActive || menuActive || saves.working != initialSave)
                     throw std::runtime_error("New-game destination or save preservation failed.");
                 const auto initialUpdates = gameplayScene->updates();
+                draw(false);
+                gamerenderer::capture(capturePath.wstring() + L".foyer-start.png");
                 for (unsigned frame = 0; frame < 240; ++frame) advance(true);
                 if (gameplayScene->updates() != initialUpdates + 120)
                     throw std::runtime_error("Gameplay simulation did not preserve its 30 Hz clock.");

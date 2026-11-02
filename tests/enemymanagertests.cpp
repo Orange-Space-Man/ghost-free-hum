@@ -2269,6 +2269,7 @@ int main(int argc, char** argv) {
                             gameplay::ManagerDependencies dependencies{dol, package, serviceAudio, common, serviceMap, ownerMission,
                                 defaults, construction, collisionCatalog, types, creation, strategies, *cameras.cameras[0],
                                 roomFlags, visibility, entry, serviceFlags, motors, servicePad, {&entry.player, &secondRecord}, serviceRandom, serviceLife};
+                            dependencies.playerCount = 2;
                             for (unsigned load = 0; load < 2; ++load) {
                                 {
                                     gameplay::ManagerServices services(dependencies);

@@ -1,4 +1,5 @@
 #include "game/audio/gameplaymusicrouting.h"
+#include "game/audio/gameplayroomaudio.h"
 #include "game/startup/keypresentationstate.h"
 
 #include <array>
@@ -28,10 +29,59 @@ namespace {
             ++writes;
         }
     };
+
+    void checkRoomTransitions() {
+        gameplaymusic::RoomAudio rooms;
+        unsigned primary = 0, auxiliary = 0, next = 0;
+        std::string calls;
+        const gameplaymusic::RoomServices services{
+            [&] { return primary; }, [&] { return auxiliary; },
+            [&] { calls += 'r'; primary = gameplaymusic::mansionSequence; },
+            [&] { calls += 's'; auxiliary = 0; },
+            [&](unsigned room) { require(room == next, "Special-room request lost its original destination."); calls += 'e'; },
+            [&](unsigned value) { calls += value == 0x7f ? 'u' : value == 0x50 ? 'l' : '?'; },
+            [&](unsigned room) {
+                require(room == next && rooms.room() == next, "Room ID must be published before layer updates.");
+                calls += 'v';
+            }};
+        const auto run = [&](unsigned previous, unsigned target, unsigned mainSound, unsigned extraSound,
+            bool variant, const char* expected) {
+            next = previous;
+            rooms.enter(previous, 0, false, services);
+            calls.clear();
+            primary = mainSound;
+            auxiliary = extraSound;
+            next = target;
+            rooms.enter(0xabcd0000 | target, 2, variant, services);
+            require(calls == expected, "Original room audio transition order changed.");
+        };
+        for (unsigned room : {2u, 0x1au, 0x1eu, 0x23u, 0x28u}) run(0, room, 0, 0, false, "v");
+        run(2, 2, 0, 0, false, "v");
+        run(0x29, 2, 0, 1, false, "rsv");
+        run(0x18, 2, 0, 1, false, "srv");
+        run(0x15, 2, 0, 0, false, "rv");
+        run(0x46, 2, 0x80000034, 0, false, "v");
+        run(0x29, 2, gameplaymusic::mansionSequence, 1, false, "sv");
+        run(0x39, 2, 0, 0, false, "uv");
+        run(2, 0x39, 0, 0, false, "lv");
+        run(0, 3, 0, 1, false, "rsv");
+        run(0, 3, gameplaymusic::mansionSequence, 0x8000004e, false, "v");
+        run(0x18, 3, 0, 1, false, "srv");
+        for (unsigned room : {10u, 0x15u, 0x18u}) {
+            run(0, room, 0, 0, false, "ev");
+            run(0, room, 0, 0, true, "v");
+        }
+        run(0, 0x46, 0, 0, true, "ev");
+        calls.clear();
+        next = 3;
+        rooms.enter(3, 1, false, services);
+        require(calls == "v", "Other map modes still publish the room and refresh layers without mansion transitions.");
+    }
 }
 
 int main() {
     try {
+        checkRoomTransitions();
         gameplaymusic::State routing;
         Music music;
         for (unsigned level : {0u, 40u, 41u, 70u, 71u, 100u}) {
