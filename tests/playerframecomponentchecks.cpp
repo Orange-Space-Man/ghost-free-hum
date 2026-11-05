@@ -6,6 +6,10 @@
 #include "game/world/dooranimationpose.h"
 #include "../recovered/playerfurnitureframe.h"
 #include "../recovered/roomfurnitureresponse.h"
+#include "../recovered/playerenergyframe.h"
+#include "game/player/playerlightframe.h"
+#include "game/player/playerlightcontacts.h"
+#include "../recovered/playerlatestate.h"
 
 #include <cmath>
 #include <stdexcept>
@@ -26,6 +30,291 @@ void checkPlayerFrameComponents(const std::filesystem::path& package, const game
     auto& state = player.state;
     auto& actions = *player.components->actions;
     const auto services = managers.preparePlayerDoor(0);
+    {
+        const playeractor::LateState late(resources.executable());
+        const auto retained = state;
+        const auto retainedCamera = *state.camera;
+        const auto playerFlags = player.flags, firstFlags = state.field7A4->flags, secondFlags = state.field7A8->flags;
+        const auto materialFlags = player.surface().materials.at(1).flags;
+        unsigned cancelled = 0;
+        playeractor::LateStateServices lateServices{false,
+            [&](auto& owner, bool enabled) {
+                require(&owner == &player && !enabled, "Late scanner cancellation must address its player owner.");
+                owner.state.flags1140[2] = 0;
+                ++cancelled;
+            }};
+        state.flags792 = 4;
+        state.flags1330[2] = 0;
+        state.flags1140[2] = 0;
+        state.flags134C[0] = 0;
+        player.flags &= ~0xc000u;
+        state.camera->position = player.position;
+        state.camera->target = player.position;
+        state.camera->target[2] += 1;
+        late.begin(player, lateServices);
+        require(state.fieldF80 == std::array<float, 3>{0, 0, 1} && state.fieldF8C == 0 && (player.surface().materials.at(1).flags & 2) &&
+            !(state.field7A4->flags & 0xc000) && (state.field7A8->flags & 0xc000) == 0xc000,
+            "Late camera state and first-visit visibility must retain the held light and conceal the vacuum.");
+        lateServices.hidePlayers = true;
+        state.flags792 = 8;
+        late.begin(player, lateServices);
+        require((player.flags & 0x102) == 0x102 && (state.field7A4->flags & 0x102) == 0x102 && !(player.surface().materials.at(1).flags & 2) &&
+            !(state.field7A8->flags & 0xc000), "Global player concealment must retain independent equipment ownership flags.");
+        player.flags |= 0xc000;
+        late.begin(player, lateServices);
+        require((state.field7A4->flags & 0xc000) == 0xc000 && (state.field7A8->flags & 0xc000) == 0xc000,
+            "Inactive player flags must conceal every held actor even when equipment is owned.");
+        state.flags1140[2] = 1;
+        state.field117C = 0;
+        state.field1058 = 0;
+        state.camera->flags = 9;
+        late.begin(player, lateServices);
+        require(cancelled == 0, "Camera flag eight must override scanner cancellation from flag one.");
+        state.camera->flags = 1;
+        late.begin(player, lateServices);
+        require(cancelled == 1 && !state.flags1140[2], "Late camera restrictions must cancel the active scanner exactly once.");
+        auto& scanner = *player.components->scanner;
+        const auto retainedScannerState = scanner.state;
+        const auto retainedFrame = scanner.field4, retainedDelay = scanner.field10;
+        const auto retainedScannerMatrix = scanner.scanner->matrix, retainedWarpMatrix = scanner.warp->matrix;
+        const auto retainedScannerScale = scanner.scanner->scale, retainedWarpScale = scanner.warp->scale;
+        scanner.state = {1, 0, 1};
+        scanner.field4 = 123;
+        scanner.field10 = 4;
+        late.scanner(scanner, *managers.players().models);
+        require(managers.players().models->animation(4)->frame == managers.players().models->animation(4)->frameCount - 4 &&
+            managers.players().models->animation(5)->frame == 123 && managers.players().models->animation(8)->frame == 123,
+            "Scanner reverse texture timing and warp transform/color timing must retain their separate clocks.");
+        require(scanner.scanner->matrix != retainedScannerMatrix && scanner.warp->matrix != retainedWarpMatrix,
+            "Active scanner and warp models must update from their retained camera owner.");
+        const auto stoppedMatrix = scanner.scanner->matrix;
+        scanner.state = {};
+        state.camera->position[0] += 500;
+        late.scanner(scanner, *managers.players().models);
+        require(scanner.scanner->matrix == stoppedMatrix, "Inactive scanner models must retain their last transforms.");
+        scanner.state = retainedScannerState;
+        scanner.field4 = retainedFrame;
+        scanner.field10 = retainedDelay;
+        scanner.scanner->matrix = retainedScannerMatrix;
+        scanner.warp->matrix = retainedWarpMatrix;
+        scanner.scanner->scale = retainedScannerScale;
+        scanner.warp->scale = retainedWarpScale;
+        state = retained;
+        *state.camera = retainedCamera;
+        player.flags = playerFlags;
+        state.field7A4->flags = firstFlags;
+        state.field7A8->flags = secondFlags;
+        player.setMaterialFlags(1, 255, false);
+        player.setMaterialFlags(1, materialFlags, true);
+    }
+    {
+        const playeractor::LightFrame frame(resources.executable());
+        const actormodel::InitialPose pose(resources.executable());
+        auto& light = *player.components->light;
+        auto& pulse = *managers.players().state;
+        roomlighting::Pool lights;
+        std::vector<unsigned> sounds;
+        unsigned illuminated = 0;
+        const playeractor::LightServices lightServices{lights, *managers.players().models, pulse,
+            [&](unsigned sound, const auto& position) {
+                require(position == player.position, "Flashlight switching sound must use the player position.");
+                sounds.push_back(sound);
+            },
+            [&](auto& source, const auto& beam) {
+                require(&source == &player && beam.owner == &player && beam.state == 1,
+                    "Illumination must retain the player owner before dispatching contacts.");
+                ++illuminated;
+            }};
+        gameplaycamera::CameraOwner camera;
+        camera.position = {10, 20, 30};
+        camera.target = {10, 20, 40};
+        playeractor::LightInput input{true, false, true, false, {4, 5, 6}, {0, 0, 1},
+            70, 1000, 1, 0x12345678, 123, camera};
+        frame.run(player, input, lightServices, pose);
+        require(sounds == std::vector<unsigned>{0x837} && illuminated == 1 && light.field50 == 1000000 &&
+            light.field18 == input.position && light.field30 == input.direction && lights.count() == 1,
+            "Enabling the flashlight must initialize its cone, room light, illumination and switch sound.");
+        require(lights.entry(0).priority == 8 && lights.entry(0).light.color == std::array<std::uint8_t, 4>{0x12, 0x34, 0x56, 0x78} &&
+            lights.entry(0).light.cutoff == 35 && lights.entry(0).light.referenceDistance == 1000,
+            "Flashlight room lighting must retain original priority, packed color and half-angle.");
+        const auto& animation = *managers.players().models->animation(2);
+        require(animation.frame == float(123 % static_cast<std::uint16_t>(animation.frameCount)),
+            "Cone texture animation must wrap on the supplied original frame clock.");
+        for (unsigned row = 0; row < 3; ++row)
+            require(light.instance->matrix[row * 4 + 3] == input.position[row],
+                "Cone model translation must follow the actual flashlight endpoint.");
+        const playeractor::LightContacts contacts(resources.executable(), services.catalog);
+        require(contacts.contains(light, {4, 5, 506}, 0, nullptr) &&
+            !contacts.contains(light, {4, 5, 1006}, 0, nullptr) &&
+            !contacts.contains(light, {4, 5, -494}, 0, nullptr),
+            "Flashlight contacts must reject the exact range boundary and points behind the beam.");
+        require(!contacts.contains(light, {404, 5, 506}, 0, nullptr) &&
+            contacts.contains(light, {404, 5, 506}, 100, nullptr) &&
+            contacts.contains(light, {4, 5, -44}, 100, nullptr),
+            "Collision radius must widen the beam and retain the original close-sphere exception.");
+        camera.matrix = {0.001f, 0, 0, 0, 0, 0.001f, 0, 0, 0, 0, -0.001f, 0, 0, 0, 0, 1};
+        require(contacts.contains(light, {4, 5, 506}, 0, &camera),
+            "Original camera clip projection must admit a front-facing light contact.");
+        camera.matrix[15] = 0;
+        require(!contacts.contains(light, {4, 5, 506}, 0, &camera),
+            "Zero homogeneous camera coordinate must reject a light contact.");
+        lights.beginFrame();
+        input.direction = {0, -0.6f, 0.8f};
+        frame.run(player, input, lightServices, pose);
+        require(light.field18[1] > input.position[1] && light.field30[1] < 0 && sounds.size() == 1,
+            "Downward flashlight correction must raise the light origin without repeating its switch sound.");
+        const auto& direction = light.field30;
+        require(std::abs(direction[0] * direction[0] + direction[1] * direction[1] + direction[2] * direction[2] - 1) < 0.00001f,
+            "Corrected flashlight direction must remain normalized.");
+        lights.beginFrame();
+        input.scanner = true;
+        input.charged = true;
+        frame.run(player, input, lightServices, pose);
+        require(illuminated == 2 && light.field18 == camera.position && light.field30 == std::array<float, 3>{0, 0, 1} &&
+            pulse.position == input.position && pulse.color == 0xff1f1fff && pulse.distance == 500 &&
+            pulse.brightness == 0x5c && pulse.remaining == 10 && pulse.duration == 10,
+            "Scanner lighting must use camera aim, suppress illumination and retain the original charged pulse.");
+        for (unsigned tick = 0; tick < 10; ++tick) {
+            lights.beginFrame();
+            pulse.update(lights);
+            require(lights.count() == 2 && lights.entry(1).priority == 1 &&
+                lights.entry(1).light.referenceDistance == 500 - tick * 50 &&
+                lights.entry(1).light.position == input.position && lights.entry(1).light.cutoff == 0 &&
+                lights.entry(1).light.color == std::array<std::uint8_t, 4>{255, 31, 31, 255},
+                "Owned charged pulse must shrink its radius at priority one before decrementing its lifetime.");
+        }
+        lights.beginFrame();
+        pulse.update(lights);
+        require(pulse.remaining == 0 && lights.count() == 1,
+            "Expired shared pulse must stop submitting lights while retaining its stored parameters.");
+        pulse.start({9, 8, 7}, 0x12345678, 1, 99, 10);
+        pulse.remaining = 0.5f;
+        pulse.update(lights);
+        require(pulse.remaining == -0.5f && lights.count() == 1,
+            "Sub-unit pulse radius must skip lighting without clamping the original lifetime undershoot.");
+        pulse.start(input.position, 0, 0, 0, 0);
+        const auto matrix = light.instance->matrix;
+        input.enabled = false;
+        frame.run(player, input, lightServices, pose);
+        frame.run(player, input, lightServices, pose);
+        require(sounds == std::vector<unsigned>{0x837, 0x84c} && !light.state && light.instance->matrix == matrix,
+            "Disabling the flashlight must play one switch sound and preserve its inactive model state.");
+        const auto retained = state;
+        const auto retainedActions = actions;
+        const auto retainedAttached = player.components->attached->field2C0;
+        const playeractor::FinishFrame finish(resources.executable(), pose);
+        state.field1180 = 5;
+        state.flags1330.fill(0);
+        state.flags1040.fill(0);
+        state.field1058 = 0;
+        state.flags792 = 4;
+        state.field119E = 1;
+        actions.field30D = 1;
+        actions.field310 = 1;
+        actions.fields31C[4] = 0;
+        player.components->attached->field2C0 = 0;
+        auto& part = *player.components->weapon->first;
+        const auto retainedPosition = part.position, retainedDirection = part.field610;
+        part.position = {4, 5, 6};
+        part.field610 = {0, 0, 1};
+        const auto checkGating = [&](bool cleared, bool expected) {
+            lights.beginFrame();
+            frame.update(player, cleared, 0, finish, lightServices, pose);
+            require((light.state != 0) == expected, "Late flashlight admission must follow the original player state guards.");
+        };
+        checkGating(false, true);
+        checkGating(true, false);
+        for (auto* flag : {&state.flags1330[3], &state.flags1040[2], &state.field1058, &state.flags1330[2]}) {
+            *flag = 1;
+            checkGating(false, false);
+            *flag = 0;
+        }
+        state.field119E = 0;
+        checkGating(false, false);
+        state.field119E = 1;
+        state.flags792 = 0;
+        checkGating(false, false);
+        state.flags792 = 4;
+        player.components->attached->field2C0 = 1;
+        checkGating(false, false);
+        player.components->attached->field2C0 = 0;
+        actions.field30D = 0;
+        checkGating(false, false);
+        actions.field30D = 1;
+        state.field1180 = 0;
+        checkGating(false, false);
+        state = retained;
+        actions = retainedActions;
+        player.components->attached->field2C0 = retainedAttached;
+        part.position = retainedPosition;
+        part.field610 = retainedDirection;
+    }
+    {
+        const auto retained = state;
+        const auto controlFlag = player.components->controls->flags24[1];
+        auto& vacuum = *player.components->vacuum;
+        const auto vacuumStrength = vacuum.field4;
+        const auto vacuumFlags = vacuum.fields8;
+        const playeractor::EnergyFrame energy(resources.executable());
+        state.entryCount = 0;
+        state.field1004 = 12;
+        state.field1008 = 0.5f;
+        vacuum.field4 = 123;
+        vacuum.fields8 = {1, 2, 3};
+        energy.run(player, services.catalog, false);
+        const auto limit = state.field1004;
+        require(limit == 300 && state.field1008 == -0.5f && vacuum.field4 != 123 &&
+            vacuum.fields8 == std::array<std::uint8_t, 3>{0, 2, 3},
+            "Unequipped update must reset only its own vacuum flags and retain the original delay undershoot.");
+        player.components->controls->flags24[1] = 1;
+        state.field1004 = -50;
+        energy.run(player, services.catalog, false);
+        require(state.field1004 == limit && state.field1008 == -0.5f,
+            "Original unconditional capacity assignment must overwrite recharge instead of introducing gradual recovery.");
+        unsigned cheap = 381, costly = 381;
+        for (unsigned type = 0; type < 381; ++type) {
+            if (services.catalog.type(type).field14 < 2) cheap = type;
+            else costly = type;
+        }
+        require(cheap < 381 && costly < 381, "Original actor catalog must provide both energy categories.");
+        state.entries[0] = cheap;
+        state.entries[1] = costly;
+        state.entryCount = 2;
+        vacuum.field4 = 77;
+        vacuum.fields8[0] = 1;
+        state.field1008 = 10;
+        energy.run(player, services.catalog, true);
+        require(state.field1004 == 270 && state.field1008 == 10 && vacuum.field4 == 77 && vacuum.fields8[0] == 1,
+            "Successful vacuum update must preserve its active state while applying original category costs.");
+        state.entries.fill(costly);
+        state.entryCount = 11;
+        energy.run(player, services.catalog, false);
+        require(state.field1004 == 0, "Repeated costly entries must retain their individual costs and clamp only after the loop.");
+        state.fields11B0.fill(9);
+        state.field11D4 = 7;
+        state.field11D0 = 23;
+        state.field11CC = 19;
+        std::uint8_t previous = 0;
+        auto& captures = *managers.players().entries;
+        require(!energy.beginCaptureReaction(player, captures, previous) && previous == 7 &&
+            state.fields11B0 == std::array<std::uint32_t, 7>{} && state.field11D4 == 0 && state.field11D0 == 0 && state.field11CC == 19,
+            "Absent capture ownership must clear only the original reaction preamble fields.");
+        auto& capture = *captures.entries[0];
+        const auto captureState = capture.state;
+        auto* source = capture.source;
+        capture.state = 1;
+        capture.source = &player;
+        state.field11D0 = 23;
+        state.field11D4 = 4;
+        require(energy.beginCaptureReaction(player, captures, previous) && previous == 4 && state.field11D0 == 23,
+            "Active capture ownership must preserve the reaction value for the original active branch.");
+        capture.state = captureState;
+        capture.source = source;
+        state = retained;
+        player.components->controls->flags24[1] = controlFlag;
+        vacuum.field4 = vacuumStrength;
+        vacuum.fields8 = vacuumFlags;
+    }
     const actormodel::InitialPose pose(resources.executable());
     require(state.camera && state.camera->position == resources.camera().position,
         "The registered player must retain the actual scene camera owner.");

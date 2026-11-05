@@ -52,6 +52,11 @@ int main() {
         std::string error;
         require(model.read(data, error), error.c_str());
         require(model.batches.size() == 1 && model.batches[0].vertices.size() == 3, "Triangle display list.");
+        auto hidden = data;
+        hidden[212] = 3;
+        s3dmodel::Model concealed;
+        require(concealed.read(hidden, error) && concealed.materials.at(0).flags == 3 && concealed.materials.at(0).secondaryColor &&
+            concealed.batches.size() == 1, "Hidden S3D materials must retain geometry, original flags and secondary lighting.");
         std::vector<float> table(5120);
         for (unsigned i = 0; i < table.size(); ++i) table[i] = std::sin(i * 6.283185307179586f / 4096);
         std::vector<s3danimation::Pose> pose(2);

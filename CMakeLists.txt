@@ -169,7 +169,8 @@ add_executable(gameplayresourcetests tests/gameplayresourcetests.cpp tests/playe
 target_link_libraries(gameplayresourcetests PRIVATE WindowsRuntime)
 add_executable(playerlocomotiontests tests/playerlocomotiontests.cpp tests/playerfinishbindingtests.cpp tests/playerframecomponentchecks.cpp
     recovered/playerfurnitureframe.cpp recovered/playerfurniturescancache.cpp recovered/playerscannerinteraction.cpp
-    recovered/roomfurnitureresponse.cpp)
+    recovered/roomfurnitureresponse.cpp recovered/playerenergyframe.cpp
+    recovered/playerlatestate.cpp)
 target_link_libraries(playerlocomotiontests PRIVATE WindowsRuntime)
 add_executable(interactionpausetests tests/interactionpausetests.cpp)
 target_link_libraries(interactionpausetests PRIVATE WindowsRuntime)

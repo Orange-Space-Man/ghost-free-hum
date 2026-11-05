@@ -12,6 +12,15 @@
 #include "game/player/playeraudioframe.h"
 #include "game/player/playerbreathframe.h"
 #include "game/actors/actortimingsampler.h"
+#include "../recovered/playerenergyframe.h"
+#include "../recovered/playerlatestate.h"
+#include "game/player/playercaptureframe.h"
+#include "game/player/playercontrolframe.h"
+#include "game/player/playertimerframe.h"
+#include "game/player/playerreactionframe.h"
+#include "game/player/playercontactreactions.h"
+#include "game/player/playerreactioneffects.h"
+#include "game/player/playerheadtracking.h"
 
 #include <cmath>
 #include <fstream>
@@ -168,6 +177,7 @@ namespace {
         require(player != nullptr, "Locomotion requires the manager-owned player.");
         require(managers.enemies().playerCount() == 1, "Normal startup must not create a second collidable Luigi.");
         require((player->state.flags792 & 12) == 4, "The first visit must retain flashlight ownership without the Poltergust.");
+        owner.publishCamera();
         const auto services = managers.preparePlayerDoor(0);
         const auto firstVisitIdleAnimation = player->components->actions->entries.at(flashlightIdleAction);
         const actormodel::InitialPose pose(owner.executable());
@@ -176,6 +186,22 @@ namespace {
         const playermotion::VelocityFrame velocity(owner.executable(), pose);
         const playerenvironment::Frame environment(owner.executable());
         const playeractor::EquipmentFrame equipment(owner.executable());
+        const playeractor::EnergyFrame energy(owner.executable());
+        const playeractor::CaptureFrame capture(owner.executable());
+        const playercontrols::Frame controls(owner.executable());
+        const playeractor::TimerFrame timers(owner.executable());
+        const playeractions::ContactFrame contact(owner.executable());
+        const playercomponents::HeadFrame head(owner.executable());
+        const playeractor::LateState lateState(owner.executable());
+        unsigned lightFrames = 0;
+        std::uint8_t specialActive = 0;
+        std::int32_t audioLife = player->life;
+        playerevents::LifeEnvironment life{audioLife, managers.particles().effects(),
+            [&](unsigned id, const auto& position) { managers.playback()->play(id, position); },
+            [](const auto&) { throw std::runtime_error("Locomotion fixture unexpectedly requested death playback."); },
+            [](const auto&, const auto&, auto, auto, auto, auto) {
+                throw std::runtime_error("First-visit locomotion unexpectedly requested money scattering.");
+            }};
         playeractor::AudioFrame audio(owner.executable());
         const playeractor::BreathFrame breath(owner.executable());
         unsigned footstepTicks = 0;
@@ -202,6 +228,7 @@ namespace {
         auto origin = player->position;
         const auto spawn = origin;
         unsigned grounded = 0, movingAnimations = 0, wallContacts = 0;
+        bool returnedToIdle = false;
         std::array<float, 3> releasedPosition{}, wallPosition{};
         for (unsigned frame = 0; frame < 300; ++frame) {
             if (frame == idleFrames) {
@@ -218,10 +245,30 @@ namespace {
             }
             managers.sampleInput(pad, 0);
             environment.run(*player, environmentServices);
+            capture.run(*player, managers.playerEvents(), managers.particles().effects());
             if (frame == 0) require(player->state.field10E0 >= 0,
                 "Before contact integration, the original forward probe must resolve the imported foyer floor.");
             managers.updatePlayerInput(0, true, {});
             equipment.run(*player, actionServices.positionalSound);
+            require(player->state.field1180 != 1, "First-visit scheduler must not enter the active vacuum branch.");
+            energy.run(*player, services.catalog, false);
+            std::uint8_t previousReaction;
+            require(!energy.beginCaptureReaction(*player, *managers.players().entries, previousReaction),
+                "First-visit scheduler must follow the actual manager's absent-capture branch.");
+            timers.run(*player, {life, false, frame,
+                [](bool) { throw std::runtime_error("First-visit locomotion unexpectedly requested an audio-rate change."); },
+                [](auto&, const auto&, unsigned) { throw std::runtime_error("Locomotion unexpectedly reached deferred attack damage."); },
+                [](auto&, unsigned, unsigned, unsigned, unsigned) { throw std::runtime_error("Locomotion unexpectedly requested a weapon pulse."); },
+                [](unsigned, const auto&) { throw std::runtime_error("Locomotion unexpectedly requested an attack matrix effect."); }});
+            controls.charge(*player, life);
+            controls.attack(*player);
+            controls.blink(*player, frame);
+            controls.special(*player, frame, false, specialActive, life);
+            playeractions::updateState(*player, life);
+            contact.run(*player, managers.collision(), *player->state.camera, life, false,
+                [&](unsigned type, const auto& position, const auto& direction) {
+                    managers.particles().effects().create(type, position, direction);
+                });
             actions.run(*player, managers.collision(), actionServices);
             const auto attachment = attached.run(*player, services.catalog, services.models, pose);
             auto& weapon = *player->components->weapon;
@@ -232,6 +279,8 @@ namespace {
             velocity.run(*player, managers.collision(), {}, actionServices.positionalSound);
             velocity.constrain(*player);
             managers.updatePlayerOrientation(0, attachment, frame);
+            playeractor::updateReactionEffects(*player, services.catalog, services.models,
+                managers.particles().effects(), managers.modelEffects().factory, life.sound);
             if (frame == 0) require(player->components->quaternion->field10 == 0,
                 "The initial direction lock must clear retained turning speed through the original update.");
             finish.run(*player, finishServices);
@@ -239,6 +288,13 @@ namespace {
                 "The completed player frame must publish the current room and direction to its manager view.");
             managers.updateContacts();
             managers.updatePoses();
+            lateState.begin(*player, {false,
+                [](auto&, bool) { throw std::runtime_error("First-visit late frame unexpectedly requested scanner cancellation."); }});
+            require((player->surface().materials.at(1).flags & 2) && !(player->state.field7A4->flags & 0xc000) &&
+                (player->state.field7A8->flags & 0xc000) == 0xc000,
+                "First-visit late state must retain flashlight visibility and hide vacuum equipment.");
+            capture.updateOpacity(*player);
+            player->state.fieldF5C = 255;
             weapon.updateEndpoints(*player->state.field7A4, *player->state.field7A8);
             audio.run(*player, {services.catalog, services.models, managers.collision(), *managers.playback(), frame,
                 [&](unsigned room, std::int16_t polygon) {
@@ -249,6 +305,26 @@ namespace {
                 }});
             footstepTicks += player->state.field1118 > 0;
             breath.run(*player, services.catalog, services.models, managers.roomCleared(player->room() >> 24));
+            head.run(*player, managers.actors(), managers.enemies(), services.catalog, pose);
+            managers.lights().beginFrame();
+            require(managers.players().frame() == float(frame), "Shared player clock must retain one advance per original manager frame.");
+            managers.updatePlayerLight(0);
+            if (player->components->light->state) {
+                ++lightFrames;
+                require(managers.lights().count() == 2 && managers.lights().entry(1).priority == 8 && player->components->light->owner == player &&
+                    player->components->light->fieldC == weapon.first->position,
+                    "Late flashlight update must use the manager-owned player, endpoint and room-light pool.");
+                const auto& cone = *managers.players().models->animation(2);
+                require(cone.frame == float(frame % static_cast<unsigned>(cone.frameCount)),
+                    "Manager-bound cone animation must consume the shared player clock rather than a separate light clock.");
+            }
+            player->components->attached->finish(player->state.fieldF6C, services.catalog, services.models,
+                actionServices.positionalSound, managers.playback()->animationServices(player->position));
+            lateState.scanner(*player->components->scanner, *managers.players().models);
+            player->refreshView();
+            managers.players().state->update(managers.lights());
+            managers.players().advanceClock();
+            owner.publishCamera();
             for (const auto value : weapon.first->position) require(std::isfinite(value), "Flashlight endpoint must remain finite.");
             require(weapon.firstType == 7 && player->state.field7A4->parent == player,
                 "The weapon frame must retain the original flashlight child ownership.");
@@ -258,6 +334,7 @@ namespace {
             grounded += player->fieldA0 >= 0 || player->fieldB2 >= 0;
             wallContacts += player->fieldB0 >= 0;
             if (frame >= idleFrames && frame < 210) movingAnimations += player->animationState != firstVisitIdleAnimation;
+            if (frame >= 210 && player->animationState == firstVisitIdleAnimation) returnedToIdle = true;
             if (frame == 180) wallPosition = player->position;
             if (frame > 180 && frame < 210) require(horizontalDistance(wallPosition, player->position) < 0.01f,
                 "Sustained input must not push Luigi through the imported foyer wall.");
@@ -268,13 +345,17 @@ namespace {
         }
         require(horizontalDistance(origin, player->position) > 10, "Held controller input did not move Luigi through the imported foyer.");
         require(roomNotifications == 1, "Staying in the foyer must publish its audio room once, not every frame.");
+        require(lightFrames > 250, "Original flashlight state gating must remain active during first-visit movement.");
         require(player->state.field1180 == 5 && player->state.field7A4->actorType == 7,
             "The uncleared foyer must select the real flashlight attachment without a vacuum.");
         require(grounded > 250, "Locomotion did not retain the imported foyer's floor contact.");
         require(wallContacts > 0, "The held-input path must exercise an actual map wall.");
         require(movingAnimations > 0, "Movement did not select an original locomotion animation.");
         require(footstepTicks > 0, "Movement must cross original footstep timing markers and submit real sound handles.");
-        require(player->animationState == firstVisitIdleAnimation, "Released movement did not return to the original idle animation.");
+        const auto& finalAction = *player->components->actions;
+        require(returnedToIdle && finalAction.field310 == 1 && finalAction.field60 == 0x50 &&
+            finalAction.fields31C[4] == 6 && player->animationState == finalAction.entries.at(0x50) && player->state.field116C == 90,
+            "Released movement must return to idle, then enter the original flashlight-only idle-timeout animation.");
         require(horizontalDistance(releasedPosition, player->position) < 1, "Released input did not settle through original friction.");
         if (direction == 0 && idleFrames == 0) {
             const auto equipmentFlags = player->state.flags792;

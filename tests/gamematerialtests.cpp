@@ -68,6 +68,20 @@ int main() {
             require(pixel[0] == 0 && pixel[1] == 0 && pixel[2] == (mode == 0 ? 0 : 255),
                 "Opaque depth must survive alpha rejection; cutout/translucent depth must not.");
         }
+        model.materials[0].vertexAlpha = false;
+        model.materials[0].color = {0, 1, 0, 1};
+        for (unsigned mode = 0; mode < 3; ++mode) {
+            model.materials[0].mode = mode;
+            for (bool hidden : {false, true, false}) {
+                model.materials[0].flags = hidden ? 2 : 0;
+                gamerenderer::drawPreview(0, model, model.batches, {}, &camera);
+                gamerenderer::drawInterface({picture}, false);
+                gamerenderer::capture(path);
+                const auto pixel = center(path);
+                require(pixel == (hidden ? std::array<unsigned char, 3>{0, 0, 255} : std::array<unsigned char, 3>{0, 255, 0}),
+                    "Original material concealment must suppress both color and depth in every draw pass, then restore the batch.");
+            }
+        }
         gamerenderer::close();
         DestroyWindow(window);
         std::filesystem::remove(path);
