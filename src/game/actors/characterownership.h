@@ -18,6 +18,7 @@ namespace characterownership {
         virtual void setMatrix(const std::array<float, 12>& matrix) = 0;
         virtual void setVisible(bool visible) = 0;
         virtual void setRunning(bool running) = 0;
+        virtual void setPaused(bool paused) = 0;
     };
 
     class Resources {
@@ -64,6 +65,7 @@ namespace characterownership {
         void deactivate(ActorLinks& actor);
         void releaseShared(void*& user);
         void updateAttachments(const actors::MoveActor& actor);
+        void resumeAttachments();
         std::unique_ptr<Strategy> strategy;
         std::array<void*, 3> sharedUsers{};
         Resource* sharedResource = nullptr;

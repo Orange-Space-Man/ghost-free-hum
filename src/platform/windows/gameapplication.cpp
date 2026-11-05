@@ -62,12 +62,16 @@ void gameapplication::Application::advanceOpening() {
         openingFade.reset();
         startPressed = false;
         if (openingDestination == 2) {
+            if (audioEnabled) {
+                startupaudio::bindPositionalPlayback({});
+                startupaudio::stop();
+            }
             gameplayScene.reset();
             gameplayScene = std::make_unique<gameplay::Scene>(currentAssets, gameEntry);
             gameplayScene->prepareGraphics();
             gameplayPhase = 0;
             gameplayActive = true;
-            if (audioEnabled) startupaudio::stop();
+            if (audioEnabled) startupaudio::bindPositionalPlayback(gameplayScene->playback());
             boundaryReported = false;
             return;
         }
@@ -152,11 +156,19 @@ void gameapplication::Application::advanceMenu() {
 }
 
 void gameapplication::Application::advance(bool audioFinished) {
+    const bool interfaceTick = !gameplayActive || gameplayPhase != 0;
+    advanceScene(audioFinished);
+    if (audioEnabled && interfaceTick) startupaudio::updateInterface([&] {
+        if (gameplayActive) gameplayScene->updateAudio();
+    });
+}
+
+void gameapplication::Application::advanceScene(bool audioFinished) {
     if (gameplayActive) {
         gameplayPhase ^= 1;
         if (!gameplayPhase) {
             const auto input = playerinput::pollWindowPad(applicationWindow, true);
-            gameplayScene->update(input.status, input.port);
+            gameplayScene->update(input.status, input.port, startupaudio::interfaceFrame());
         }
         return;
     }
@@ -202,12 +214,14 @@ void gameapplication::Application::draw(bool present) {
 }
 
 void gameapplication::Application::close() {
+    startupaudio::bindPositionalPlayback({});
     gameplayScene.reset();
     startupaudio::close();
     gamerenderer::close();
 }
 
 void gameapplication::Application::restart() {
+    startupaudio::bindPositionalPlayback({});
     gameplayScene.reset();
     gameplayActive = false;
     gameplayPhase = 0;

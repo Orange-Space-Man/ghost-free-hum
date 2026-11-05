@@ -19,10 +19,21 @@
 #include "game/player/playerladderinteraction.h"
 #include "game/player/playerfinishframe.h"
 #include "game/player/playerliferecovery.h"
+#include "game/player/playerlateframe.h"
+#include "game/player/playervelocityframe.h"
 
 namespace playeractions { struct Input; }
+namespace roomfurniture { class Owner; }
 
 namespace gameplay {
+    struct PlayerMotionServices {
+        playerevents::LifeEnvironment& life;
+        bool doubledDamage;
+        unsigned frame;
+        const std::array<playermotion::PlatformMotion, 2>& platforms;
+        std::function<void(std::uint32_t)> globalSound;
+    };
+
     struct ManagerDependencies {
         const std::vector<std::uint8_t>& executable;
         gameassets::Package& package;
@@ -81,7 +92,14 @@ namespace gameplay {
         void updatePlayerInput(unsigned index, bool inputAvailable,
             const std::function<void(playeractor::Player&, bool)>& scannerTransition);
         void updatePlayerOrientation(unsigned index, const playercomponents::AttachedOutput& attachment, unsigned frame);
+        void updatePlayerMotion(unsigned index, const PlayerMotionServices& services);
+        void bindPlayerFurniture(roomfurniture::Owner& furniture);
+        void updatePlayerFurniture(unsigned index);
         void updatePlayerLight(unsigned index);
+        void updatePlayerAudio(unsigned index);
+        void updatePlayerLate(unsigned index, const playeractor::LateFrameServices& services);
+        void setAudioInterfaceFrame(std::uint32_t frame);
+        const std::array<std::uint32_t, 2>& playerFootstepFrames() const;
         bool beginPlayerCapture(std::int32_t index, const std::array<float, 3>& position, std::int32_t recipient);
         void updatePlayerCapture(std::int32_t index);
         bool releasePlayerCapture(std::int32_t index, const std::array<float, 3>* position,
@@ -99,8 +117,7 @@ namespace gameplay {
         playerinteraction::DoorServices preparePlayerDoor(unsigned index);
         playerinteraction::LadderServices preparePlayerLadder(unsigned index);
         playeractor::FinishServices preparePlayerFinish(unsigned index, playerevents::LifeEnvironment& life,
-            bool doubledDamage, std::function<void(bool)> interactionEvents,
-            std::function<void(actors::MoveActor&)> interactionOwner);
+            bool doubledDamage);
 
     private:
         struct State;

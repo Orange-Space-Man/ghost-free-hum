@@ -37,6 +37,7 @@ namespace gameapplication {
         LRESULT handleMessage(HWND window, UINT message, WPARAM wParam, LPARAM lParam);
 
     protected:
+        void advanceScene(bool audioFinished);
         startupresources::Resources resources;
         startupscene::Scene scene;
         gamesave::State saves;

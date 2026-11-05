@@ -73,6 +73,7 @@ struct gameplay::ResourceOwner::State {
             }
         };
         managers = std::make_unique<ManagerServices>(dependencies);
+        managers->bindPlayerFurniture(*furnitureOwner);
         auto* player = managers->actors().actor(managers->enemies().appearPoint(0).actor);
         if (!player) throw std::runtime_error("Gameplay camera requires the manager-owned player.");
         gameplayspawn::Spawn spawn;

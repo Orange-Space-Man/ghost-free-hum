@@ -18,6 +18,15 @@ namespace {
     }
 }
 
+void characterownership::Ownership::resumeAttachments() {
+    const unsigned count = attachmentCount;
+    if (count > attachments.size()) throw std::runtime_error("Invalid original character attachment count.");
+    for (unsigned i = 0; i < count; ++i) {
+        if (!attachments[i].resource) throw std::runtime_error("Original character attachment is null.");
+        attachments[i].resource->setPaused(false);
+    }
+}
+
 void characterownership::Ownership::updateAttachments(const actors::MoveActor& actor) {
     if (attachmentCount > attachments.size()) throw std::runtime_error("Invalid original character attachment count.");
     unsigned index = 0;

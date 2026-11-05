@@ -17,6 +17,13 @@
 #include "game/player/playerorientationframe.h"
 #include "game/player/playerlightframe.h"
 #include "game/player/playerlightcontacts.h"
+#include "game/player/playeraudioframe.h"
+#include "game/player/playerbreathframe.h"
+#include "game/player/playerheadtracking.h"
+#include "game/player/playeractionframe.h"
+#include "game/player/playerattachedframe.h"
+#include "game/player/playerreactioneffects.h"
+#include "game/player/playerfurnitureowner.h"
 #include "resources/glme01addresses.h"
 
 #include <stdexcept>
@@ -70,7 +77,10 @@ struct gameplay::ManagerServices::State {
         playerCapture(dependencies.executable), playerDamage(dependencies.executable),
         playerOrientation(dependencies.executable, dependencies.actors.pose),
         playerFinish(dependencies.executable, dependencies.actors.pose), playerLight(dependencies.executable),
-        lightContacts(dependencies.executable, dependencies.actors.catalog),
+        lightContacts(dependencies.executable, dependencies.actors.catalog), playerAudio(dependencies.executable),
+        playerLate(dependencies.executable), playerBreath(dependencies.executable), playerHead(dependencies.executable),
+        playerAction(dependencies.executable, dependencies.actors.pose), playerAttached(dependencies.executable),
+        playerVelocity(dependencies.executable, dependencies.actors.pose),
         ladderPaths(dependencies.mission) {}
 
     ~State() {
@@ -89,6 +99,7 @@ struct gameplay::ManagerServices::State {
             }
         }
         updates.reset();
+        playerFurniture.reset();
         events.reset();
         enemies.reset();
         strategies.reset();
@@ -248,6 +259,15 @@ struct gameplay::ManagerServices::State {
     playeractor::FinishFrame playerFinish;
     playeractor::LightFrame playerLight;
     playeractor::LightContacts lightContacts;
+    playeractor::AudioFrame playerAudio;
+    playeractor::LateFrame playerLate;
+    playeractor::BreathFrame playerBreath;
+    playercomponents::HeadFrame playerHead;
+    playeractions::Frame playerAction;
+    playercomponents::AttachedFrame playerAttached;
+    playermotion::VelocityFrame playerVelocity;
+    std::unique_ptr<playerinteraction::FurnitureOwner> playerFurniture;
+    std::uint32_t audioInterfaceFrame = 0;
     playerorientation::Globals turning;
     ladders::Paths ladderPaths;
     std::int32_t elementDuration = 0;
@@ -384,9 +404,32 @@ void gameplay::ManagerServices::updatePlayerOrientation(unsigned index,
         {attachment.limits[1] != 0, state->turning.damping, state->turning.scannerDamping, frame});
 }
 
+void gameplay::ManagerServices::updatePlayerMotion(unsigned index, const PlayerMotionServices& services) {
+    if (index >= state->dependencies.playerCount) throw std::out_of_range("Player motion index exceeds the bound player count.");
+    auto* player = state->events->player(static_cast<std::int32_t>(index));
+    if (!player) throw std::runtime_error("Player motion requires its registered owner.");
+    const auto& actor = state->dependencies.actors;
+    const auto sound = [this](unsigned id, const auto& position) { state->audio->playback.play(id, position); };
+    state->playerAction.run(*player, state->collision,
+        {state->dependencies.flags, actor.catalog, actor.resources, services.globalSound, sound});
+    const auto attachment = state->playerAttached.run(*player, actor.catalog, actor.resources, actor.pose);
+    const auto& action = *player->components->actions;
+    const auto& upper = *player->components->attached;
+    if (player->state.flags792 & 12) {
+        player->components->weapon->update(state->dependencies.executable, *player, player->state.field7A4, player->state.field7A8,
+            action.field60, upper.field248, upper.field2C0, action.query74544(), player->view.field8C0, actor.pose,
+            [this] { return state->runtime->random(); });
+    }
+    state->playerVelocity.run(*player, state->collision, services.platforms, sound);
+    state->playerVelocity.constrain(*player);
+    updatePlayerOrientation(index, attachment, services.frame);
+    playeractor::updateReactionEffects(*player, actor.catalog, actor.resources,
+        state->particles->effects(), state->models->factory, sound);
+    state->playerFinish.run(*player, preparePlayerFinish(index, services.life, services.doubledDamage));
+}
+
 playeractor::FinishServices gameplay::ManagerServices::preparePlayerFinish(unsigned index,
-    playerevents::LifeEnvironment& life, bool doubledDamage, std::function<void(bool)> interactionEvents,
-    std::function<void(actors::MoveActor&)> interactionOwner) {
+    playerevents::LifeEnvironment& life, bool doubledDamage) {
     if (index >= state->dependencies.playerCount) throw std::out_of_range("Player completion index exceeds the bound player count.");
     auto* player = state->events->player(static_cast<std::int32_t>(index));
     if (!player) throw std::runtime_error("Player frame completion requires its registered owner.");
@@ -396,9 +439,8 @@ playeractor::FinishServices gameplay::ManagerServices::preparePlayerFinish(unsig
             state->playerDamage.run(recipient, payload, false, *state->actors,
                 state->dependencies.actors.catalog, doubledDamage, life);
         },
-        [this, interactionEvents = std::move(interactionEvents)](bool active) {
-            if (!interactionEvents) throw std::runtime_error("Player interaction requires mission event scheduling ownership.");
-            interactionEvents(active);
+        [this](bool active) {
+            state->generators->enabled = !active;
             state->particles->pool().setPaused(active);
             state->models->setPaused(active);
             state->actors->setInteractionPaused(active);
@@ -406,7 +448,16 @@ playeractor::FinishServices gameplay::ManagerServices::preparePlayerFinish(unsig
         [this, player, index](auto& recipient) {
             if (&recipient != player) throw std::logic_error("Player completion services used with another actor.");
             state->events->send(static_cast<std::int32_t>(index), 0x3a);
-        }, std::move(interactionOwner)};
+        }, [this](actors::MoveActor& target) {
+            for (const auto& slot : state->enemies->slots()) {
+                if (slot.state != 2 || &slot.owner->actor() != &target) continue;
+                auto* owner = dynamic_cast<characterowner::Owner*>(slot.owner.get());
+                if (!owner) throw std::runtime_error("Player interaction target requires its original character owner.");
+                owner->ownership().resumeAttachments();
+                return;
+            }
+            throw std::runtime_error("Player interaction target is absent from the active character manager.");
+        }};
 }
 void gameplay::ManagerServices::updateContacts() {
     state->actors->updateContacts(*state->enemies, state->actorCollision, *state->players->records,
@@ -439,4 +490,64 @@ void gameplay::ManagerServices::updateCaptures(const playermodels::VacuumPath* p
 
 void gameplay::ManagerServices::updateAudio(const std::array<float, 12>& listener) {
     state->audio->playback.update(listener);
+}
+
+void gameplay::ManagerServices::setAudioInterfaceFrame(std::uint32_t frame) { state->audioInterfaceFrame = frame; }
+const std::array<std::uint32_t, 2>& gameplay::ManagerServices::playerFootstepFrames() const { return state->playerAudio.footsteps; }
+
+void gameplay::ManagerServices::updatePlayerLate(unsigned index, const playeractor::LateFrameServices& services) {
+    if (index >= state->dependencies.playerCount) throw std::out_of_range("Player late-frame index exceeds the bound player count.");
+    auto* player = state->events->player(static_cast<std::int32_t>(index));
+    if (!player) throw std::runtime_error("Player late frame requires its registered owner.");
+    state->playerLate.begin(*player, services);
+    const auto& actor = state->dependencies.actors;
+    const auto& actions = *player->components->actions;
+    const float scale = state->playerFinish.bodyScale(player->state);
+    if (!((player->state.field7A4->flags | player->state.field7A8->flags) & 0xc000)) {
+        if (!services.pipe) throw std::runtime_error("Player late frame requires the visible vacuum pipe update.");
+        services.pipe(*player, scale, !(actions.field310 == 2 && actions.field314 == 0x20),
+            !player->state.flags134C[0], player->state.field1338 == 4);
+    }
+    if (!(player->flags & 0x40)) updatePlayerAudio(index);
+    state->playerBreath.run(*player, actor.catalog, actor.resources, roomCleared(player->room() >> 24));
+    state->playerHead.run(*player, *state->actors, *state->enemies, actor.catalog, actor.pose);
+    updatePlayerLight(index);
+    player->components->attached->finish(player->state.fieldF6C, actor.catalog, actor.resources,
+        [this](unsigned sound, const auto& position) { state->audio->playback.play(sound, position); },
+        state->audio->playback.animationServices(player->position));
+    auto retained = services;
+    if (!retained.sheets && state->playerFurniture) {
+        retained.sheets = [this](auto&) { state->playerFurniture->updateSheets(); };
+    }
+    state->playerLate.finish(*player, *state->players->models, retained);
+}
+
+void gameplay::ManagerServices::bindPlayerFurniture(roomfurniture::Owner& furniture) {
+    if (state->playerFurniture) throw std::logic_error("Player furniture services are already bound.");
+    auto* player = state->events->player(0);
+    if (!player) throw std::runtime_error("Player furniture requires its registered owner.");
+    state->playerFurniture = std::make_unique<playerinteraction::FurnitureOwner>(*player, *state->events,
+        *state->players->models, furniture, state->dependencies.flags, state->audio->playback,
+        state->particles->effects(), state->dependencies.executable);
+}
+
+void gameplay::ManagerServices::updatePlayerFurniture(unsigned index) {
+    if (index != 0) throw std::out_of_range("Player furniture requires player zero.");
+    if (!state->playerFurniture) throw std::logic_error("Player furniture services have not been bound.");
+    const auto& dependencies = state->dependencies;
+    state->playerFurniture->update(dependencies.actors.rooms, *state->enemies, dependencies.actors.catalog,
+        state->actorCollision, state->collision, dependencies.entry.map, [this] { return state->runtime->random(); });
+}
+
+void gameplay::ManagerServices::updatePlayerAudio(unsigned index) {
+    if (index >= state->dependencies.playerCount) throw std::out_of_range("Player audio index exceeds the bound player count.");
+    auto* player = state->events->player(static_cast<std::int32_t>(index));
+    if (!player) throw std::runtime_error("Player audio requires its registered owner.");
+    state->playerAudio.run(*player, {state->dependencies.actors.catalog, state->dependencies.actors.resources,
+        state->collision, state->audio->playback, state->audioInterfaceFrame,
+        [this](unsigned room, std::int16_t polygon) {
+            state->audio->playback.setPlayerContext(state->audio->context.parameters(room, polygon).packed);
+            state->audio->music.setRoom(room, polygon);
+        }, [this](unsigned sound) { return state->audio->music.currentSound() == sound; },
+        [this, player](unsigned preset) { return player->state.field7A0->repeats(state->dependencies.executable, preset); }});
 }

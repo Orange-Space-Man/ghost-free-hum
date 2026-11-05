@@ -81,15 +81,13 @@ void gameplay::Scene::prepareGraphics() {
     }
 }
 
-void gameplay::Scene::update(const playerinput::PadStatus& pad, std::int16_t port) {
+void gameplay::Scene::update(const playerinput::PadStatus& pad, std::int16_t port, std::uint32_t audioFrame) {
     resources.managers().sampleInput(pad, port);
     auto& managers = resources.managers();
+    managers.setAudioInterfaceFrame(audioFrame);
     presentationButtons = managers.controller().pressed;
     presentationTick = true;
-    if (!sceneControl.gameplayEnabled) {
-        managers.updateAudio(view);
-        return;
-    }
+    if (!sceneControl.gameplayEnabled) return;
     managers.updatePlacement(ticks / 30);
     managers.updateGenerators();
     for (unsigned i = 0; i < managers.enemies().slots().size(); ++i) managers.updateOwner(i);
@@ -97,9 +95,11 @@ void gameplay::Scene::update(const playerinput::PadStatus& pad, std::int16_t por
     rooms = resources.prepareVisibility(visibilityProjection, fullBounds);
     updateOpacity();
     managers.updatePoses();
-    managers.updateAudio(view);
     ++ticks;
 }
+
+void gameplay::Scene::updateAudio() { resources.managers().updateAudio(view); }
+std::shared_ptr<jaudio::PositionalPlayback> gameplay::Scene::playback() { return resources.managers().playback(); }
 
 unsigned gameplay::Scene::updates() const { return ticks; }
 

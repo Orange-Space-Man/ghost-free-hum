@@ -32,6 +32,7 @@ add_library(JLib STATIC
     src/jlib/jaudio/jaudiodspmixer.cpp
     src/jlib/jaudio/jaudioeffectconfig.cpp
     src/jlib/jaudio/jaudioplayback.cpp
+    src/jlib/jaudio/jaudiointerfaceclock.cpp
     src/jlib/jaudio/jaudioresources.cpp
     src/jlib/jaudio/jaudiosequence.cpp
     src/jlib/jaudio/jaudiosequencerandom.cpp
@@ -234,6 +235,23 @@ add_library(Game STATIC
     src/game/player/playercontactreactions.cpp
     src/game/player/playerbreathframe.cpp
     src/game/player/playeraudioframe.cpp
+    src/game/player/playerlatestate.cpp
+    src/game/player/playerlateframe.cpp
+    src/game/player/playerenergyframe.cpp
+    src/game/player/playeritempresentation.cpp
+    src/game/player/playerscannerinteraction.cpp
+    src/game/player/playerfurniturescancache.cpp
+    src/game/player/playerfurnitureframe.cpp
+    src/game/player/playerfurnitureowner.cpp
+    src/game/player/playermainframe.cpp
+    src/game/player/playeractorscanbindings.cpp
+    src/game/player/playersheetlayout.cpp
+    src/game/player/playersheettextures.cpp
+    src/game/player/playersheetmotion.cpp
+    src/game/player/playersheetsuction.cpp
+    src/game/player/playersheetmaterial.cpp
+    src/game/player/playersheetframe.cpp
+    src/game/player/playersheetplayerbinding.cpp
     src/game/player/playercaptureframe.cpp
     src/game/player/playerladderinteraction.cpp
     src/game/world/ladderpaths.cpp

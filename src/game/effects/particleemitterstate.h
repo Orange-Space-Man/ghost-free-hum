@@ -37,7 +37,7 @@ namespace particles {
         void setMatrix(const std::array<float, 12>& matrix) override;
         void setVisible(bool visible) override;
         void setRunning(bool running) override;
-        void setPaused(bool paused);
+        void setPaused(bool paused) override;
         void stop();
         bool inactive() const;
         bool empty() const;

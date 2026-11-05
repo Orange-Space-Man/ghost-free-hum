@@ -3,6 +3,7 @@
 #include "jlib/jaudio/jaudioresources.h"
 #include "jlib/jaudio/jaudiostream.h"
 #include <memory>
+#include <functional>
 
 namespace jaudio { class PositionalPlayback; }
 
@@ -20,6 +21,8 @@ namespace startupaudio {
     void bindPositionalPlayback(std::shared_ptr<jaudio::PositionalPlayback> playback);
     bool startSoundFinished();
     void update();
+    bool updateInterface(const std::function<void()>& work = {});
+    std::uint32_t interfaceFrame();
     bool titleFinished();
     bool finished();
     void close();

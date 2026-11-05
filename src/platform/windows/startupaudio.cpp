@@ -1,5 +1,6 @@
 #include "platform/windows/startupaudio.h"
 #include "jlib/jaudio/jaudioplayback.h"
+#include "jlib/jaudio/jaudiointerfaceclock.h"
 #include "game/audio/jaudiopositionalplayback.h"
 
 #include <windows.h>
@@ -17,6 +18,8 @@ namespace {
     IXAudio2MasteringVoice* master = nullptr;
     IXAudio2SourceVoice* source = nullptr;
     IXAudio2SourceVoice* music = nullptr;
+    IXAudio2SourceVoice* stream = nullptr;
+    jaudio::InterfaceClock interfaceClock;
     jaudio::Playback playback;
     jaudio::Playback titlePlayback;
     jaudio::Playback menuPlayback;
@@ -64,6 +67,7 @@ namespace {
         musicRunning = false;
         if (musicThread.joinable()) musicThread.join();
         if (music) { music->DestroyVoice(); music = nullptr; }
+        if (stream) { stream->DestroyVoice(); stream = nullptr; }
         streamAudio = {};
         if (activeMusic) activeMusic->stop();
         if (activeEffect) activeEffect->stop();
@@ -84,11 +88,13 @@ namespace {
         std::lock_guard<std::mutex> lock(renderMutex);
         XAUDIO2_VOICE_STATE state{};
         music->GetState(&state);
-        musicComplete = (activeMusic == nullptr || activeMusic->voicesFinished()) && state.SamplesPlayed >= musicEnd;
+        if (!streamAudio.sampleRate)
+            musicComplete = (activeMusic == nullptr || activeMusic->voicesFinished()) && state.SamplesPlayed >= musicEnd;
         effectComplete = (activeEffect == nullptr || activeEffect->voicesFinished()) && state.SamplesPlayed >= effectEnd;
         while (state.BuffersQueued < musicBuffers.size()) {
             auto& buffer = musicBuffers[nextBuffer];
             std::string error;
+            interfaceClock.mixed();
             for (unsigned offset = 0; offset < buffer.size(); offset += 160) {
                 std::array<std::int16_t, 160> samples{};
                 const bool musicActive = !(activeMusic == nullptr || activeMusic->voicesFinished());
@@ -214,6 +220,7 @@ bool startupaudio::startSoundFinished() {
 
 void startupaudio::playLogo(const std::vector<std::int16_t>& samples) {
     close();
+    interfaceClock.reset();
     try {
         if (samples.size() != 57 * 560 * 2) throw std::runtime_error("Unexpected boot sample count.");
         const auto initialized = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
@@ -229,6 +236,7 @@ void startupaudio::playLogo(const std::vector<std::int16_t>& samples) {
         audio.pAudioData = reinterpret_cast<const BYTE*>(logoBuffer.data());
         check(source->SubmitSourceBuffer(&audio), "Could not queue the boot sound.");
         check(source->Start(), "Could not start the boot sound.");
+        startMixer();
     } catch (...) {
         close();
         throw;
@@ -272,16 +280,17 @@ void startupaudio::playStream(const jaudio::StreamAudio& audio) {
     format.wBitsPerSample = 16;
     format.nBlockAlign = 4;
     format.nAvgBytesPerSec = audio.sampleRate * 4;
-    check(engine->CreateSourceVoice(&music, &format), "Could not create opening audio voice.");
-    if (audio.playbackRate) check(music->SetFrequencyRatio(static_cast<float>(audio.playbackRate / audio.sampleRate)),
+    check(engine->CreateSourceVoice(&stream, &format), "Could not create opening audio voice.");
+    if (audio.playbackRate) check(stream->SetFrequencyRatio(static_cast<float>(audio.playbackRate / audio.sampleRate)),
         "Could not set opening DSP rate.");
     XAUDIO2_BUFFER buffer{};
     buffer.Flags = XAUDIO2_END_OF_STREAM;
     buffer.AudioBytes = static_cast<UINT32>(streamAudio.samples.size() * sizeof(std::int16_t));
     buffer.pAudioData = reinterpret_cast<const BYTE*>(streamAudio.samples.data());
-    check(music->SubmitSourceBuffer(&buffer), "Could not queue opening audio.");
-    check(music->Start(), "Could not start opening audio.");
+    check(stream->SubmitSourceBuffer(&buffer), "Could not queue opening audio.");
+    check(stream->Start(), "Could not start opening audio.");
     musicComplete = false;
+    startMixer();
 }
 
 unsigned startupaudio::streamFrame() {
@@ -289,9 +298,9 @@ unsigned startupaudio::streamFrame() {
 }
 
 double startupaudio::streamPosition() {
-    if (!music || !streamAudio.sampleRate) return 0;
+    if (!stream || !streamAudio.sampleRate) return 0;
     XAUDIO2_VOICE_STATE state{};
-    music->GetState(&state);
+    stream->GetState(&state);
     return double(state.SamplesPlayed) * (streamAudio.framesPerSample ? streamAudio.framesPerSample :
         double(streamAudio.frameRate) / streamAudio.sampleRate);
 }
@@ -299,12 +308,15 @@ double startupaudio::streamPosition() {
 void startupaudio::update() {
     std::lock_guard<std::mutex> lock(errorMutex);
     if (musicError) std::rethrow_exception(musicError);
-    if (music && streamAudio.sampleRate) {
+    if (stream && streamAudio.sampleRate) {
         XAUDIO2_VOICE_STATE state{};
-        music->GetState(&state, XAUDIO2_VOICE_NOSAMPLESPLAYED);
+        stream->GetState(&state, XAUDIO2_VOICE_NOSAMPLESPLAYED);
         musicComplete = state.BuffersQueued == 0;
     }
 }
+
+bool startupaudio::updateInterface(const std::function<void()>& work) { return interfaceClock.update(work); }
+std::uint32_t startupaudio::interfaceFrame() { return interfaceClock.frame(); }
 
 bool startupaudio::titleFinished() {
     return musicComplete;
