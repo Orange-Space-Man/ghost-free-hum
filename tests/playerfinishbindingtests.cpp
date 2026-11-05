@@ -15,6 +15,7 @@ void checkOwnedPlayerFinish(const std::filesystem::path& package, const gamesave
     if (!gameentry::selectNewFile(saves, 0, entry, error)) throw std::runtime_error(error);
     gameplay::ResourceOwner owner(package, entry);
     auto& managers = owner.managers();
+    managers.updatePlacement(0);
     auto& player = *managers.playerEvents().player(0);
     auto& state = player.state;
     auto& actions = *player.components->actions;
@@ -41,25 +42,45 @@ void checkOwnedPlayerFinish(const std::filesystem::path& package, const gamesave
     for (auto* pool : managers.modelEffects().registered()) {
         if (!pool->owners.empty()) pool->owners[0]->flags |= 1;
     }
-    std::string calls;
-    bool missionEnabled = true;
-    const auto services = managers.preparePlayerFinish(0, life, false,
-        [&](bool active) {
-            require(bool(emitter->flags & 0x100) != active,
-                "Mission scheduling changes before effect pause/resume is published.");
-            missionEnabled = !active;
-            calls += active ? 'b' : 'e';
-        },
-        [&](auto& target) {
-            require(&target == &player && !(player.flags & 0x40) && !missionEnabled && (emitter->flags & 0x100),
-                "Owner notification follows mission/effect pause and player event 0x3a.");
-            calls += 'o';
-        });
+    characterowner::Owner* target = nullptr;
+    for (const auto& slot : managers.enemies().slots()) {
+        if (slot.state == 2) target = dynamic_cast<characterowner::Owner*>(slot.owner.get());
+        if (target) break;
+    }
+    require(target != nullptr, "Interaction completion requires an active original character owner.");
+    auto& attachments = target->ownership();
+    const auto originalCount = attachments.attachmentCount;
+    require(originalCount + 2 <= attachments.attachments.size(), "Target requires two free original attachment slots.");
+    auto* targetEmitter = emitters.emitters.free.take();
+    require(targetEmitter != nullptr, "Interaction target requires an owned emitter.");
+    targetEmitter->reset();
+    targetEmitter->flags = 8;
+    emitters.destination->append(*targetEmitter);
+    attachments.attachments[attachments.attachmentCount++] = {targetEmitter, 0, {}};
+    modeleffects::Owner* targetModel = nullptr;
+    for (auto* pool : managers.modelEffects().registered()) {
+        if (!pool->owners.empty()) { targetModel = pool->owners[0].get(); break; }
+    }
+    require(targetModel != nullptr, "Interaction target requires a registered model-effect owner.");
+    targetModel->flags = 5;
+    const auto modelFrame = targetModel->frame;
+    attachments.attachments[attachments.attachmentCount++] = {targetModel, 0, {}};
+    const auto services = managers.preparePlayerFinish(0, life, false);
     state.flags10E8[0] = 1;
-    state.field1064 = &player;
+    state.field1064 = &dynamic_cast<actors::MoveActor&>(target->actor());
     finish.run(player, services);
-    require(calls == "bo" && !missionEnabled && emitter->flags == 0x10e,
+    require(!managers.generators().enabled && emitter->flags == 0x10e && targetEmitter->flags == 8 && targetModel->flags == 5,
         "Manager-bound completion acquires interaction ownership once.");
+    require(attachments.attachmentCount == originalCount + 2 && !(targetEmitter->flags & 6) && targetModel->frame == modelFrame,
+        "Target notification resumes retained attachments without restarting independently stopped emission.");
+    std::vector<std::pair<enemystrategy::Strategy*, std::uint32_t>> generatorClocks;
+    for (const auto& generator : managers.generators().generators) {
+        if (generator->strategy) generatorClocks.emplace_back(generator->strategy.get(), generator->strategy->frames);
+    }
+    require(!generatorClocks.empty(), "Imported first-area placement must supply an actual generator to test suppression.");
+    managers.updateGenerators();
+    for (const auto& [strategy, frame] : generatorClocks)
+        require(strategy->frames == frame, "Interaction pause must prevent existing generator strategy updates.");
     for (const auto* actor : managers.actors().entries()) if (actor)
         require(bool(actor->flags & 0x40) == (actor != &player),
             "Interaction pauses registered actors and then exempts only the initiating player.");
@@ -72,19 +93,28 @@ void checkOwnedPlayerFinish(const std::filesystem::path& package, const gamesave
         require(actor->animationFrame == clock, "Paused actors must retain their original animation clocks.");
     for (const auto* pool : managers.modelEffects().registered()) {
         for (const auto& model : pool->owners) if (model->flags & 1)
-            require(model->flags & 0x10, "Every active model effect participates in interaction pause.");
+            require(bool(model->flags & 0x10) == (model.get() != targetModel),
+                "Only the interaction target's attached model resumes after the global effect pause.");
     }
+    targetEmitter->setPaused(true);
+    targetModel->setPaused(true);
     finish.run(player, services);
     state.flags10E8[0] = 0;
     actions.field310 = 2;
     actions.field314 = 0x22;
     finish.run(player, services);
-    require(calls == "bo" && !missionEnabled, "Protected interaction retains ownership without repeated callbacks.");
+    require(!managers.generators().enabled && targetEmitter->flags == 0x108 && targetModel->flags == 0x15,
+        "Protected interaction retains ownership without repeating target notification.");
     actions.field310 = 1;
     finish.run(player, services);
     finish.run(player, services);
-    require(calls == "boe" && missionEnabled && emitter->flags == 0xe,
+    require(managers.generators().enabled && emitter->flags == 0xe && targetEmitter->flags == 8 && targetModel->flags == 5,
         "Interaction release resumes its existing emitter once.");
+    managers.updateGenerators();
+    bool generatorAdvanced = false;
+    for (const auto& [strategy, frame] : generatorClocks) generatorAdvanced |= strategy->frames != frame;
+    require(generatorAdvanced, "Releasing interaction ownership must resume the imported generator strategy clock.");
+    attachments.attachmentCount = originalCount;
     for (const auto* actor : managers.actors().entries()) if (actor)
         require(!(actor->flags & 0x40), "Interaction exit clears the registry pause bit.");
     for (const auto* pool : managers.modelEffects().registered()) {
@@ -118,7 +148,7 @@ void checkOwnedPlayerFinish(const std::filesystem::path& package, const gamesave
     }
     require(consumed, "Imported Luigi animations must expose a deferred-damage marker.");
     bool rejected = false;
-    try { managers.preparePlayerFinish(1, life, false, {}, {}); }
+    try { managers.preparePlayerFinish(1, life, false); }
     catch (const std::out_of_range&) { rejected = true; }
     require(rejected, "Completion bindings reject a player not owned by the manager.");
 

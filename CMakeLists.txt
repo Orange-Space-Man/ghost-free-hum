@@ -4,6 +4,9 @@ set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 set(PORT_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../ghost-free-hum" CACHE PATH "Clean port source directory")
 add_subdirectory("${PORT_SOURCE_DIR}" port)
 enable_testing()
+add_executable(jaudiointerfaceclocktests tests/jaudiointerfaceclocktests.cpp)
+target_link_libraries(jaudiointerfaceclocktests PRIVATE WindowsRuntime)
+add_test(NAME jaudiointerfaceclock COMMAND jaudiointerfaceclocktests)
 add_executable(roomfurnitureresponsetests tests/roomfurnitureresponsetests.cpp recovered/roomfurnitureresponse.cpp)
 target_link_libraries(roomfurnitureresponsetests PRIVATE WindowsRuntime)
 add_test(NAME roomfurnitureresponse COMMAND roomfurnitureresponsetests "${CMAKE_CURRENT_SOURCE_DIR}/../assets/glme01.ppak")
@@ -160,17 +163,13 @@ add_executable(gameparametertests tests/gameparametertests.cpp)
 target_link_libraries(gameparametertests PRIVATE WindowsRuntime)
 add_executable(gameplaycameratests tests/gameplaycameratests.cpp)
 target_link_libraries(gameplaycameratests PRIVATE WindowsRuntime)
-add_executable(gameplayresourcetests tests/gameplayresourcetests.cpp tests/playerscannerchecks.cpp tests/playerpresentationchecks.cpp tests/playersheetmotionchecks.cpp
-    recovered/playerscannerinteraction.cpp recovered/playeritempresentation.cpp recovered/playerfurniturescancache.cpp recovered/playerfurnitureframe.cpp
-    recovered/playeractorscanbindings.cpp recovered/playersheetlayout.cpp recovered/playersheettextures.cpp recovered/playersheetmotion.cpp
-    recovered/playersheetsuction.cpp tests/playersheetsuctionchecks.cpp recovered/playersheetmaterial.cpp tests/playersheetmaterialchecks.cpp
-    recovered/playersheetframe.cpp tests/playersheetframechecks.cpp recovered/playersheetdraw.cpp tests/playersheetdrawchecks.cpp
-    recovered/playersheetshadow.cpp recovered/playersheetrenderer.cpp recovered/playersheetplayerbinding.cpp)
+add_executable(gameplayresourcetests tests/gameplayresourcetests.cpp tests/playerscannerchecks.cpp tests/playerpresentationchecks.cpp
+    tests/playersheetmotionchecks.cpp tests/playersheetsuctionchecks.cpp tests/playersheetmaterialchecks.cpp
+    tests/playersheetframechecks.cpp tests/playersheetdrawchecks.cpp recovered/playersheetdraw.cpp
+    recovered/playersheetshadow.cpp recovered/playersheetrenderer.cpp)
 target_link_libraries(gameplayresourcetests PRIVATE WindowsRuntime)
 add_executable(playerlocomotiontests tests/playerlocomotiontests.cpp tests/playerfinishbindingtests.cpp tests/playerframecomponentchecks.cpp
-    recovered/playerfurnitureframe.cpp recovered/playerfurniturescancache.cpp recovered/playerscannerinteraction.cpp
-    recovered/roomfurnitureresponse.cpp recovered/playerenergyframe.cpp
-    recovered/playerlatestate.cpp)
+    recovered/roomfurnitureresponse.cpp)
 target_link_libraries(playerlocomotiontests PRIVATE WindowsRuntime)
 add_executable(interactionpausetests tests/interactionpausetests.cpp)
 target_link_libraries(interactionpausetests PRIVATE WindowsRuntime)

@@ -1,4 +1,4 @@
-#include "../recovered/playeritempresentation.h"
+#include "game/player/playeritempresentation.h"
 #include "game/scene/gameplayresourceowner.h"
 #include "resources/dolresources.h"
 

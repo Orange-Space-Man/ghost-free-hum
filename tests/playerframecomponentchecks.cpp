@@ -4,12 +4,12 @@
 #include "game/player/playerbreathframe.h"
 #include "game/player/playercontactreactions.h"
 #include "game/world/dooranimationpose.h"
-#include "../recovered/playerfurnitureframe.h"
+#include "game/player/playerfurnitureframe.h"
 #include "../recovered/roomfurnitureresponse.h"
-#include "../recovered/playerenergyframe.h"
+#include "game/player/playerenergyframe.h"
 #include "game/player/playerlightframe.h"
 #include "game/player/playerlightcontacts.h"
-#include "../recovered/playerlatestate.h"
+#include "game/player/playerlatestate.h"
 
 #include <cmath>
 #include <stdexcept>

@@ -1,5 +1,5 @@
-#include "../recovered/playersheetframe.h"
-#include "../recovered/playersheetplayerbinding.h"
+#include "game/player/playersheetframe.h"
+#include "game/player/playersheetplayerbinding.h"
 #include "game/scene/gameplayresourceowner.h"
 
 #include <cmath>

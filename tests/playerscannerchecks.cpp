@@ -1,8 +1,8 @@
-#include "../recovered/playerscannerinteraction.h"
-#include "../recovered/playerfurniturescancache.h"
-#include "../recovered/playeractorscanbindings.h"
-#include "../recovered/playersheetlayout.h"
-#include "../recovered/playersheettextures.h"
+#include "game/player/playerscannerinteraction.h"
+#include "game/player/playerfurniturescancache.h"
+#include "game/player/playeractorscanbindings.h"
+#include "game/player/playersheetlayout.h"
+#include "game/player/playersheettextures.h"
 #include "platform/d3d11/j3dtexturerenderer.h"
 #include "game/scene/gameplayresourceowner.h"
 

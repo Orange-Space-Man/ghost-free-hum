@@ -1,6 +1,6 @@
 #pragma once
 
-#include "playersheetframe.h"
+#include "game/player/playersheetframe.h"
 #include "jlib/j3d/j3dmaterialstate.h"
 
 namespace playersheets {

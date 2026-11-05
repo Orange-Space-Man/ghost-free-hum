@@ -48,6 +48,7 @@ namespace {
         void setMatrix(const std::array<float, 12>&) override {}
         void setVisible(bool) override {}
         void setRunning(bool) override {}
+        void setPaused(bool paused) override { calls.push_back(paused ? id + 20 : id + 10); }
     };
 
     struct Resources : characterownership::Resources {

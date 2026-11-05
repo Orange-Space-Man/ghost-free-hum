@@ -1,5 +1,5 @@
-#include "../recovered/playersheetmaterial.h"
-#include "../recovered/playersheettextures.h"
+#include "game/player/playersheetmaterial.h"
+#include "game/player/playersheettextures.h"
 #include "game/scene/gameplayresourceowner.h"
 
 #include <cmath>
