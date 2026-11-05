@@ -40,6 +40,7 @@ namespace gameplay {
         std::array<float, 3> lightOrigin{}, lightTarget{};
         s3denvironment::Light actorLight;
         void updateOpacity();
+        void publishCamera();
         void drawGameplay(bool present);
         void drawActors(unsigned stage);
         void drawModel(const doors::ModelResource& model, const std::function<const dooranimation::Matrix&(unsigned)>& matrix,

@@ -29,6 +29,7 @@ struct gameplay::ResourceOwner::State {
         models = std::make_unique<actormodel::Resources>(modelCatalog);
         models->initializeEmbedded(common);
         pose = std::make_unique<actormodel::InitialPose>(executable);
+        cameraProjection = std::make_unique<gameplaycamera::Projection>(executable);
         rooms = std::make_unique<roomlocation::Rooms>(executable, entry.map);
         collisions = std::make_unique<actorcollision::Catalog>(executable, modelCatalog);
         construction = std::make_unique<actors::Construction>(actors::Construction{
@@ -103,6 +104,7 @@ struct gameplay::ResourceOwner::State {
     actors::Globals actorGlobals;
     gameplaycamera::Owners cameras;
     s3denvironment::Camera camera;
+    std::unique_ptr<gameplaycamera::Projection> cameraProjection;
     gameflags::State flags;
     playerinput::WindowsMotorOutput motorOutput;
     playerinput::MotorState motors;
@@ -129,6 +131,12 @@ gameplay::ResourceOwner::ResourceOwner(const std::filesystem::path& path, gameen
 gameplay::ResourceOwner::~ResourceOwner() = default;
 gameplay::ManagerServices& gameplay::ResourceOwner::managers() { return *state->managers; }
 const s3denvironment::Camera& gameplay::ResourceOwner::camera() const { return state->camera; }
+
+gameplaycamera::DrawState gameplay::ResourceOwner::publishCamera() {
+    auto result = state->cameraProjection->publish(*state->cameras.active, *state->pose);
+    state->camera = result.camera;
+    return result;
+}
 const roomlocation::Rooms& gameplay::ResourceOwner::rooms() const { return *state->rooms; }
 const std::vector<std::uint8_t>& gameplay::ResourceOwner::executable() const { return state->executable; }
 gameassets::Package& gameplay::ResourceOwner::package() { return state->package; }

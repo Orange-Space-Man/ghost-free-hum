@@ -6,6 +6,8 @@
 #include <vector>
 #include "game/actors/actorcollisionowner.h"
 
+namespace roomlighting { class Pool; }
+
 namespace playerresources {
     struct PointRecord {
         std::array<float, 3> first{}, second{};
@@ -81,10 +83,13 @@ namespace playerresources {
         float field48 = 0;
     };
 
-    struct EffectState1C {
-        std::array<float, 3> field0{};
-        std::array<std::uint8_t, 4> fieldC{};
-        std::uint16_t field10 = 0, field12 = 0;
-        float field14 = 0, field18 = 0;
+    struct LightPulse {
+        void start(const std::array<float, 3>& origin, std::uint32_t rgba, std::uint16_t range,
+            std::uint16_t intensity, std::uint32_t frames);
+        void update(roomlighting::Pool& lights);
+        std::array<float, 3> position{};
+        std::uint32_t color = 0;
+        std::uint16_t distance = 0, brightness = 0;
+        float remaining = 0, duration = 0;
     };
 }

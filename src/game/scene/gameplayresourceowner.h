@@ -2,6 +2,7 @@
 
 #include "game/scene/gameplaymanagerservices.h"
 #include "game/scene/gameplaycamera.h"
+#include "game/scene/gameplaycameraprojection.h"
 #include "game/world/roomresidency.h"
 #include "game/world/roomfurnitureowner.h"
 #include "game/world/roomvisibilitywalk.h"
@@ -15,6 +16,7 @@ namespace gameplay {
         ResourceOwner& operator=(const ResourceOwner&) = delete;
         ManagerServices& managers();
         const s3denvironment::Camera& camera() const;
+        gameplaycamera::DrawState publishCamera();
         const roomlocation::Rooms& rooms() const;
         const std::vector<std::uint8_t>& executable() const;
         gameassets::Package& package();

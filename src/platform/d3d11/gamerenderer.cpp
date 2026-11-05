@@ -555,6 +555,7 @@ void gamerenderer::drawPreview(std::size_t index, const s3dmodel::Model& model, 
         if (!(passes & (1U << pass))) continue;
         for (const auto& batch : batches) {
             const auto& material = model.materials.at(batch.material);
+            if (material.flags & 2) continue;
             if ((s3dmodel::renderMode(material) == 2) != (pass == 1) || batch.vertices.empty() || batch.cull == 3) continue;
             if (material.wrapS > 2 || material.wrapT > 2)
                 throw std::runtime_error("Invalid S3D preview batch.");

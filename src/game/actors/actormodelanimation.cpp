@@ -15,6 +15,18 @@ const s3dmodel::Model& actors::MoveActor::surface() const {
     return entry.archive->surface();
 }
 
+bool actors::MoveActor::setMaterialFlags(unsigned material, std::uint8_t mask, bool enabled) {
+    if (!model || !model->model) return false;
+    const auto& entry = construction.resources.entry(construction.catalog.type(actorType).model);
+    if (!entry.archive || entry.archive->model != model->model)
+        throw std::runtime_error("Actor material flags require the bound model's original shared archive.");
+    auto& state = entry.archive->surface().materials.at(material);
+    if (enabled) state.flags |= mask;
+    else state.flags &= static_cast<std::uint8_t>(~mask);
+    state.secondaryColor = (state.flags & 1) != 0;
+    return true;
+}
+
 void actors::MoveActor::updateMorph() {
     if (fieldF8 == -1) return;
     const auto& entry = construction.resources.entry(construction.catalog.type(actorType).model);

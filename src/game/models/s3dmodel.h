@@ -23,6 +23,7 @@ namespace s3dmodel {
         bool secondaryColor = false;
         unsigned sourceMode = 0;
         std::vector<s3dtexturestage::Stage> stages;
+        std::uint8_t flags = 0;
     };
 
     struct Sampler {

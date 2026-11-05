@@ -45,6 +45,7 @@ namespace actors {
         void copyLinkedPose();
         void updateMorph();
         void updateMaterials();
+        bool setMaterialFlags(unsigned material, std::uint8_t mask, bool enabled);
         const s3dmodel::Model& surface() const;
         bool resolveMapContact(const mapcollision::State& collision, const actorcollision::Catalog& catalog,
             std::int16_t& wall);

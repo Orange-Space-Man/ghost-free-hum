@@ -152,7 +152,8 @@ bool s3dmodel::Model::read(const std::vector<std::uint8_t>& data, std::string& e
             material.vertexColor = data[start + 4] != 0;
             material.vertexAlpha = data[start + 5] != 0;
             material.secondaryColor = (data[start + 8] & 1) != 0;
-            if (data[start + 7] > 2 || (data[start + 8] & 2))
+            material.flags = data[start + 8];
+            if (data[start + 7] > 2)
                 throw std::runtime_error("Unsupported S3D material " + std::to_string(index) + ": " +
                     std::to_string(data[start + 7]) + " texture stages, flags " + std::to_string(data[start + 8]) +
                     ", coordinate kinds " + std::to_string(data[start + 32]) + "/" + std::to_string(data[start + 64]) + ".");

@@ -4,7 +4,6 @@
 #include "game/models/modeldrawmatrices.h"
 #include "game/startup/startupresources.h"
 
-#include <DirectXMath.h>
 #include <algorithm>
 #include <cstring>
 #include <stdexcept>
@@ -47,21 +46,7 @@ gameplay::Scene::Scene(const std::filesystem::path& package, gameentry::State& e
     const auto lightBrightness = constant<float>(resources.executable(), 0x804da4dc);
     if (lightDistance >= 0 && lightBrightness > 0 && lightBrightness < 1)
         actorLight.distance[1] = (1 - lightBrightness) / (lightBrightness * lightDistance);
-    const auto& camera = resources.camera();
-    const auto vector = [](const std::array<float, 3>& value) { return DirectX::XMVectorSet(value[0], value[1], value[2], 0); };
-    DirectX::XMFLOAT4X4 viewMatrix, projectionMatrix;
-    DirectX::XMStoreFloat4x4(&viewMatrix, DirectX::XMMatrixLookAtRH(vector(camera.position), vector(camera.target), vector(camera.up)));
-    DirectX::XMStoreFloat4x4(&projectionMatrix, DirectX::XMMatrixPerspectiveFovRH(camera.fieldOfView * DirectX::XM_PI / 180,
-        camera.aspect, camera.nearPlane, camera.farPlane));
-    for (unsigned row = 0; row < 4; ++row) for (unsigned column = 0; column < 4; ++column) {
-        projection[row * 4 + column] = projectionMatrix.m[column][row];
-        if (row < 3) view[row * 4 + column] = viewMatrix.m[column][row];
-    }
-    auto gx = projection;
-    for (unsigned column = 0; column < 4; ++column) gx[8 + column] -= gx[12 + column];
-    for (unsigned row = 0; row < 4; ++row) for (unsigned column = 0; column < 4; ++column) {
-        for (unsigned k = 0; k < 4; ++k) visibilityProjection[row * 4 + column] += gx[row * 4 + k] * viewMatrix.m[column][k];
-    }
+    publishCamera();
     auto& managers = resources.managers();
     managers.updatePlacement(0);
     resources.furniture().initializeObjects();
@@ -164,6 +149,7 @@ void gameplay::Scene::drawModel(const doors::ModelResource& model,
 
 void gameplay::Scene::draw(bool present) {
     const bool gameplayDrawn = sceneControl.gameplayEnabled;
+    if (gameplayDrawn && presentationTick) publishCamera();
     if (gameplayDrawn) drawGameplay(false);
     if (presentationTick) {
         keyPresentation.advanceDraw(presentationButtons);
@@ -178,6 +164,14 @@ void gameplay::Scene::draw(bool present) {
         picture.height = 480;
         gamerenderer::drawInterface({picture}, present);
     }
+}
+
+void gameplay::Scene::publishCamera() {
+    const auto camera = resources.publishCamera();
+    view = camera.view;
+    projection = camera.projection;
+    visibilityProjection = camera.worldProjection;
+    for (unsigned column = 0; column < 4; ++column) projection[8 + column] += projection[12 + column];
 }
 
 void gameplay::Scene::drawGameplay(bool present) {

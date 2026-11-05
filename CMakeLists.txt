@@ -249,6 +249,8 @@ add_library(Game STATIC
     src/game/player/playerkeycollection.cpp
     src/game/player/playerliferecovery.cpp
     src/game/player/playerlightmodel.cpp
+    src/game/player/playerlightframe.cpp
+    src/game/player/playerlightcontacts.cpp
     src/game/player/playermanager.cpp
     src/game/player/playermanagerbinding.cpp
     src/game/player/playerorientation.cpp
@@ -286,6 +288,7 @@ add_library(Game STATIC
     src/game/scene/gameparameters.cpp
     src/game/scene/gameplaycamera.cpp
     src/game/scene/gameplaycameraowner.cpp
+    src/game/scene/gameplaycameraprojection.cpp
     src/game/scene/gameplaymanagerservices.cpp
     src/game/scene/gameplayresourceowner.cpp
     src/game/scene/gameplayspawn.cpp

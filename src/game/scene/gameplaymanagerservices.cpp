@@ -15,6 +15,8 @@
 #include "game/player/playerdamageframe.h"
 #include "game/player/playerinputrouting.h"
 #include "game/player/playerorientationframe.h"
+#include "game/player/playerlightframe.h"
+#include "game/player/playerlightcontacts.h"
 #include "resources/glme01addresses.h"
 
 #include <stdexcept>
@@ -67,6 +69,8 @@ struct gameplay::ManagerServices::State {
         padSampler(dependencies.executable), playerDecoder(dependencies.executable),
         playerCapture(dependencies.executable), playerDamage(dependencies.executable),
         playerOrientation(dependencies.executable, dependencies.actors.pose),
+        playerFinish(dependencies.executable, dependencies.actors.pose), playerLight(dependencies.executable),
+        lightContacts(dependencies.executable, dependencies.actors.catalog),
         ladderPaths(dependencies.mission) {}
 
     ~State() {
@@ -241,6 +245,9 @@ struct gameplay::ManagerServices::State {
     playeractor::CaptureFrame playerCapture;
     playerevents::DamageFrame playerDamage;
     playerorientation::Frame playerOrientation;
+    playeractor::FinishFrame playerFinish;
+    playeractor::LightFrame playerLight;
+    playeractor::LightContacts lightContacts;
     playerorientation::Globals turning;
     ladders::Paths ladderPaths;
     std::int32_t elementDuration = 0;
@@ -298,6 +305,19 @@ bool gameplay::ManagerServices::beginPlayerCapture(std::int32_t index, const std
 
 void gameplay::ManagerServices::updatePlayerCapture(std::int32_t index) {
     if (auto* player = state->events->player(index)) state->playerCapture.run(*player, *state->events, state->particles->effects());
+}
+
+void gameplay::ManagerServices::updatePlayerLight(unsigned index) {
+    if (index >= state->dependencies.playerCount) throw std::out_of_range("Player light index exceeds the bound player count.");
+    auto* player = state->events->player(static_cast<std::int32_t>(index));
+    if (!player) throw std::runtime_error("Flashlight update requires its registered player owner.");
+    const playeractor::LightServices services{state->lights, *state->players->models, *state->players->state,
+        [this](unsigned sound, const auto& position) { state->audio->playback.play(sound, position); },
+        [this](auto&, const auto& light) {
+            state->lightContacts.update(light, *state->enemies, state->dependencies.actors.catalog, state->dependencies.visibility);
+        }};
+    state->playerLight.update(*player, roomCleared(player->room() >> 24),
+        static_cast<std::uint32_t>(state->playerGlobals.field8BF8), state->playerFinish, services, state->dependencies.actors.pose);
 }
 
 bool gameplay::ManagerServices::releasePlayerCapture(std::int32_t index, const std::array<float, 3>* position,

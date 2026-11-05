@@ -1,4 +1,5 @@
 #include "game/player/playerresourcepools.h"
+#include "game/world/roomlightpool.h"
 
 #include <algorithm>
 #include <stdexcept>
@@ -32,4 +33,27 @@ playerresources::CurveOwner::CurveOwner() {
 playerresources::CurveOwner::~CurveOwner() {
     for (auto& curve : secondary) curve.reset();
     primary.reset();
+}
+
+void playerresources::LightPulse::start(const std::array<float, 3>& origin, std::uint32_t rgba,
+    std::uint16_t range, std::uint16_t intensity, std::uint32_t frames) {
+    position = origin;
+    color = rgba;
+    distance = range;
+    brightness = intensity;
+    remaining = duration = static_cast<float>(frames);
+}
+
+void playerresources::LightPulse::update(roomlighting::Pool& lights) {
+    if (!(remaining > 0)) return;
+    const auto range = static_cast<std::uint16_t>(static_cast<std::uint32_t>(float(distance) * (remaining / duration)));
+    if (range) {
+        modellighting::RoomLight light;
+        light.position = position;
+        for (unsigned i = 0; i < 4; ++i) light.color[i] = static_cast<std::uint8_t>(color >> (24 - i * 8));
+        light.referenceDistance = range;
+        light.brightnessPercent = brightness;
+        lights.add(1, light);
+    }
+    remaining -= 1;
 }

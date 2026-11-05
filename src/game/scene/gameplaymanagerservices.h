@@ -81,6 +81,7 @@ namespace gameplay {
         void updatePlayerInput(unsigned index, bool inputAvailable,
             const std::function<void(playeractor::Player&, bool)>& scannerTransition);
         void updatePlayerOrientation(unsigned index, const playercomponents::AttachedOutput& attachment, unsigned frame);
+        void updatePlayerLight(unsigned index);
         bool beginPlayerCapture(std::int32_t index, const std::array<float, 3>& position, std::int32_t recipient);
         void updatePlayerCapture(std::int32_t index);
         bool releasePlayerCapture(std::int32_t index, const std::array<float, 3>* position,
