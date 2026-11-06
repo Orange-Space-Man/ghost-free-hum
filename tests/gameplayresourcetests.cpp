@@ -544,6 +544,8 @@ int main(int argc, char** argv) {
                 require(gameentry::selectNewFile(saves, 0, entry, error), error);
                 if (cycle) entry.inventory[0x1a0 + 207 / 8] |= 0x80 >> (207 & 7);
                 gameplay::ResourceOwner owner(argv[1], entry);
+                require(!owner.managers().flags().value(1),
+                    "First-visit startup must leave the animated furniture activation flag disabled.");
                 require(owner.managers().enemies().playerCount() == 1,
                     "Fresh single-player startup creates only the original player owner.");
                 const auto& residents = owner.residentRooms().slots();
@@ -574,6 +576,8 @@ int main(int argc, char** argv) {
                 furniture.initializeObjects();
                 for (const auto& object : furniture.slots()) {
                     if (!(object.flags & 2)) continue;
+                    if (!cycle) std::cout << "Furniture dependency " << object.row << ": behavior " << object.behavior <<
+                        ", table " << object.itemTable << ", generate " << object.generate << ", count " << object.generateCount << '\n';
                     require((object.flags & 7) == 7 && object.updates == 1, "First furniture dispatch runs original initialization.");
                     if (!object.model) continue;
                     require(object.matrices.size() == object.model->hierarchy.visits().size(), "Object pose has one matrix per visited node.");

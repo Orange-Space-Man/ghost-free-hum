@@ -319,6 +319,7 @@ namespace {
                 "The completed player frame must publish the current room and direction to its manager view.");
             managers.updateContacts();
             managers.updatePoses();
+            owner.updateCamera();
             managers.lights().beginFrame();
             require(managers.players().frame() == float(frame), "Shared player clock must retain one advance per original manager frame.");
             managers.updatePlayerLate(0, {false,

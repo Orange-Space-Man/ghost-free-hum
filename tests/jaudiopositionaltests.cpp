@@ -185,6 +185,40 @@ int main(int argc, char** argv) {
                 check(!binding, "Player-frame audio release must clear retained handles.");
             }
             {
+                for (unsigned id : {0x1842u, 0x182cu, 0x1820u, 0x1823u, 0x1877u, 0x1868u, 0x4820u, 0x4822u}) {
+                    std::cout << "Checking furniture sound " << std::hex << id << std::dec << '\n';
+                    jaudio::PositionalSound* binding = nullptr;
+                    check(playback.play(id, position, &binding) != nullptr, "Furniture audio must acquire its real positional handle.");
+                    playback.setInteractionPitch(*binding, 1.25f);
+                    playback.setInteractionVolume(*binding, 0.5f);
+                    check(playback.interactionPitch(*binding) == 1.25f,
+                        "Furniture pitch must read the current channel-zero value, not the combined spatial/default pitch.");
+                    bool audible = false;
+                    for (unsigned block = 0; block < 1000 && !playback.finished(); ++block) {
+                        if (block % 8 == 0) playback.update(listener);
+                        mixer.begin();
+                        check(playback.mix(mixer, error), error);
+                        std::array<std::int16_t, 160> samples{};
+                        mixer.end(samples, level.outputLevel());
+                        audible |= std::any_of(samples.begin(), samples.end(), [](auto sample) { return sample != 0; });
+                    }
+                    check(audible, "Furniture sound must execute its original sequence and produce wave-bank audio.");
+                    playback.stop();
+                    check(!binding, "Furniture audio teardown clears its retained handle.");
+                }
+                jaudio::PositionalSound* swing = nullptr;
+                playback.updateFurnitureSwing(0x1823, position, {0, 0}, swing);
+                check(!swing, "A stationary swing cancels its pending sound through the original stop route.");
+                playback.updateFurnitureSwing(0x1823, position, {100000, -200000}, swing);
+                check(swing && playback.interactionPitch(*swing) > 0,
+                    "Swing velocity drives a real retained handle and its pitch control.");
+                const auto saturatedPitch = playback.interactionPitch(*swing);
+                admit();
+                playback.updateFurnitureSwing(0x1823, position, {-200000, 100000}, swing);
+                check(swing && playback.interactionPitch(*swing) == saturatedPitch,
+                    "Swapping swing axes retains the original maximum-speed saturation.");
+                playback.stop();
+                check(!swing, "Scene teardown clears the swing handle before its owner is released.");
                 std::array<jaudio::PositionalSound*, 5> requests{};
                 playback.play(0x839, position, &requests[0]);
                 playback.play(0x1809, position, &requests[1]);

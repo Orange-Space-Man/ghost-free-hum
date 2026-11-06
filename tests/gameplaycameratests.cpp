@@ -1,4 +1,5 @@
 #include "game/scene/gameplaycamera.h"
+#include "game/scene/gameplaycamerafollow.h"
 #include "game/scene/gameplaycameraprojection.h"
 #include "resources/gameassetpackage.h"
 #include "resources/glme01addresses.h"
@@ -120,6 +121,62 @@ int main(int argc, char** argv) {
         set(0x80300164, 2);
         require(!gameplaycamera::initialize(data, spawn, camera, error), "Reject unsupported door camera flags.");
         require(camera.position[1] == 781, "Failed initialization preserves prior camera.");
+        set(0x80300164, 0);
+        scalar(0x804d9ce0, 2); scalar(0x804d9ce4, 0.5f);
+        scalar(0x804d9cf0, 0.5f); scalar(0x804d9d04, 0.25f);
+        scalar(0x804d9a7c, 100); scalar(0x804d9a78, 0.01f); scalar(0x804d9a8c, 1);
+        scalar(0x804d009c, 26); scalar(0x804d9d10, 1);
+        set(0x804d0000, 16); set(0x804d0004, 8192);
+        gameplaycamera::Follow follow(data);
+        gameplaycamera::CameraOwner following;
+        following.target = {0, 100, 40};
+        following.position = {0, 480, 1460};
+        std::array<float, 3> position{10, 0, 40}, velocity{4, 0, 0};
+        playeractor::View view{};
+        view.position = &position;
+        view.velocity = &velocity;
+        follow.update(following, view, 0x02000102);
+        require(following.target == std::array<float, 3>{9, 150, 40} && following.position[1] == 430,
+            "Follow smoothing uses velocity lead and the previous target height for the eye.");
+        require(following.nearPlane == 16 && following.farPlane == 8192 && following.up[1] == 1,
+            "Normal camera callback restores the original projection and up vector.");
+        velocity[0] = 0;
+        follow.update(following, view, 0x02000102);
+        require(following.target[0] == 11.5f, "Velocity lead decays instead of disappearing when movement stops.");
+        const auto eye = following.position;
+        follow.update(following, view, 0xff000000);
+        require(following.position == eye && following.target[0] == 11.125f,
+            "Absent-room subjects update only the target with their separate smoothing rate.");
+        const auto target = following.target;
+        following.flags = 1;
+        bool rejected = false;
+        try { follow.update(following, view, 0x02000102); }
+        catch (const std::runtime_error&) { rejected = true; }
+        require(rejected && following.target == target, "An override must not execute the ordinary follow callback.");
+        scalar(0x804d9d00, 10); scalar(0x804d9cfc, 20);
+        set(0x804d00a0, 0x02030000);
+        gameplaycamera::Follow presets(data);
+        following.flags = 0;
+        view.field89E = 1;
+        view.field8AC = 5;
+        presets.update(following, view, 0x02000102);
+        require(presets.preset() == 0, "The near preset waits for its original delay.");
+        view.field89E = 0;
+        presets.update(following, view, 0x02000102);
+        view.field89E = 1;
+        presets.update(following, view, 0x02000102);
+        require(presets.preset() == 0, "Returning to the selected preset retains the shared delay counter.");
+        presets.update(following, view, 0x02000102);
+        require(presets.preset() == 2, "Near selection occurs after the retained delay expires.");
+        view.field8AC = 21;
+        presets.update(following, view, 0x02000102);
+        require(presets.preset() == 1, "Far selection is immediate.");
+        view.field834 = 1;
+        presets.update(following, view, 0x02000102);
+        require(presets.preset() == 4, "Inverted far selection uses its own preset.");
+        view.field89E = 0;
+        presets.update(following, view, 0x02000102);
+        require(presets.preset() == 3, "Inverted ordinary selection uses its own preset.");
         if (argc == 2) {
             gameassets::Package package;
             roomscene::Scene room;
