@@ -185,7 +185,7 @@ int main(int argc, char** argv) {
                 check(!binding, "Player-frame audio release must clear retained handles.");
             }
             {
-                for (unsigned id : {0x1842u, 0x182cu, 0x1820u, 0x1823u, 0x1877u, 0x1868u, 0x4820u, 0x4822u}) {
+                for (unsigned id : {0x1842u, 0x182cu, 0x1820u, 0x1823u, 0x1877u, 0x1868u, 0x4820u, 0x4822u, 0x1815u, 0x1816u}) {
                     std::cout << "Checking furniture sound " << std::hex << id << std::dec << '\n';
                     jaudio::PositionalSound* binding = nullptr;
                     check(playback.play(id, position, &binding) != nullptr, "Furniture audio must acquire its real positional handle.");

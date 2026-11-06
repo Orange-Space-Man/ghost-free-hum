@@ -158,6 +158,19 @@ int CaptureApplication::run(HINSTANCE instance) {
                     throw std::runtime_error("Gameplay simulation did not preserve its 30 Hz clock.");
                 draw(false);
                 gamerenderer::capture(capturePath.wstring() + L".foyer.png");
+                const auto movementStart = *gameplayScene->playerView().position;
+                for (unsigned frame = 0; frame < 60; ++frame) {
+                    playerinput::PadStatus pad;
+                    pad.stickX = 87;
+                    gameplayScene->update(pad, 0, frame);
+                    draw(false);
+                }
+                const auto movementEnd = *gameplayScene->playerView().position;
+                if (std::abs(movementEnd[0] - movementStart[0]) + std::abs(movementEnd[2] - movementStart[2]) < 10)
+                    throw std::runtime_error("Normal rendered gameplay did not move Luigi from controller input.");
+                gamerenderer::capture(capturePath.wstring() + L".foyer-moving.png");
+                for (unsigned frame = 0; frame < 30; ++frame) { gameplayScene->update({}, 0); draw(false); }
+                gamerenderer::capture(capturePath.wstring() + L".foyer-stopped.png");
                 if (!gameplayScene->presentKey(false, false, 1)) throw std::runtime_error("Gameplay did not admit the original key presentation.");
                 if (gameplayScene->presentKey(false, false, 1)) throw std::runtime_error("Gameplay admitted a competing key presentation.");
                 for (unsigned frame = 0; frame < 60; ++frame) {

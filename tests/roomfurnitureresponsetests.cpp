@@ -1,4 +1,4 @@
-#include "../recovered/roomfurnitureresponse.h"
+#include "game/world/roomfurnitureresponse.h"
 #include "../recovered/roomfurnitureswing.h"
 #include "resources/gameassetpackage.h"
 #include "resources/roomarchivereader.h"
@@ -328,7 +328,43 @@ int main(int argc, char** argv) {
         swinging.updateAnimated(object, row, animatedState, false, false, response, services, swingServices, animated);
         require(animatedState.proximity == 0 && messages == previousMessages + 1 && !(row.flags & 0x20),
             "Animated furniture rearms at distance and consumes scan requests even when its swing is not visible.");
-        std::cout << "Furniture strike, suction, loot persistence, repeatable attempts and occupant release verified.\n";
+        object = {};
+        object.row = 99;
+        object.room = 0x02000102;
+        object.position = {570, 0, -80};
+        object.behavior = 17;
+        object.rotationAmplitude = 1000;
+        object.angles[0] = 2000;
+        object.updates = 2;
+        row = {};
+        unsigned rotationSounds = 0;
+        services.sound = [&](unsigned id, const auto& point, const float* volume) {
+            require(id == 0x1868 && point == object.position && volume && *volume > 0 && *volume <= 1,
+                "Rotating furniture submits its own positional sound and capped volume.");
+            ++rotationSounds;
+        };
+        response.rotating(object, row, false, false, services);
+        require(object.rotationAmplitude == 1000 && object.angles[0] == 2000 && !rotationSounds,
+            "Invisible rotating furniture must retain its angle, amplitude and audio state.");
+        response.rotating(object, row, true, false, services);
+        require(object.rotationAmplitude > 0 && object.rotationAmplitude < 1000 && object.previousRotation == 2000 &&
+            object.angles[0] == static_cast<int>(object.rotationAmplitude) && rotationSounds == 1,
+            "Rotation decays before computing its next angle and compares the previous angle before emitting sound.");
+        object.updates = 6;
+        response.rotating(object, row, true, false, services);
+        require(object.angles[0] == (static_cast<int>(-object.rotationAmplitude) & 0xffff) && rotationSounds == 1,
+            "Negative rotation keeps the original unsigned sixteen-bit mask and comparison behavior.");
+        object.rotationAmplitude = 0;
+        object.angles = {};
+        object.suctionTicks = 0;
+        services.suctionStrength = [](float, const auto&) { return 1.0f; };
+        response.rotating(object, row, true, true, services);
+        require(object.rotationAmplitude == 0 && object.suctionTicks == 1,
+            "The first suction tick uses the old zero counter before incrementing it.");
+        response.rotating(object, row, true, true, services);
+        require(object.rotationAmplitude == 10 && object.suctionTicks == 2,
+            "Subsequent rotation uses the retained counter for its original acceleration.");
+        std::cout << "Furniture strike, suction, rotation, loot persistence, repeatable attempts and occupant release verified.\n";
         return 0;
     } catch (const std::exception& error) {
         std::cerr << error.what() << '\n';

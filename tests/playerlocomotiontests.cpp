@@ -31,6 +31,7 @@
 #include <stdexcept>
 
 void checkOwnedPlayerFinish(const std::filesystem::path& package, const gamesave::State& saves);
+void checkOwnedPlayerHealth(const std::filesystem::path& package, const gamesave::State& saves);
 void checkPlayerFrameComponents(const std::filesystem::path& package, const gamesave::State& saves);
 
 namespace {
@@ -223,29 +224,19 @@ namespace {
         Scanner scannerServices;
         unsigned lightFrames = 0;
         std::uint8_t specialActive = 0;
-        std::int32_t audioLife = player->life;
-        playerevents::LifeEnvironment life{audioLife, managers.particles().effects(),
-            [&](unsigned id, const auto& position) { managers.playback()->play(id, position); },
-            [](const auto&) { throw std::runtime_error("Locomotion fixture unexpectedly requested death playback."); },
-            [](const auto&, const auto&, auto, auto, auto, auto) {
-                throw std::runtime_error("First-visit locomotion unexpectedly requested money scattering.");
-            }};
+        auto& life = managers.playerLife();
         jaudio::InterfaceClock audioClock;
         unsigned footstepTicks = 0;
         unsigned roomNotifications = 0;
-        const playerenvironment::Services environmentServices{managers.collision(), services.catalog, services.models,
-            pose, managers.enemies(), *managers.players().entries,
-            [](auto&) { throw std::runtime_error("First-visit locomotion unexpectedly requested a player-type change."); },
-            [](const auto&) -> playeractor::Target* { throw std::runtime_error("First-visit locomotion unexpectedly acquired a vacuum target."); },
-            [&](unsigned room) { return managers.roomCleared(room); },
-            [](bool) { throw std::runtime_error("First-visit locomotion unexpectedly requested capture audio."); },
-            [&](unsigned room) {
+        auto environmentServices = managers.preparePlayerEnvironment(0);
+        const auto notifyRoom = environmentServices.roomSound;
+        environmentServices.roomSound = [&, notifyRoom](unsigned room) {
                 require(room == player->fieldB4, "Environment audio notification must carry the actual packed room.");
-                managers.music().notifyRoom(room, entry.map);
+                notifyRoom(room);
                 require(managers.music().routing().room == (room & 255),
                     "Environment notification must reach the production music owner's room routing.");
                 ++roomNotifications;
-            }};
+            };
         require(!player->components->quaternion->field10, "The constructor must retain the originally unwritten turning slot.");
         const playeractions::FrameServices actionServices{managers.flags(), services.catalog, services.models,
             [](unsigned id) { throw std::runtime_error("Locomotion fixture reached global sound " + std::to_string(id)); },
@@ -280,22 +271,7 @@ namespace {
                 [](unsigned, const auto&) { throw std::runtime_error("Locomotion unexpectedly requested an attack matrix effect."); }};
             const std::array<playermotion::PlatformMotion, 2> platforms{};
             playeractor::MainFrameServices mainServices{environmentServices, doorUpdate, managers.preparePlayerLadder(0),
-                presentationServices, scannerServices, managers.playerEvents(), timerServices, specialActive};
-            mainServices.owner = [&] {
-                unsigned updated = 0;
-                for (unsigned slot = 0; slot < managers.enemies().slots().size(); ++slot) {
-                    const auto& entry = managers.enemies().slots()[slot];
-                    if (entry.state == 2 && entry.owner && &entry.owner->actor() == player) {
-                        managers.updateOwner(slot);
-                        ++updated;
-                    }
-                }
-                require(updated == 1, "Main scheduling must update exactly the retained character owner.");
-            };
-            mainServices.input = [&] { managers.updatePlayerInput(0, true, {}); };
-            mainServices.furniture = [&] { managers.updatePlayerFurniture(0); };
-            mainServices.motion = [&] { managers.updatePlayerMotion(0, {life, false, frame, platforms, actionServices.globalSound}); };
-            mainServices.sound = actionServices.positionalSound;
+                &presentationServices, &scannerServices, managers.playerEvents(), timerServices, specialActive};
             if (frame == 0) {
                 auto incomplete = mainServices;
                 incomplete.owner = {};
@@ -305,9 +281,20 @@ namespace {
                 catch (const std::invalid_argument&) { rejected = true; }
                 require(rejected && player->position == position,
                     "An incomplete main binding must fail before mutating the player.");
+                auto foreignLife = life;
+                playeractor::TimerServices foreignTimers{foreignLife, false, frame, {}, {}, {}, {}};
+                rejected = false;
+                try { managers.updatePlayerMain(0, {&presentationServices, &scannerServices, foreignTimers, platforms}); }
+                catch (const std::invalid_argument&) { rejected = true; }
+                require(rejected && player->position == position && managers.players().frame() == 0,
+                    "The owned scheduler rejects a foreign health environment before updating the actor or clocks.");
+                rejected = false;
+                try { managers.updatePlayerMain(1, {&presentationServices, &scannerServices, timerServices, platforms}); }
+                catch (const std::out_of_range&) { rejected = true; }
+                require(rejected && player->position == position, "The owned scheduler rejects an absent player before updating the scene.");
                 player->components->scanner->state[2] = 1;
             }
-            mainFrame.run(*player, mainServices);
+            managers.updatePlayerMain(0, {&presentationServices, &scannerServices, timerServices, platforms});
             require(!player->state.flags1140[3] && !player->components->scanner->state[2],
                 "The original scanner stage must publish its inactive result before equipment and movement.");
             if (frame == 0) require(player->state.field10E0 >= 0,
@@ -318,11 +305,10 @@ namespace {
             require(player->view.room == player->fieldB4 && player->view.direction == &player->state.direction,
                 "The completed player frame must publish the current room and direction to its manager view.");
             managers.updateContacts();
-            managers.updatePoses();
             owner.updateCamera();
-            managers.lights().beginFrame();
+            managers.updatePoses();
             require(managers.players().frame() == float(frame), "Shared player clock must retain one advance per original manager frame.");
-            managers.updatePlayerLate(0, {false,
+            managers.completePlayerFrame({false,
                 [](auto&, bool) { throw std::runtime_error("First-visit late frame unexpectedly requested scanner cancellation."); },
                 [](auto&, auto, auto, auto, auto) { throw std::runtime_error("First-visit late frame unexpectedly exposed vacuum pipe geometry."); },
                 {}});
@@ -349,8 +335,7 @@ namespace {
                 require(cone.frame == float(frame % static_cast<unsigned>(cone.frameCount)),
                     "Manager-bound cone animation must consume the shared player clock rather than a separate light clock.");
             }
-            managers.players().state->update(managers.lights());
-            managers.players().advanceClock();
+            require(managers.players().frame() == float(frame + 1), "The owned late frame advances the shared player clock exactly once.");
             owner.publishCamera();
             if (frame % 3 != 0) {
                 audioClock.mixed();
@@ -376,7 +361,8 @@ namespace {
                 player->animationState << ',' << player->animationFrame << ',' << player->fieldB2 << ',' << player->fieldB0 << '\n';
         }
         require(horizontalDistance(origin, player->position) > 10, "Held controller input did not move Luigi through the imported foyer.");
-        require(roomNotifications == 1, "Staying in the foyer must publish its audio room once, not every frame.");
+        require(managers.music().routing().room == (player->fieldB4 & 255),
+            "The manager-owned main update must publish the player's actual audio room.");
         require(lightFrames > 250, "Original flashlight state gating must remain active during first-visit movement.");
         require(player->state.field1180 == 5 && player->state.field7A4->actorType == 7,
             "The uncleared foyer must select the real flashlight attachment without a vacuum.");
@@ -499,6 +485,7 @@ int main(int argc, char** argv) {
         require(gamesave::initialize(initialFlags, saves, error), error);
         checkFinish(argv[1], saves);
         checkOwnedPlayerFinish(argv[1], saves);
+        checkOwnedPlayerHealth(argv[1], saves);
         checkPlayerFrameComponents(argv[1], saves);
         std::ofstream trace;
         if (argc > 2) {

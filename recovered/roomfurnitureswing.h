@@ -1,6 +1,6 @@
 #pragma once
 
-#include "roomfurnitureresponse.h"
+#include "game/world/roomfurnitureresponse.h"
 #include "game/actors/actorinitialpose.h"
 
 namespace roomfurniture {

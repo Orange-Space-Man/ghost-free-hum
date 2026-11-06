@@ -184,3 +184,29 @@ void checkOwnedPlayerFinish(const std::filesystem::path& package, const gamesave
     managers.updatePlayerOrientation(0, attachment, 3);
     require(state.field1070 == 1, "The original aim delay suppresses attachment-driven turning until expiration.");
 }
+
+void checkOwnedPlayerHealth(const std::filesystem::path& package, const gamesave::State& saves) {
+    gameentry::State entry;
+    std::string error;
+    require(gameentry::selectNewFile(saves, 0, entry, error), "Health ownership requires a fresh original game entry.");
+    gameplay::ResourceOwner owner(package, entry);
+    auto& managers = owner.managers();
+    auto& player = *managers.playerEvents().player(0);
+    auto& life = managers.playerLife();
+    require(&life.effects == &managers.particles().effects(), "Player health must use the live scene's effect factory.");
+    require(player.state.fields12F4[9] == 0 && playerevents::loseMoney(player, 10, life) == 0,
+        "The original empty-wallet path must return before requesting a money scatter service.");
+    const auto initialLife = player.life;
+    require(initialLife > 10, "The imported initial player record must support a nonfatal damage check.");
+    playerevents::setLife(player, static_cast<std::int16_t>(initialLife - 10), life);
+    require(player.life == initialLife - 10 && life.audioLife == player.life && life.effects.history[0] == 210,
+        "Damage must update the retained audio-health value and create its original loss effect.");
+    require(!managers.playback()->finished(), "Damage must submit sound to the live positional playback manager.");
+    playerevents::recoverLife(player, 0, life);
+    require(player.life == player.state.maximumLife && life.audioLife == player.life,
+        "Full recovery uses the player's original maximum and republishes audio health.");
+    playerevents::setLife(player, 0, life);
+    require(player.life == 0 && life.audioLife == 0 && !managers.playback()->finished(),
+        "Death must run through the retained health and real death-audio services.");
+    managers.playback()->stop();
+}

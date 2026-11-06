@@ -5,7 +5,7 @@
 #include "game/player/playercontactreactions.h"
 #include "game/world/dooranimationpose.h"
 #include "game/player/playerfurnitureframe.h"
-#include "../recovered/roomfurnitureresponse.h"
+#include "game/world/roomfurnitureresponse.h"
 #include "game/player/playerenergyframe.h"
 #include "game/player/playerlightframe.h"
 #include "game/player/playerlightcontacts.h"
@@ -527,19 +527,8 @@ void checkPlayerFrameComponents(const std::filesystem::path& package, const game
         if (struck) break;
     }
     require(struck, "The player button stage must reach a real foyer furniture row.");
-    enemytypes::Catalog types;
-    require(types.read(resources.executable(), error), "Furniture response requires original item types.");
-    const characteritems::Admission admission(resources.executable(), types);
-    const roomfurniture::Response response(resources.executable(), admission);
-    roomfurniture::ResponseServices responseServices;
-    unsigned collections = 0, dust = 0;
-    responseServices.roomCleared = [&](unsigned room) { return managers.roomCleared(room); };
-    responseServices.selectItem = [&](unsigned) { ++collections; return jmp::ToolDataRef{}; };
-    responseServices.effect = [&](unsigned effect, const auto&) {
-        require(effect == 0x61, "Empty furniture response must emit the original dust effect.");
-        ++dust;
-    };
-    responseServices.sound = [](unsigned, const auto&, const float*) {};
+    managers.playback()->stop();
+    managers.particles().effects().history.fill(0);
     resources.furniture().initializeObjects();
     const auto* ownedObject = resources.furniture().object(struckRow);
     require(ownedObject && (ownedObject->behavior == 0 || ownedObject->behavior == 22),
@@ -550,17 +539,41 @@ void checkPlayerFrameComponents(const std::filesystem::path& package, const game
     visibility.mark(0, 2, ownedObject->room, roomFlags, savedFlags, 0, -1, 0, {0, 0, 640, 480}, {0, 0, 640, 480});
     const auto startingUpdates = ownedObject->updates;
     for (unsigned frame = 0; frame < 20; ++frame) {
-        resources.furniture().update(visibility, 0, [&](auto& object, auto& row, bool visible) {
-            if (object.row != struckRow) return false;
-            response.basic(object, row, visible, false, 0, frame, responseServices);
-            return true;
-        });
+        managers.updateFurniture(frame);
         require(bool(resources.furniture().rowState(struckRow).flags & 1) == (frame < 19),
             "The owned furniture row must retain the player's strike until its twentieth update.");
     }
     require(ownedObject == resources.furniture().object(struckRow) && ownedObject->updates == startingUpdates + 20 &&
-        collections == 1 && dust == 1 && (ownedObject->collectionFlags & 1),
+        managers.particles().effects().history[0] == 0x61 && managers.particles().effects().history[1] == 0 && (ownedObject->collectionFlags & 1),
         "The manager-owned furniture object must consume the player interaction and retain completion state.");
+    require(!managers.playback()->finished(), "Furniture completion must reach the actual positional playback manager.");
     for (const auto& matrix : ownedObject->matrices) for (float value : matrix)
         require(std::isfinite(value), "Furniture owner must refresh finite render matrices after its strike response.");
+    for (unsigned row : {207u, 335u, 336u}) {
+        const auto* object = resources.furniture().object(row);
+        require(object, "Resident strike checks require the original chest and neighboring rotating objects.");
+        auto& flags = resources.roomFlags().at(object->room >> 24);
+        visibility.mark(0, 2, object->room, flags, savedFlags, 0, -1, 0, {0, 0, 640, 480}, {0, 0, 640, 480});
+        resources.furniture().markStruck(row, true);
+    }
+    for (unsigned row : {101u, 270u, 295u}) resources.furniture().markStruck(row, false);
+    managers.particles().effects().history.fill(0);
+    for (unsigned frame = 0; frame < 20; ++frame) managers.updateFurniture(frame);
+    const auto* chest = resources.furniture().object(207);
+    require(chest->animation == 1 && chest->frame == 1 && chest->frameDelta == 0,
+        "Chest switching preserves the previous sampled frame, including the original zero sound delta.");
+    for (unsigned row : {207u, 335u, 336u})
+        require(!(resources.furniture().rowState(row).flags & 1) && (resources.furniture().object(row)->collectionFlags & 1),
+            "Each resident strike handler must complete through the actual manager services.");
+    for (unsigned row : {101u, 270u, 295u})
+        require((resources.furniture().rowState(row).flags & 1) && !resources.furniture().object(row)->collectionFlags,
+            "Swing and scan-only handlers must retain ignored strikes without invoking their separate collection triggers.");
+    require(managers.particles().effects().history[0] == 0x61 && managers.particles().effects().history[1] == 0x61 &&
+        managers.particles().effects().history[2] == 0x61 && managers.particles().effects().history[3] == 0,
+        "Only the three completed strikes may emit dust through the actual particle owner.");
+    const auto endFrame = chest->animations.at(1)->animation.headerValue();
+    for (unsigned frame = 0; frame < endFrame + 2; ++frame) managers.updateFurniture(frame);
+    require(chest->frame == static_cast<float>(endFrame - 1), "The opened chest must retain the original terminal animation frame.");
+    resources.furniture().selectAnimation(207, 0);
+    require(chest->animation == 0 && chest->frame == 0, "Reselecting the idle animation resets the frame through the pool owner.");
 }
