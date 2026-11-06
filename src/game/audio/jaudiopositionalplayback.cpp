@@ -12,9 +12,10 @@
 #include <stdexcept>
 
 namespace {
-    constexpr std::array<unsigned, 31> soundIds{0x839, 0x83d, 0x1809, 0x180a, 0x180b, 0x181e, 0x280f, 0x2810, 0x282b,
+    constexpr std::array<unsigned, 39> soundIds{0x839, 0x83d, 0x1809, 0x180a, 0x180b, 0x181e, 0x280f, 0x2810, 0x282b,
         0x186e, 0x1841, 0x810, 0x811, 0x850, 0x4808, 0x4828, 0x828, 0x3b, 0x43, 0x801, 2, 0x805, 9,
-        0x288a, 0x1028, 0x837, 0x84c, 0x813, 0x2814, 0x2805, 0x281c};
+        0x288a, 0x1028, 0x837, 0x84c, 0x813, 0x2814, 0x2805, 0x281c,
+        0x1842, 0x182c, 0x1820, 0x1823, 0x1877, 0x1868, 0x4820, 0x4822};
     constexpr unsigned effectRecordCountAddress = 0x804d78b8;
     constexpr unsigned effectParameterCountAddress = 0x804d78d4;
     constexpr unsigned maximumDistanceAddress = 0x804dd170;
@@ -64,6 +65,7 @@ struct jaudio::PositionalPlayback::Runtime : EffectAdmissionServices, EffectCate
     EffectParameterPool parameters;
     std::array<EffectMetadata, soundIds.size()> metadata{};
     std::array<SpatialParameters, soundIds.size()> defaults{};
+    std::array<float, 5> furnitureSound;
     std::uint8_t parameterFlags;
     std::function<std::uint32_t(const std::array<float, 3>&, bool)> sourceContext;
     std::vector<EffectReleaseSequence> sequences;
@@ -106,6 +108,9 @@ struct jaudio::PositionalPlayback::Runtime : EffectAdmissionServices, EffectCate
         }
         std::string error;
         if (!master.loadEffects(package, resources, error)) throw std::runtime_error(error);
+        constexpr unsigned furnitureSoundParameters = 0x804dd12c;
+        for (unsigned i = 0; i < furnitureSound.size(); ++i)
+            furnitureSound[i] = scalar(executable, furnitureSoundParameters + i * 4);
         for (unsigned index = 0; index < soundIds.size(); ++index) {
             const auto& info = *soundInfo(resources, soundIds[index]);
             metadata[index] = {owner.soundFlags[index], info[4]};
@@ -285,6 +290,40 @@ void jaudio::PositionalPlayback::playDeathEffects(const std::array<float, 3>& po
         for (auto* record = category.pool.active; record; record = record->next) {
             if (record->parameters) record->parameters->controls.set(EffectControl::volume, 7, 0, 3);
         }
+    }
+}
+
+float jaudio::PositionalPlayback::interactionPitch(PositionalSound& sound) {
+    std::lock_guard<std::recursive_mutex> lock(owners.mutex);
+    return owned(sound).record->parameters->controls.value(EffectControl::pitch, 0);
+}
+
+void jaudio::PositionalPlayback::setInteractionPitch(PositionalSound& sound, float value) {
+    std::lock_guard<std::recursive_mutex> lock(owners.mutex);
+    owned(sound).record->parameters->controls.set(EffectControl::pitch, 0, value, 0);
+}
+
+void jaudio::PositionalPlayback::setInteractionVolume(PositionalSound& sound, float value) {
+    std::lock_guard<std::recursive_mutex> lock(owners.mutex);
+    owned(sound).record->parameters->controls.set(EffectControl::volume, 0, value, 0);
+}
+
+void jaudio::PositionalPlayback::updateFurnitureSwing(unsigned id, const std::array<float, 3>& position,
+    const std::array<float, 2>& velocity, PositionalSound*& binding) {
+    std::lock_guard<std::recursive_mutex> lock(owners.mutex);
+    if (!play(id, position, &binding)) return;
+    const auto& constants = runtime->furnitureSound;
+    double speed = std::abs(double(velocity[1]));
+    if (speed < std::abs(double(velocity[0]))) speed = std::abs(double(velocity[0]));
+    if (constants[0] < speed) speed = constants[0];
+    speed = static_cast<float>(speed / double(constants[0]));
+    if (speed <= constants[1]) binding->stop(1);
+    else {
+        const float pitch = static_cast<float>(double(constants[2]) +
+            double(static_cast<float>(double(constants[2]) * speed)));
+        if (constants[3] < std::abs(static_cast<float>(double(interactionPitch(*binding)) - pitch)))
+            setInteractionPitch(*binding, pitch);
+        setInteractionVolume(*binding, constants[4] * static_cast<float>(speed - double(constants[1])));
     }
 }
 

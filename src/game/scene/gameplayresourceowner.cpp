@@ -2,6 +2,7 @@
 #include "game/scene/gameplayresourceowner.h"
 #include "resources/roomarchivereader.h"
 #include "game/player/playeractor.h"
+#include "game/scene/gameplaycamerafollow.h"
 #include "game/startup/startupresources.h"
 
 #include <stdexcept>
@@ -30,6 +31,7 @@ struct gameplay::ResourceOwner::State {
         models->initializeEmbedded(common);
         pose = std::make_unique<actormodel::InitialPose>(executable);
         cameraProjection = std::make_unique<gameplaycamera::Projection>(executable);
+        cameraFollow = std::make_unique<gameplaycamera::Follow>(executable);
         rooms = std::make_unique<roomlocation::Rooms>(executable, entry.map);
         collisions = std::make_unique<actorcollision::Catalog>(executable, modelCatalog);
         construction = std::make_unique<actors::Construction>(actors::Construction{
@@ -80,6 +82,7 @@ struct gameplay::ResourceOwner::State {
         spawn.position = player->position;
         spawn.rotation = player->rotation;
         spawn.roomId = player->room();
+        cameraRoom = spawn.roomId;
         if (!gameplaycamera::initialize(executable, spawn, camera, error)) throw std::runtime_error(error);
         auto& owner = *cameras.cameras[0];
         owner.position = camera.position;
@@ -91,6 +94,8 @@ struct gameplay::ResourceOwner::State {
     }
 
     gameentry::State& entry;
+    std::unique_ptr<gameplaycamera::Follow> cameraFollow;
+    unsigned cameraRoom = 0;
     gameassets::Package package;
     std::vector<std::uint8_t> executable;
     gamearchive::Archive common, map;
@@ -132,6 +137,13 @@ gameplay::ResourceOwner::ResourceOwner(const std::filesystem::path& path, gameen
 gameplay::ResourceOwner::~ResourceOwner() = default;
 gameplay::ManagerServices& gameplay::ResourceOwner::managers() { return *state->managers; }
 const s3denvironment::Camera& gameplay::ResourceOwner::camera() const { return state->camera; }
+
+void gameplay::ResourceOwner::updateCamera() {
+    const auto* player = state->managers->playerEvents().player(0);
+    if (!player) throw std::runtime_error("Camera update requires the manager-owned player.");
+    if (player->room()) state->cameraRoom = player->room();
+    state->cameraFollow->update(*state->cameras.cameras[0], player->view, state->cameraRoom);
+}
 
 gameplaycamera::DrawState gameplay::ResourceOwner::publishCamera() {
     auto result = state->cameraProjection->publish(*state->cameras.active, *state->pose);

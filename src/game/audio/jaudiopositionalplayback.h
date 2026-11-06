@@ -18,6 +18,11 @@ namespace jaudio {
         PositionalSound* playGlobal(unsigned id, PositionalSound** binding = nullptr);
         void setPlayerContext(std::uint32_t context);
         void setPort(PositionalSound& sound, unsigned port, std::uint16_t value);
+        float interactionPitch(PositionalSound& sound);
+        void setInteractionPitch(PositionalSound& sound, float value);
+        void setInteractionVolume(PositionalSound& sound, float value);
+        void updateFurnitureSwing(unsigned id, const std::array<float, 3>& position,
+            const std::array<float, 2>& velocity, PositionalSound*& binding);
         void playDeathEffects(const std::array<float, 3>& position);
         actoranimation::SoundServices animationServices(const std::array<float, 3>& position);
         void update(const std::array<float, 12>& listenerMatrix);

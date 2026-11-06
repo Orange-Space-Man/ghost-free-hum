@@ -305,6 +305,7 @@ add_library(Game STATIC
     src/game/scene/gameentrystate.cpp
     src/game/scene/gameparameters.cpp
     src/game/scene/gameplaycamera.cpp
+    src/game/scene/gameplaycamerafollow.cpp
     src/game/scene/gameplaycameraowner.cpp
     src/game/scene/gameplaycameraprojection.cpp
     src/game/scene/gameplaymanagerservices.cpp

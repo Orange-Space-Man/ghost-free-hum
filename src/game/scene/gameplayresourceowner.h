@@ -17,6 +17,7 @@ namespace gameplay {
         ManagerServices& managers();
         const s3denvironment::Camera& camera() const;
         gameplaycamera::DrawState publishCamera();
+        void updateCamera();
         const roomlocation::Rooms& rooms() const;
         const std::vector<std::uint8_t>& executable() const;
         gameassets::Package& package();

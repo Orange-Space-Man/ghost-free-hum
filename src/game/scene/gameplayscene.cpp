@@ -92,6 +92,7 @@ void gameplay::Scene::update(const playerinput::PadStatus& pad, std::int16_t por
     managers.updateGenerators();
     for (unsigned i = 0; i < managers.enemies().slots().size(); ++i) managers.updateOwner(i);
     resources.furniture().updateIdle(resources.visibility(), 0);
+    resources.updateCamera();
     rooms = resources.prepareVisibility(visibilityProjection, fullBounds);
     updateOpacity();
     managers.updatePoses();
