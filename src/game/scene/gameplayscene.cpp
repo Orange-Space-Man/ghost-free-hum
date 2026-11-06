@@ -53,8 +53,9 @@ gameplay::Scene::Scene(const std::filesystem::path& package, gameentry::State& e
     rooms = resources.prepareVisibility(visibilityProjection, fullBounds);
     updateOpacity();
     for (auto* actor : managers.actors().entries()) {
-        if (!actor || !actor->model || !actor->model->model || actor->room() >> 24 == 255 ||
-            !resources.visibility().marked(actor->room() >> 24, 0, 0)) continue;
+        if (!actor || !actor->model || !actor->model->model) continue;
+        const auto room = actor->parent ? actor->parent->room() : actor->room();
+        if (room >> 24 == 255 || !resources.visibility().marked(room >> 24, 0, 0)) continue;
         s3dmodel::Model model;
         if (!model.read(actor->model->model->bytes, error)) throw std::runtime_error(error);
         actors.push_back(actor);
@@ -90,12 +91,24 @@ void gameplay::Scene::update(const playerinput::PadStatus& pad, std::int16_t por
     if (!sceneControl.gameplayEnabled) return;
     managers.updatePlacement(ticks / 30);
     managers.updateGenerators();
-    for (unsigned i = 0; i < managers.enemies().slots().size(); ++i) managers.updateOwner(i);
-    resources.furniture().updateIdle(resources.visibility(), 0);
+    const std::array<playermotion::PlatformMotion, 2> platforms{};
+    PlayerMainServices playerServices{nullptr, nullptr,
+        {managers.playerLife(), false, ticks, {}, {}, {}, {}}, platforms};
+    playerServices.keyPresentationActive = keyPresentationActive();
+    playerServices.presentKey = [this](bool missingKey, bool front, std::uint8_t type) { presentKey(missingKey, front, type); };
+    auto* player = managers.playerEvents().player(0);
+    for (unsigned i = 0; i < managers.enemies().slots().size(); ++i) {
+        const auto& slot = managers.enemies().slots()[i];
+        if (slot.state == 2 && slot.owner && &slot.owner->actor() == player) managers.updatePlayerMain(0, playerServices);
+        else managers.updateOwner(i);
+    }
+    managers.updateContacts();
     resources.updateCamera();
     rooms = resources.prepareVisibility(visibilityProjection, fullBounds);
+    managers.updateFurniture(ticks);
     updateOpacity();
     managers.updatePoses();
+    managers.completePlayerFrame({});
     ++ticks;
 }
 
@@ -103,6 +116,12 @@ void gameplay::Scene::updateAudio() { resources.managers().updateAudio(view); }
 std::shared_ptr<jaudio::PositionalPlayback> gameplay::Scene::playback() { return resources.managers().playback(); }
 
 unsigned gameplay::Scene::updates() const { return ticks; }
+
+const playeractor::View& gameplay::Scene::playerView(unsigned index) {
+    const auto* player = resources.managers().playerEvents().player(static_cast<std::int32_t>(index));
+    if (!player) throw std::out_of_range("Scene player view requires a registered player.");
+    return player->view;
+}
 
 bool gameplay::Scene::presentKey(bool missingKey, bool front, unsigned doorType) {
     return keyPresentation.request(missingKey, front, doorType);
@@ -223,7 +242,7 @@ void gameplay::Scene::drawGameplay(bool present) {
 void gameplay::Scene::drawActors(unsigned stage) {
     for (unsigned i = 0; i < actors.size(); ++i) {
         const auto& actor = *actors[i];
-        if ((actor.flags & 0x6100) || !resources.visibility().marked(actor.room() >> 24, 0, 0)) continue;
+        if ((actor.flags & 0x6100) || actor.room() >> 24 == 255 || !resources.visibility().marked(actor.room() >> 24, 0, 0)) continue;
         const auto* player = dynamic_cast<const playeractor::Player*>(&actor);
         auto world = player ? playerorientation::toMatrix(player->state.quaternion) :
             poseTables.world({}, {actor.rotation[0], actor.rotation[1], actor.rotation[2]}, {1, 1, 1});

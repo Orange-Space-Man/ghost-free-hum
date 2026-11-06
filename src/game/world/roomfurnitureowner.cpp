@@ -32,6 +32,7 @@ roomfurniture::Owner::Owner(const std::vector<std::uint8_t>& executable, const r
     angleBias = constant<double>(executable, 0x804da138);
     angleScale = constant<double>(executable, 0x804da140);
     previousFrame = constant<float>(executable, 0x804d9c50);
+    initialFrame = constant<float>(executable, 0x804d9f4c);
     for (unsigned i = 0; i < spring.size(); ++i) spring[i] = constant<float>(executable, 0x804da1a8 + i * 4);
     quantization = constant<float>(executable, 0x804d9a7c);
     inverseQuantization = constant<float>(executable, 0x804d9a78);
@@ -95,6 +96,7 @@ roomfurniture::Object roomfurniture::Owner::construct(const Placement& placement
     result.flags = 2;
     if (!field<std::uint32_t>(table, result.row, "not_transparent")) result.flags |= 8;
     result.previousFrame = previousFrame;
+    result.frame = initialFrame;
     if (placement.model != 0xffff) {
         result.model = &resources.models().at(placement.model);
         result.matrices.resize(result.model->hierarchy.visits().size());
@@ -121,6 +123,7 @@ void roomfurniture::Owner::create(const Resources& resources, const jmp::ToolDat
     for (auto& object : prepared) {
         const auto slot = std::find_if(objects.begin(), objects.end(), [](const Object& entry) { return !(entry.flags & 2); });
         rows[object.row] = static_cast<int>(slot - objects.begin());
+        animationSounds.at(slot - objects.begin()).bind({}, 1, 0);
         *slot = std::move(object);
     }
 }
@@ -132,6 +135,21 @@ void roomfurniture::Owner::initializeObjects() {
         ++object.updates;
         refreshPose(object);
     }
+}
+
+void roomfurniture::Owner::bindAudio(
+    const std::function<actoranimation::SoundServices(const std::array<float, 3>&)>& services) {
+    soundServices = services;
+}
+
+void roomfurniture::Owner::selectAnimation(unsigned row, unsigned animation) {
+    const auto index = rows.at(row);
+    if (index < 0) throw std::out_of_range("Furniture animation requires an active pool slot.");
+    auto& object = objects.at(index);
+    const auto* selected = object.animations.at(animation);
+    object.animation = static_cast<std::uint8_t>(animation);
+    animationSounds.at(index).bind(selected->soundResource, 1, 0);
+    object.frame = initialFrame;
 }
 
 void roomfurniture::Owner::refreshPose(Object& object) {
@@ -147,6 +165,11 @@ void roomfurniture::Owner::refreshPose(Object& object) {
     object.frameDelta = object.frame - object.previousFrame;
     if (object.frameDelta < 0) object.frameDelta = 1;
     object.previousFrame = object.frame;
+    auto& sounds = animationSounds.at(&object - objects.data());
+    if (sounds.resource) {
+        if (!soundServices) throw std::logic_error("Furniture animation requires its positional playback owner.");
+        sounds.update(object.frame, object.frameDelta, soundServices(object.position));
+    }
 }
 
 void roomfurniture::Owner::updateIdle(const roomtraversal::State& visibility, unsigned buffer) {
@@ -165,7 +188,8 @@ void roomfurniture::Owner::update(const roomtraversal::State& visibility, unsign
             auto& state = states.at(object.row);
             const bool handled = behavior && behavior(object, state, visible);
             if (!handled && visible) {
-                if ((state.flags & 0x21) || state.occupant != -1)
+                const bool strikeResponse = object.behavior == 0 || object.behavior == 15 || object.behavior == 17 || object.behavior == 22;
+                if ((state.flags & 0x20) || (strikeResponse && ((state.flags & 1) || state.occupant != -1)))
                     throw std::runtime_error("Furniture interaction requires its reaction and event services.");
                 if (object.behavior == 0 || object.behavior == 15 || object.behavior == 22) {
                     const auto angle = static_cast<std::int16_t>(object.angles[2]);

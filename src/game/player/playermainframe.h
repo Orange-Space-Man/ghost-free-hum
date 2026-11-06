@@ -17,8 +17,8 @@ namespace playeractor {
         playerenvironment::Services environment;
         playerinteraction::DoorFrameServices door;
         playerinteraction::LadderServices ladder;
-        playerpresentation::Services& presentation;
-        playerscanner::Services& scanner;
+        playerpresentation::Services* presentation;
+        playerscanner::Services* scanner;
         playerevents::Dispatcher& events;
         TimerServices timers;
         std::uint8_t& specialActive;

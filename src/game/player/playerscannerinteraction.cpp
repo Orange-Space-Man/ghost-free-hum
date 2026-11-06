@@ -1,8 +1,13 @@
 #include "playerscannerinteraction.h"
 
 #include <cmath>
+#include <stdexcept>
 
 namespace {
+    playerscanner::Services& requireServices(playerscanner::Services* services) {
+        if (!services) throw std::runtime_error("Active scanner requires its original scene services.");
+        return *services;
+    }
     using playerscanner::Vector;
 
     float magnitude(const Vector& value) {
@@ -89,14 +94,18 @@ playerscanner::Hit playerscanner::actorTarget(const std::vector<ActorTarget>& ta
 }
 
 bool playerscanner::update(playermodels::ScannerModels& state, const Input& input, bool& warp, Services& services) {
+    return update(state, input, warp, &services);
+}
+
+bool playerscanner::update(playermodels::ScannerModels& state, const Input& input, bool& warp, Services* services) {
     state.camera = &input.camera;
     bool requestedWarp = false;
     if (!state.state[0]) {
         if (input.pressed) {
             state.state[0] = 1;
             state.state[1] = 0;
-            state.field10 = static_cast<float>(services.delay());
-            services.playScanSound(0x3813);
+            state.field10 = static_cast<float>(requireServices(services).delay());
+            requireServices(services).playScanSound(0x3813);
         }
     } else {
         state.field10 -= 1.2f;
@@ -106,8 +115,8 @@ bool playerscanner::update(playermodels::ScannerModels& state, const Input& inpu
             const float length = magnitude(direction);
             if (length >= 0.0001f) for (auto& axis : direction) axis *= 1 / length;
             else direction.fill(0);
-            auto furniture = services.furniture(input.camera.position, direction);
-            auto actor = services.actor(input.camera.position, direction);
+            auto furniture = requireServices(services).furniture(input.camera.position, direction);
+            auto actor = requireServices(services).actor(input.camera.position, direction);
             if (furniture.index >= 0 && actor.index >= 0) {
                 if (furniture.distance <= actor.distance) actor.index = -1;
                 else furniture.index = -1;
@@ -116,18 +125,18 @@ bool playerscanner::update(playermodels::ScannerModels& state, const Input& inpu
             state.fieldC = static_cast<std::uint32_t>(actor.index);
             if (furniture.index >= 0) {
                 state.state[1] = 1;
-                services.markFurniture(furniture.index);
-                if (services.mirror(furniture.index)) requestedWarp = true;
-                else if (services.furnitureMessage(furniture.index)) services.openFurnitureMessage();
+                requireServices(services).markFurniture(furniture.index);
+                if (requireServices(services).mirror(furniture.index)) requestedWarp = true;
+                else if (requireServices(services).furnitureMessage(furniture.index)) requireServices(services).openFurnitureMessage();
             } else if (actor.index >= 0) {
                 state.state[1] = 1;
-                const auto type = services.actorType(actor.index);
+                const auto type = requireServices(services).actorType(actor.index);
                 const auto message = type == 0x31 ? std::optional<unsigned>(0x1a) :
-                    type == 0x32 ? std::optional<unsigned>(0x1b) : services.actorMessage(actor.index);
+                    type == 0x32 ? std::optional<unsigned>(0x1b) : requireServices(services).actorMessage(actor.index);
                 if (message) {
-                    services.setDiscoveryFlag(0xad);
-                    services.selectMessage(0, *message & 255);
-                    services.openMessage();
+                    requireServices(services).setDiscoveryFlag(0xad);
+                    requireServices(services).selectMessage(0, *message & 255);
+                    requireServices(services).openMessage();
                 }
             }
         }

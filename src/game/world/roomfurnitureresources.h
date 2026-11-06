@@ -4,6 +4,7 @@
 #include "game/scene/gamearchive.h"
 #include "game/events/jmptooldata.h"
 #include "game/events/runtimeflags.h"
+#include "game/actors/actormodelarchive.h"
 
 namespace roomfurniture {
     std::vector<std::uint16_t> selectRows(const jmp::ToolData& table, unsigned room, const gameflags::State& flags);
@@ -16,7 +17,7 @@ namespace roomfurniture {
     struct Animation {
         std::string name;
         dooranimation::Resource animation;
-        std::vector<std::uint8_t> sound;
+        actormodel::ResourceRef soundResource;
     };
 
     class Resources {

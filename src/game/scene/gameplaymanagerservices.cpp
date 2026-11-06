@@ -24,11 +24,13 @@
 #include "game/player/playerattachedframe.h"
 #include "game/player/playerreactioneffects.h"
 #include "game/player/playerfurnitureowner.h"
+#include "game/world/roomfurnitureresponse.h"
 #include "resources/glme01addresses.h"
 
 #include <stdexcept>
 #include <cmath>
 #include <utility>
+#include <cstring>
 
 namespace {
     class SuctionAudio final : public playerevents::SuctionSounds {
@@ -78,10 +80,22 @@ struct gameplay::ManagerServices::State {
         playerOrientation(dependencies.executable, dependencies.actors.pose),
         playerFinish(dependencies.executable, dependencies.actors.pose), playerLight(dependencies.executable),
         lightContacts(dependencies.executable, dependencies.actors.catalog), playerAudio(dependencies.executable),
-        playerLate(dependencies.executable), playerBreath(dependencies.executable), playerHead(dependencies.executable),
+        playerLate(dependencies.executable), playerMain(dependencies.executable), playerBreath(dependencies.executable), playerHead(dependencies.executable),
         playerAction(dependencies.executable, dependencies.actors.pose), playerAttached(dependencies.executable),
         playerVelocity(dependencies.executable, dependencies.actors.pose),
-        ladderPaths(dependencies.mission) {}
+        ladderPaths(dependencies.mission), furnitureAdmission(dependencies.executable, dependencies.types),
+        furnitureResponse(dependencies.executable, furnitureAdmission) {
+        std::vector<std::uint8_t> bytes;
+        std::string error;
+        constexpr unsigned furnitureEffectDirection = 0x8021da40;
+        if (!dolresources::read(dependencies.executable, furnitureEffectDirection, 12, bytes, error))
+            throw std::runtime_error(error);
+        for (unsigned i = 0; i < furnitureDirection.size(); ++i) {
+            const unsigned bits = (unsigned(bytes[i * 4]) << 24) | (unsigned(bytes[i * 4 + 1]) << 16) |
+                (unsigned(bytes[i * 4 + 2]) << 8) | bytes[i * 4 + 3];
+            std::memcpy(&furnitureDirection[i], &bits, 4);
+        }
+    }
 
     ~State() {
         if (placement) {
@@ -93,6 +107,7 @@ struct gameplay::ManagerServices::State {
         webs.reset();
         if (owners) owners->bindUpdates(nullptr);
         if (audio) audio->playback.stop();
+        if (furniture) furniture->bindAudio({});
         if (enemies) {
             for (unsigned i = static_cast<unsigned>(enemies->slots().size()); i > 0; --i) {
                 if (enemies->slots()[i - 1].state == 2) enemies->deactivate(i - 1);
@@ -200,6 +215,10 @@ struct gameplay::ManagerServices::State {
             dependencies.actors.catalog, *properties, dependencies.flags, *suctionAudio, elementDuration});
         events = std::make_unique<playerevents::Dispatcher>(*enemies, *actors, nullptr,
             [this](unsigned id, const auto& position) { audio->playback.play(id, position); }, suction.get());
+        life = std::make_unique<playerevents::LifeEnvironment>(playerevents::LifeEnvironment{
+            dependencies.audioLife, particles->effects(),
+            [this](unsigned id, const auto& position) { audio->playback.play(id, position); },
+            [this](const auto& position) { audio->playback.playDeathEffects(position); }, {}});
         capture = std::make_unique<actorcapture::Motion>(dependencies.executable, dependencies.actors.pose,
             [this] { return runtime->random(); });
         updates = std::make_unique<characterowner::UpdateServices>(characterowner::UpdateServices{
@@ -261,6 +280,8 @@ struct gameplay::ManagerServices::State {
     playeractor::LightContacts lightContacts;
     playeractor::AudioFrame playerAudio;
     playeractor::LateFrame playerLate;
+    playeractor::MainFrame playerMain;
+    std::uint8_t playerSpecialActive = 0;
     playeractor::BreathFrame playerBreath;
     playercomponents::HeadFrame playerHead;
     playeractions::Frame playerAction;
@@ -270,6 +291,10 @@ struct gameplay::ManagerServices::State {
     std::uint32_t audioInterfaceFrame = 0;
     playerorientation::Globals turning;
     ladders::Paths ladderPaths;
+    characteritems::Admission furnitureAdmission;
+    roomfurniture::Response furnitureResponse;
+    roomfurniture::Owner* furniture = nullptr;
+    std::array<float, 3> furnitureDirection{};
     std::int32_t elementDuration = 0;
     std::unique_ptr<SuctionAudio> suctionAudio;
     std::unique_ptr<playerevents::SuctionEnvironment> suction;
@@ -288,6 +313,7 @@ struct gameplay::ManagerServices::State {
     std::unique_ptr<enemystrategy::Factory> strategies;
     std::unique_ptr<enemies::Manager> enemies;
     std::unique_ptr<playerevents::Dispatcher> events;
+    std::unique_ptr<playerevents::LifeEnvironment> life;
     std::unique_ptr<actorcapture::Motion> capture;
     std::unique_ptr<characterowner::UpdateServices> updates;
 };
@@ -301,6 +327,7 @@ enemies::Manager& gameplay::ManagerServices::enemies() { return *state->enemies;
 actors::Registry& gameplay::ManagerServices::actors() { return *state->actors; }
 players::Manager& gameplay::ManagerServices::players() { return *state->players; }
 playerevents::Dispatcher& gameplay::ManagerServices::playerEvents() { return *state->events; }
+playerevents::LifeEnvironment& gameplay::ManagerServices::playerLife() { return *state->life; }
 particles::Scene& gameplay::ManagerServices::particles() { return *state->particles; }
 modeleffects::Manager& gameplay::ManagerServices::modelEffects() { return *state->models; }
 mapcollision::State& gameplay::ManagerServices::collision() { return state->collision; }
@@ -386,6 +413,18 @@ void gameplay::ManagerServices::sampleInput(const playerinput::PadStatus& pad, s
     state->padSampler.update(state->dependencies.pad, pad);
 }
 
+playerenvironment::Services gameplay::ManagerServices::preparePlayerEnvironment(unsigned index) {
+    if (index >= state->dependencies.playerCount || !state->events->player(static_cast<std::int32_t>(index)))
+        throw std::out_of_range("Player environment requires a registered player owner.");
+    const auto& actor = state->dependencies.actors;
+    return {state->collision, actor.catalog, actor.resources, actor.pose, *state->enemies, *state->players->entries,
+        [](auto&) { throw std::runtime_error("Player type changes require the original model-replacement binding."); },
+        [](const auto&) -> playeractor::Target* { throw std::runtime_error("Captured-player targeting requires its original capture-owner binding."); },
+        [this](unsigned room) { return roomCleared(room); },
+        [](bool) { throw std::runtime_error("Captured-player audio requires its original capture-state binding."); },
+        [this](unsigned room) { state->audio->music.notifyRoom(room, state->mapMode); }};
+}
+
 void gameplay::ManagerServices::updatePlayerInput(unsigned index, bool inputAvailable,
     const std::function<void(playeractor::Player&, bool)>& scannerTransition) {
     if (index >= state->dependencies.playerCount) throw std::out_of_range("Player input index exceeds the bound player count.");
@@ -426,6 +465,38 @@ void gameplay::ManagerServices::updatePlayerMotion(unsigned index, const PlayerM
     playeractor::updateReactionEffects(*player, actor.catalog, actor.resources,
         state->particles->effects(), state->models->factory, sound);
     state->playerFinish.run(*player, preparePlayerFinish(index, services.life, services.doubledDamage));
+}
+
+void gameplay::ManagerServices::updatePlayerMain(unsigned index, const PlayerMainServices& services) {
+    if (index >= state->dependencies.playerCount) throw std::out_of_range("Player main index exceeds the bound player count.");
+    auto* player = state->events->player(static_cast<std::int32_t>(index));
+    if (!player || !state->playerFurniture) throw std::logic_error("Player main requires its registered actor and furniture services.");
+    if (&services.timers.life != state->life.get()) throw std::invalid_argument("Player main requires the scene-owned health environment.");
+    unsigned ownerSlot = 0, ownerCount = 0;
+    const auto& slots = state->enemies->slots();
+    for (unsigned slot = 0; slot < slots.size(); ++slot) {
+        if (slots[slot].state == 2 && slots[slot].owner && &slots[slot].owner->actor() == player) {
+            ownerSlot = slot;
+            ++ownerCount;
+        }
+    }
+    if (ownerCount != 1) throw std::logic_error("Player main requires exactly one active character owner.");
+    auto door = preparePlayerDoor(index);
+    door.keyPresentationActive = services.keyPresentationActive;
+    door.presentKey = services.presentKey;
+    const auto globalSound = [this](unsigned id) { state->audio->playback.playGlobal(id); };
+    playerinteraction::DoorFrameServices doorFrame{door, *state->actors, state->dependencies.flags, *state->life,
+        services.timers.doubledDamage, globalSound};
+    playeractor::MainFrameServices frame{preparePlayerEnvironment(index), doorFrame, preparePlayerLadder(index),
+        services.presentation, services.scanner, *state->events, services.timers, state->playerSpecialActive};
+    frame.owner = [this, ownerSlot] { updateOwner(ownerSlot); };
+    frame.input = [this, index, &services] { updatePlayerInput(index, services.inputAvailable, services.scannerTransition); };
+    frame.furniture = [this, index] { updatePlayerFurniture(index); };
+    frame.motion = [this, index, &services, &globalSound] {
+        updatePlayerMotion(index, {*state->life, services.timers.doubledDamage, services.timers.frame, services.platforms, globalSound});
+    };
+    frame.sound = [this](unsigned id, const auto& position) { state->audio->playback.play(id, position); };
+    state->playerMain.run(*player, frame);
 }
 
 playeractor::FinishServices gameplay::ManagerServices::preparePlayerFinish(unsigned index,
@@ -529,6 +600,57 @@ void gameplay::ManagerServices::bindPlayerFurniture(roomfurniture::Owner& furnit
     state->playerFurniture = std::make_unique<playerinteraction::FurnitureOwner>(*player, *state->events,
         *state->players->models, furniture, state->dependencies.flags, state->audio->playback,
         state->particles->effects(), state->dependencies.executable);
+    state->furniture = &furniture;
+    furniture.bindAudio([this](const auto& position) { return state->audio->playback.animationServices(position); });
+}
+
+void gameplay::ManagerServices::updateFurniture(unsigned frame) {
+    if (!state->furniture) throw std::logic_error("Furniture update requires its room-owned pool.");
+    auto* player = state->events->player(0);
+    if (!player) throw std::logic_error("Furniture update requires player zero.");
+    if (state->dependencies.flags.value(1) || player->state.field1180 == 1)
+        throw std::runtime_error("Equipped furniture interaction requires its original vacuum and animated-trigger services.");
+    roomfurniture::ResponseServices services;
+    services.roomCleared = [this](unsigned room) { return roomCleared(room); };
+    services.selectItem = [this, player](unsigned table) {
+        auto item = characteritems::select(state->dependencies.mission, static_cast<std::int32_t>(table),
+            static_cast<std::int16_t>(player->life), *state->runtime);
+        if (!state->furnitureAdmission.nothing(item))
+            throw std::runtime_error("Furniture contents require their original creation and scatter services.");
+        return item;
+    };
+    services.effect = [this](unsigned type, const auto& position) {
+        state->particles->effects().create(type, position, state->furnitureDirection);
+    };
+    services.sound = [this](unsigned sound, const auto& position, const float* amplitude) {
+        if (amplitude && sound != 0x1868)
+            throw std::runtime_error("Furniture suction sound requires its original amplitude binding.");
+        auto* handle = state->audio->playback.play(sound, position);
+        if (handle && amplitude) state->audio->playback.setInteractionVolume(*handle, *amplitude);
+    };
+    services.animation = [this](auto& object, unsigned animation) { state->furniture->selectAnimation(object.row, animation); };
+    services.releaseOccupant = [](unsigned, const auto&) {
+        throw std::runtime_error("Occupied furniture requires its original actor-release route.");
+    };
+    services.scanMessage = [](unsigned) {
+        throw std::runtime_error("Furniture scanning requires its original message scene.");
+    };
+    state->furniture->update(state->dependencies.visibility, 0, [&](auto& object, auto& row, bool visible) {
+        if (object.behavior == 17) {
+            state->furnitureResponse.rotating(object, row, visible, false, services);
+            return true;
+        }
+        if (object.behavior != 0 && object.behavior != 15 && object.behavior != 22) return false;
+        state->furnitureResponse.basic(object, row, visible, false, static_cast<unsigned>(object.animations.size()), frame, services);
+        return true;
+    });
+}
+
+void gameplay::ManagerServices::completePlayerFrame(const playeractor::LateFrameServices& services) {
+    state->lights.beginFrame();
+    for (unsigned index = 0; index < state->dependencies.playerCount; ++index) updatePlayerLate(index, services);
+    state->players->state->update(state->lights);
+    state->players->advanceClock();
 }
 
 void gameplay::ManagerServices::updatePlayerFurniture(unsigned index) {

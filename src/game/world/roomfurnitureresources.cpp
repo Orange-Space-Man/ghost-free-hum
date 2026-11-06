@@ -59,7 +59,12 @@ void roomfurniture::Resources::load(const gamearchive::Archive& archive, const j
         if (sound.size() < 3) throw std::runtime_error("Original furniture animation name is truncated.");
         sound.replace(sound.size() - 3, 3, "bas");
         const auto resource = archive.findPathResource(sound);
-        if (resource >= 0) animation.sound = archive.resource(resource);
+        if (resource >= 0) {
+            auto value = std::make_shared<actormodel::Resource>();
+            value->name = sound;
+            value->bytes = archive.resource(resource);
+            animation.soundResource = std::move(value);
+        }
         result.animationResources.push_back(std::move(animation));
     }
     *this = std::move(result);

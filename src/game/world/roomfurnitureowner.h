@@ -3,6 +3,7 @@
 #include "game/world/roomfurnitureresources.h"
 #include "game/world/roomlocation.h"
 #include "game/world/roomtraversalstate.h"
+#include "game/actors/actoranimationsound.h"
 
 #include <functional>
 
@@ -25,6 +26,7 @@ namespace roomfurniture {
         std::int32_t strikeTicks = 0, suctionTicks = 0;
         std::uint32_t collectionFlags = 0;
         float frame = 0, previousFrame = 0, frameDelta = 0;
+        float rotationAmplitude = 0, previousRotation = 0;
         std::array<float, 2> swing{}, swingVelocity{};
         const doors::ModelResource* model = nullptr;
         std::vector<const Animation*> animations;
@@ -38,6 +40,8 @@ namespace roomfurniture {
             const jmp::ToolData& table, const std::array<std::uint8_t, 0x220>& inventory, unsigned map);
         void create(const Resources& resources, const jmp::ToolData& table);
         void initializeObjects();
+        void bindAudio(const std::function<actoranimation::SoundServices(const std::array<float, 3>&)>& services);
+        void selectAnimation(unsigned row, unsigned animation);
         void updateIdle(const roomtraversal::State& visibility, unsigned buffer);
         void update(const roomtraversal::State& visibility, unsigned buffer,
             const std::function<bool(Object&, RowState&, bool)>& behavior);
@@ -60,6 +64,9 @@ namespace roomfurniture {
         dooranimation::PoseTables poseTables;
         double angleBias = 0, angleScale = 0;
         float previousFrame = 0;
+        float initialFrame = 0;
+        std::array<actoranimation::SoundState, 80> animationSounds;
+        std::function<actoranimation::SoundServices(const std::array<float, 3>&)> soundServices;
         std::array<float, 4> spring{};
         float quantization = 0, inverseQuantization = 0;
         float opacityDistance = 0;

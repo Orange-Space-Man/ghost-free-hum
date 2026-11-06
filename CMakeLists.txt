@@ -333,6 +333,7 @@ add_library(Game STATIC
     src/game/world/roomdependencies.cpp
     src/game/world/roomdoorplacement.cpp
     src/game/world/roomfurnitureowner.cpp
+    src/game/world/roomfurnitureresponse.cpp
     src/game/world/roomfurnitureresources.cpp
     src/game/world/roomgeometry.cpp
     src/game/world/roomlightpool.cpp

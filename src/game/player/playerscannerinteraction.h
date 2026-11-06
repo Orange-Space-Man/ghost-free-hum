@@ -55,4 +55,5 @@ namespace playerscanner {
     };
 
     bool update(playermodels::ScannerModels& state, const Input& input, bool& warp, Services& services);
+    bool update(playermodels::ScannerModels& state, const Input& input, bool& warp, Services* services);
 }

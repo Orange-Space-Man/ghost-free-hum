@@ -15,6 +15,7 @@ namespace gameplay {
         std::shared_ptr<jaudio::PositionalPlayback> playback();
         void draw(bool present);
         unsigned updates() const;
+        const playeractor::View& playerView(unsigned index = 0);
         bool presentKey(bool missingKey, bool front, unsigned doorType);
         bool keyPresentationActive() const;
         bool gameplaySuspended() const;

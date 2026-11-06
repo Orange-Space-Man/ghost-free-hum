@@ -21,11 +21,24 @@
 #include "game/player/playerliferecovery.h"
 #include "game/player/playerlateframe.h"
 #include "game/player/playervelocityframe.h"
+#include "game/player/playerenvironmentframe.h"
+#include "game/player/playermainframe.h"
 
 namespace playeractions { struct Input; }
 namespace roomfurniture { class Owner; }
 
 namespace gameplay {
+    struct PlayerMainServices {
+        playerpresentation::Services* presentation;
+        playerscanner::Services* scanner;
+        playeractor::TimerServices timers;
+        const std::array<playermotion::PlatformMotion, 2>& platforms;
+        bool inputAvailable = true;
+        bool keyPresentationActive = false;
+        std::function<void(bool, bool, std::uint8_t)> presentKey;
+        std::function<void(playeractor::Player&, bool)> scannerTransition;
+    };
+
     struct PlayerMotionServices {
         playerevents::LifeEnvironment& life;
         bool doubledDamage;
@@ -73,6 +86,7 @@ namespace gameplay {
         actors::Registry& actors();
         players::Manager& players();
         playerevents::Dispatcher& playerEvents();
+        playerevents::LifeEnvironment& playerLife();
         particles::Scene& particles();
         modeleffects::Manager& modelEffects();
         mapcollision::State& collision();
@@ -93,11 +107,14 @@ namespace gameplay {
             const std::function<void(playeractor::Player&, bool)>& scannerTransition);
         void updatePlayerOrientation(unsigned index, const playercomponents::AttachedOutput& attachment, unsigned frame);
         void updatePlayerMotion(unsigned index, const PlayerMotionServices& services);
+        void updatePlayerMain(unsigned index, const PlayerMainServices& services);
         void bindPlayerFurniture(roomfurniture::Owner& furniture);
         void updatePlayerFurniture(unsigned index);
+        void updateFurniture(unsigned frame);
         void updatePlayerLight(unsigned index);
         void updatePlayerAudio(unsigned index);
         void updatePlayerLate(unsigned index, const playeractor::LateFrameServices& services);
+        void completePlayerFrame(const playeractor::LateFrameServices& services);
         void setAudioInterfaceFrame(std::uint32_t frame);
         const std::array<std::uint32_t, 2>& playerFootstepFrames() const;
         bool beginPlayerCapture(std::int32_t index, const std::array<float, 3>& position, std::int32_t recipient);
@@ -114,6 +131,7 @@ namespace gameplay {
             const float* originalRegister = nullptr, const bool* emptyCompletion = nullptr);
         void updateAudio(const std::array<float, 12>& listener);
         playeractions::Input preparePlayerAction(unsigned index);
+        playerenvironment::Services preparePlayerEnvironment(unsigned index);
         playerinteraction::DoorServices preparePlayerDoor(unsigned index);
         playerinteraction::LadderServices preparePlayerLadder(unsigned index);
         playeractor::FinishServices preparePlayerFinish(unsigned index, playerevents::LifeEnvironment& life,

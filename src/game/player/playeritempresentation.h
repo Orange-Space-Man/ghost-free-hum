@@ -21,6 +21,7 @@ namespace playerpresentation {
     public:
         explicit Frame(const std::vector<std::uint8_t>& executable);
         bool run(playeractor::Player& player, Services& services) const;
+        bool run(playeractor::Player& player, Services* services) const;
 
     private:
         actormodel::Matrix transform(unsigned actorType) const;

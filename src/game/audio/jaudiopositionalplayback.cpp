@@ -12,10 +12,10 @@
 #include <stdexcept>
 
 namespace {
-    constexpr std::array<unsigned, 39> soundIds{0x839, 0x83d, 0x1809, 0x180a, 0x180b, 0x181e, 0x280f, 0x2810, 0x282b,
+    constexpr std::array<unsigned, 41> soundIds{0x839, 0x83d, 0x1809, 0x180a, 0x180b, 0x181e, 0x280f, 0x2810, 0x282b,
         0x186e, 0x1841, 0x810, 0x811, 0x850, 0x4808, 0x4828, 0x828, 0x3b, 0x43, 0x801, 2, 0x805, 9,
         0x288a, 0x1028, 0x837, 0x84c, 0x813, 0x2814, 0x2805, 0x281c,
-        0x1842, 0x182c, 0x1820, 0x1823, 0x1877, 0x1868, 0x4820, 0x4822};
+        0x1842, 0x182c, 0x1820, 0x1823, 0x1877, 0x1868, 0x4820, 0x4822, 0x1815, 0x1816};
     constexpr unsigned effectRecordCountAddress = 0x804d78b8;
     constexpr unsigned effectParameterCountAddress = 0x804d78d4;
     constexpr unsigned maximumDistanceAddress = 0x804dd170;
@@ -230,7 +230,7 @@ void jaudio::PositionalPlayback::setPlayerContext(std::uint32_t context) {
 jaudio::PositionalSound* jaudio::PositionalPlayback::playAt(unsigned id, const std::array<float, 3>* position, PositionalSound** binding) {
     std::lock_guard<std::recursive_mutex> lock(owners.mutex);
     const auto found = std::find(soundIds.begin(), soundIds.end(), id);
-    if (found == soundIds.end()) throw std::runtime_error("Positional sound is outside the recovered first-area sound scope.");
+    if (found == soundIds.end()) throw std::runtime_error("Positional sound " + std::to_string(id) + " is outside the recovered first-area sound scope.");
     auto& category = *runtime->categories.at(id >> 12);
     if (category.blocked) {
         if (binding) {

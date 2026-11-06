@@ -6,6 +6,11 @@
 #include <stdexcept>
 
 namespace {
+    playerpresentation::Services& requireServices(playerpresentation::Services* services) {
+        if (!services) throw std::runtime_error("Active item presentation requires its original scene services.");
+        return *services;
+    }
+
     void read(const std::vector<std::uint8_t>& executable, unsigned address, float* output, unsigned count) {
         std::vector<std::uint8_t> bytes;
         std::string error;
@@ -46,6 +51,10 @@ actormodel::Matrix playerpresentation::Frame::transform(unsigned actorType) cons
 }
 
 bool playerpresentation::Frame::run(playeractor::Player& player, Services& services) const {
+    return run(player, &services);
+}
+
+bool playerpresentation::Frame::run(playeractor::Player& player, Services* services) const {
     auto& state = *player.components->state80;
     auto& actions = *player.components->actions;
     auto* item = player.state.field1064;
@@ -79,16 +88,16 @@ bool playerpresentation::Frame::run(playeractor::Player& player, Services& servi
                     bool special = false;
                     if (item->actorType >= 0x57 && item->actorType <= 0x5a) {
                         const unsigned first = 0x3e + (item->actorType - 0x57) * 2;
-                        services.effect(first, item->position);
-                        services.effect(first + 1, item->position);
+                        requireServices(services).effect(first, item->position);
+                        requireServices(services).effect(first + 1, item->position);
                         state.field7C = 2;
                         special = true;
                     } else if (item->actorType == 0xcc) {
-                        for (unsigned effect = 0x59; effect <= 0x5b; ++effect) services.effect(effect, item->position);
+                        for (unsigned effect = 0x59; effect <= 0x5b; ++effect) requireServices(services).effect(effect, item->position);
                         state.field7C = 3;
                         special = true;
                     }
-                    services.music(services.specialItem(item->actorType) && special ? 0x80000035 : 0x8000000e);
+                    requireServices(services).music(requireServices(services).specialItem(item->actorType) && special ? 0x80000035 : 0x8000000e);
                 }
                 state.field11 = 1;
             }
@@ -110,19 +119,19 @@ bool playerpresentation::Frame::run(playeractor::Player& player, Services& servi
                 } else {
                     if (item) {
                         player.detachChild(*item);
-                        services.collected(*item);
+                        requireServices(services).collected(*item);
                         if (item->actorType == 0xcc) {
-                            services.setFlag(0x42);
-                            if (!services.equipmentOwned()) services.equipmentEvent(0, 0x15, 0xdd);
+                            requireServices(services).setFlag(0x42);
+                            if (!requireServices(services).equipmentOwned()) requireServices(services).equipmentEvent(0, 0x15, 0xdd);
                         }
-                        services.sound(0x84f, player.position);
+                        requireServices(services).sound(0x84f, player.position);
                     }
                     state.field10 = 0;
                 }
             }
             if (!state.field10) presenting = false;
             if ((player.flags & 0x40000) && player.state.field1061) {
-                services.scene(1, player.state.field1068);
+                requireServices(services).scene(1, player.state.field1068);
                 sceneRequested = true;
             }
         }
