@@ -12,12 +12,14 @@ void gameplaymusic::Owner::refreshContext() {
 }
 
 void gameplaymusic::Owner::setRoom(unsigned value, std::int16_t polygon) {
+    std::lock_guard<std::recursive_mutex> lock(mutex);
     room = value;
     soundPolygon = polygon;
     refreshContext();
 }
 
 void gameplaymusic::Owner::notifyRoom(unsigned packedRoom, unsigned mapMode) {
+    std::lock_guard<std::recursive_mutex> lock(mutex);
     roomAudio.enter(packedRoom, mapMode, state.roomVariant != 0, {
         [this] { return currentSound(); },
         []() -> std::uint32_t { throw std::runtime_error("Room transition requires auxiliary sequence ownership."); },
@@ -33,6 +35,7 @@ void gameplaymusic::Owner::notifyRoom(unsigned packedRoom, unsigned mapMode) {
 }
 
 void gameplaymusic::Owner::start() {
+    std::lock_guard<std::recursive_mutex> lock(mutex);
     if (soundState) throw std::runtime_error("Mansion music replacement requires the original stop lifecycle.");
     if (preparedSound != 0x80000007) {
         std::string error;
@@ -55,12 +58,14 @@ void gameplaymusic::Owner::start() {
 }
 
 void gameplaymusic::Owner::stop() {
+    std::lock_guard<std::recursive_mutex> lock(mutex);
     sequence.stop();
     soundState = 0;
     activeSound = 0;
 }
 
 bool gameplaymusic::Owner::requestDeath(std::uint32_t audioFrame) {
+    std::lock_guard<std::recursive_mutex> lock(mutex);
     if (lastRequestFrame == audioFrame) return false;
     const auto* info = jaudio::soundInfo(resources, 0x80000012);
     if (!info || (*info)[0] || (*info)[1] || (*info)[2] || (*info)[3])
@@ -79,17 +84,42 @@ bool gameplaymusic::Owner::requestDeath(std::uint32_t audioFrame) {
 }
 
 void gameplaymusic::Owner::setCutsceneActive(bool active) {
+    std::lock_guard<std::recursive_mutex> lock(mutex);
     refreshContext();
     state.setCutsceneActive(active, *this);
 }
 
-void gameplaymusic::Owner::updateSequenceControls() { sequence.updateSequenceControls(); }
+bool gameplaymusic::Owner::requestEntrance(std::uint32_t audioFrame) {
+    std::lock_guard<std::recursive_mutex> lock(mutex);
+    if (lastRequestFrame == audioFrame) return false;
+    const auto* info = jaudio::soundInfo(resources, 0x80000019);
+    if (!info || (*info)[0] || (*info)[1] || (*info)[2] || (*info)[3])
+        throw std::runtime_error("Unsupported original entrance sequence routing metadata.");
+    stop();
+    std::string error;
+    if (!sequence.loadEntrance(package, resources, error)) {
+        preparedSound = 0;
+        throw std::runtime_error(error);
+    }
+    preparedSound = activeSound = 0x80000019;
+    sequence.start();
+    soundState = 4;
+    lastRequestFrame = audioFrame;
+    return true;
+}
+
+void gameplaymusic::Owner::updateSequenceControls() {
+    std::lock_guard<std::recursive_mutex> lock(mutex);
+    sequence.updateSequenceControls();
+}
 
 void gameplaymusic::Owner::retainSection() {
+    std::lock_guard<std::recursive_mutex> lock(mutex);
     if (hasMansionSequence() && soundState > 3) lastSection = sequence.rootPort(1);
 }
 
 bool gameplaymusic::Owner::mix(jaudio::DspMixer& destination, std::string& error) {
+    std::lock_guard<std::recursive_mutex> lock(mutex);
     if (!soundState) return true;
     if (sequence.mix(destination, error)) {
         if (sequence.voicesFinished()) {
@@ -105,7 +135,10 @@ bool gameplaymusic::Owner::mix(jaudio::DspMixer& destination, std::string& error
 
 const gameplaymusic::State& gameplaymusic::Owner::routing() const { return state; }
 const jaudio::Playback& gameplaymusic::Owner::playback() const { return sequence; }
-unsigned gameplaymusic::Owner::currentSound() const { return activeSound; }
+unsigned gameplaymusic::Owner::currentSound() const {
+    std::lock_guard<std::recursive_mutex> lock(mutex);
+    return activeSound;
+}
 bool gameplaymusic::Owner::hasMansionSequence() const { return soundState != 0 && activeSound == 0x80000007; }
 unsigned gameplaymusic::Owner::sequenceState() const { return soundState; }
 short gameplaymusic::Owner::roomSize() { return static_cast<short>(roomParameters.size()); }

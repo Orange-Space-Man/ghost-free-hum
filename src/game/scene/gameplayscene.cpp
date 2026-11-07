@@ -90,6 +90,13 @@ void gameplay::Scene::update(const playerinput::PadStatus& pad, std::int16_t por
     presentationButtons = managers.controller().pressed;
     presentationTick = true;
     if (!sceneControl.gameplayEnabled) return;
+    managers.lights().beginFrame();
+    const bool cameraWasActive = resources.eventCameraActive();
+    resources.updateEvents(ticks / 30, audioFrame);
+    if (!cameraWasActive && resources.eventCameraActive()) {
+        flaggedOpacity = 0;
+        limitedOpacity = 255;
+    }
     managers.updatePlacement(ticks / 30);
     managers.updateGenerators();
     const std::array<playermotion::PlatformMotion, 2> platforms{};
@@ -109,7 +116,7 @@ void gameplay::Scene::update(const playerinput::PadStatus& pad, std::int16_t por
     managers.updateFurniture(ticks);
     updateOpacity();
     managers.updatePoses();
-    managers.completePlayerFrame({});
+    managers.completePlayerFrame({}, false);
     ++ticks;
 }
 

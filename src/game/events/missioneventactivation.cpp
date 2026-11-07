@@ -8,7 +8,6 @@ gameevent::MissionActivation::MissionActivation(const mission::Resources& resour
     active.reset();
     const auto* table = resources.getJmpResource("EventInfo");
     if (!table) return;
-    std::vector<Definition> definitions;
     std::string error;
     if (!readDefinitions(*table, types, definitions, error)) throw std::runtime_error(error);
     for (const auto& definition : definitions) {
@@ -27,3 +26,24 @@ void gameevent::MissionActivation::updateAppearance(std::int32_t elapsedSeconds)
 
 const gameevent::ActivationState& gameevent::MissionActivation::activation() const { return active; }
 const std::vector<gameevent::ConditionState>& gameevent::MissionActivation::conditions() const { return records; }
+
+const gameevent::Definition* gameevent::MissionActivation::definition(unsigned number) const {
+    for (const auto& value : definitions) if (value.eventNumber == number) return &value;
+    return nullptr;
+}
+
+gameevent::ConditionState& gameevent::MissionActivation::condition(unsigned number) {
+    for (auto& value : records) if (value.eventNumber == number) return value;
+    throw std::out_of_range("Mission event is absent.");
+}
+
+void gameevent::MissionActivation::complete(unsigned number, std::uint8_t& completedCount) {
+    auto& value = condition(number);
+    value.flags = (value.flags & ~0x33u) | 8;
+    active.clear(value.eventNumber);
+    if (!(value.flags & 4)) {
+        ++completedCount;
+        if (value.loadLimit == completedCount) value.flags |= 0x40;
+    }
+    if (flags.value(static_cast<std::uint8_t>(value.disappearFlag))) value.flags |= 0x40;
+}

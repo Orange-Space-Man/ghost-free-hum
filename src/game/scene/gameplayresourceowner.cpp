@@ -4,6 +4,7 @@
 #include "game/player/playeractor.h"
 #include "game/scene/gameplaycamerafollow.h"
 #include "game/startup/startupresources.h"
+#include "game/events/entranceeventowner.h"
 
 #include <stdexcept>
 #include <cstring>
@@ -91,6 +92,7 @@ struct gameplay::ResourceOwner::State {
         owner.aspect = camera.aspect;
         owner.nearPlane = camera.nearPlane;
         owner.farPlane = camera.farPlane;
+        entrance = std::make_unique<gameevent::EntranceOwner>(package, types, entry, *rooms, *managers, owner);
     }
 
     gameentry::State& entry;
@@ -128,6 +130,7 @@ struct gameplay::ResourceOwner::State {
     std::unique_ptr<roomresidency::InitialRooms> residentRooms;
     std::unique_ptr<roomfurniture::Owner> furnitureOwner;
     std::unique_ptr<ManagerServices> managers;
+    std::unique_ptr<gameevent::EntranceOwner> entrance;
 };
 
 gameplay::ResourceOwner::ResourceOwner(const std::filesystem::path& path, gameentry::State& entry) : state(std::make_unique<State>(entry)) {
@@ -139,11 +142,19 @@ gameplay::ManagerServices& gameplay::ResourceOwner::managers() { return *state->
 const s3denvironment::Camera& gameplay::ResourceOwner::camera() const { return state->camera; }
 
 void gameplay::ResourceOwner::updateCamera() {
+    if (state->entrance->updateCamera()) return;
     const auto* player = state->managers->playerEvents().player(0);
     if (!player) throw std::runtime_error("Camera update requires the manager-owned player.");
     if (player->room()) state->cameraRoom = player->room();
     state->cameraFollow->update(*state->cameras.cameras[0], player->view, state->cameraRoom);
 }
+
+void gameplay::ResourceOwner::updateEvents(unsigned elapsedSeconds, std::uint32_t audioFrame) {
+    state->entrance->update(elapsedSeconds, audioFrame);
+}
+
+bool gameplay::ResourceOwner::entranceActive() const { return state->entrance->active(); }
+bool gameplay::ResourceOwner::eventCameraActive() const { return state->entrance->cameraActive(); }
 
 gameplaycamera::DrawState gameplay::ResourceOwner::publishCamera() {
     auto result = state->cameraProjection->publish(*state->cameras.active, *state->pose);

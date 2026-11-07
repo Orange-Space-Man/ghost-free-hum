@@ -21,6 +21,8 @@ void gameevent::ActivationState::reset() {
     std::fill_n(active.begin(), 109, std::uint8_t{0});
 }
 
+void gameevent::ActivationState::clear(std::int16_t eventNumber) { active.at(eventNumber) = 0; }
+
 int gameevent::ActivationState::value(std::int16_t eventNumber) const {
     if (eventNumber > 109) return 0;
     if (eventNumber < 0) throw std::out_of_range("Negative event number.");

@@ -5,6 +5,8 @@
 
 #include <memory>
 
+namespace gameplaymusic { class Owner; }
+
 namespace jaudio {
     class PositionalPlayback {
     public:
@@ -26,6 +28,7 @@ namespace jaudio {
         void playDeathEffects(const std::array<float, 3>& position);
         actoranimation::SoundServices animationServices(const std::array<float, 3>& position);
         void update(const std::array<float, 12>& listenerMatrix);
+        void bindMusic(gameplaymusic::Owner& owner);
         bool mix(DspMixer& mixer, std::string& error);
         void stop();
         bool finished() const;
@@ -38,6 +41,7 @@ namespace jaudio {
         void remove(Handle& handle);
         PositionalSound* playAt(unsigned id, const std::array<float, 3>* position, PositionalSound** binding);
         PositionOwners& owners;
+        gameplaymusic::Owner* music = nullptr;
         std::unique_ptr<Runtime> runtime;
         std::vector<std::uint32_t> soundFlags;
         std::vector<std::unique_ptr<Handle>> handles;

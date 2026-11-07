@@ -8,6 +8,7 @@ namespace s3denvironment {
         std::vector<float> keys;
         float sample(float frame) const;
     };
+    Curve readCurve(const std::vector<std::uint8_t>& data, std::size_t table, std::size_t descriptor, bool integer);
 
     struct Light {
         bool specular = false;

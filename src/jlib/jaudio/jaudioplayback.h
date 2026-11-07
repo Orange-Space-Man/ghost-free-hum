@@ -17,6 +17,7 @@ namespace jaudio {
         bool loadMenu(gameassets::Package& package, const Resources& resources, std::string& error);
         bool loadMansion(gameassets::Package& package, const Resources& resources, std::string& error);
         bool loadDeath(gameassets::Package& package, const Resources& resources, std::string& error);
+        bool loadEntrance(gameassets::Package& package, const Resources& resources, std::string& error);
         bool loadEffects(gameassets::Package& package, const Resources& resources, std::string& error);
         void setTrackMuted(unsigned track, bool muted);
         void setTrackVolume(unsigned track, float volume, unsigned frames);

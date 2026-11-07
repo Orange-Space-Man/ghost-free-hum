@@ -18,6 +18,9 @@ namespace gameplay {
         const s3denvironment::Camera& camera() const;
         gameplaycamera::DrawState publishCamera();
         void updateCamera();
+        void updateEvents(unsigned elapsedSeconds, std::uint32_t audioFrame);
+        bool entranceActive() const;
+        bool eventCameraActive() const;
         const roomlocation::Rooms& rooms() const;
         const std::vector<std::uint8_t>& executable() const;
         gameassets::Package& package();

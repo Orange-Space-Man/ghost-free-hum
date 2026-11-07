@@ -66,6 +66,10 @@ bool jaudio::Playback::loadDeath(gameassets::Package& package, const Resources& 
     return loadMusic(package, resources, 0x80000012, error);
 }
 
+bool jaudio::Playback::loadEntrance(gameassets::Package& package, const Resources& resources, std::string& error) {
+    return loadMusic(package, resources, 0x80000019, error);
+}
+
 bool jaudio::Playback::loadEffects(gameassets::Package& package, const Resources& resources, std::string& error) {
     effectDispatch = false;
     stop();

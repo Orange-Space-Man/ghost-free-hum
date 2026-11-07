@@ -4,6 +4,7 @@
 #include "game/audio/gameplaymusicrouting.h"
 #include "game/audio/gameplayroomaudio.h"
 #include "jlib/jaudio/jaudioplayback.h"
+#include <mutex>
 
 namespace gameplaymusic {
     class Owner final : private Services {
@@ -14,6 +15,7 @@ namespace gameplaymusic {
         void notifyRoom(unsigned packedRoom, unsigned mapMode);
         void start();
         bool requestDeath(std::uint32_t audioFrame);
+        bool requestEntrance(std::uint32_t audioFrame);
         void stop();
         void setCutsceneActive(bool active);
         void updateSequenceControls();
@@ -24,6 +26,7 @@ namespace gameplaymusic {
         unsigned currentSound() const;
 
     private:
+        mutable std::recursive_mutex mutex;
         bool hasMansionSequence() const override;
         unsigned sequenceState() const override;
         short roomSize() override;

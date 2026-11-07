@@ -1,5 +1,6 @@
 #include "resources/dolresources.h"
 #include "game/audio/jaudiopositionalplayback.h"
+#include "game/audio/gameplaymusicowner.h"
 #include "jlib/jaudio/jaudioeffectparameter.h"
 #include "jlib/jaudio/jaudioeffectselection.h"
 #include "jlib/jaudio/jaudioeffectrelease.h"
@@ -388,6 +389,7 @@ jaudio::SpatialParameters jaudio::PositionalPlayback::spatial(const std::array<f
 
 void jaudio::PositionalPlayback::update(const std::array<float, 12>& matrix) {
     std::lock_guard<std::recursive_mutex> lock(owners.mutex);
+    if (music) music->updateSequenceControls();
     listener = matrix;
     owners.update();
     for (auto& handle : handles) if (handle->record) handle->record->position = handle->position;
@@ -411,11 +413,18 @@ void jaudio::PositionalPlayback::update(const std::array<float, 12>& matrix) {
 
 bool jaudio::PositionalPlayback::mix(DspMixer& mixer, std::string& error) {
     std::lock_guard<std::recursive_mutex> lock(owners.mutex);
+    if (music && !music->mix(mixer, error)) return false;
     return runtime->master.mix(mixer, error);
+}
+
+void jaudio::PositionalPlayback::bindMusic(gameplaymusic::Owner& owner) {
+    std::lock_guard<std::recursive_mutex> lock(owners.mutex);
+    music = &owner;
 }
 
 void jaudio::PositionalPlayback::stop() {
     std::lock_guard<std::recursive_mutex> lock(owners.mutex);
+    if (music) music->stop();
     for (auto& handle : handles) handle->stop(0);
     runtime->master.stop();
     runtime->started = false;
@@ -423,6 +432,7 @@ void jaudio::PositionalPlayback::stop() {
 
 bool jaudio::PositionalPlayback::finished() const {
     std::lock_guard<std::recursive_mutex> lock(owners.mutex);
+    if (music && music->currentSound()) return false;
     for (const auto& category : runtime->categories) if (category->pool.active) return false;
     return !runtime->master.hasVoices();
 }

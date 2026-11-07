@@ -48,6 +48,8 @@ namespace {
 
     struct Audio {
         Audio(const gameplay::ManagerDependencies& dependencies, const mapcollision::State& collision) :
+            context(dependencies.mission, dependencies.flags, dependencies.entry.map),
+            music(dependencies.package, dependencies.audio, context, dependencies.audioLife),
             playback(owners, dependencies.executable, dependencies.package, dependencies.audio,
                 [this, &rooms = dependencies.actors.rooms, &collision](const std::array<float, 3>& position, bool queryFloor) {
                     std::int16_t polygon = -1;
@@ -60,13 +62,11 @@ namespace {
                     const std::array<float, 3> rounded{std::ceil(position[0]), std::ceil(position[1]), std::ceil(position[2])};
                     const unsigned room = rooms.resolve(rounded);
                     return context.parameters(room, polygon).packed;
-                }),
-            context(dependencies.mission, dependencies.flags, dependencies.entry.map),
-            music(dependencies.package, dependencies.audio, context, dependencies.audioLife) {}
+                }) { playback.bindMusic(music); }
         jaudio::PositionOwners owners;
-        jaudio::PositionalPlayback playback;
         gameplayaudio::Context context;
         gameplaymusic::Owner music;
+        jaudio::PositionalPlayback playback;
     };
 }
 
@@ -552,6 +552,7 @@ void gameplay::ManagerServices::updatePlacement(std::int32_t elapsedSeconds) {
 
 const jmp::ActiveEntries& gameplay::ManagerServices::placements() const { return state->placement->entries(); }
 const gameevent::MissionActivation& gameplay::ManagerServices::missionEvents() const { return *state->missionEvents; }
+gameevent::MissionActivation& gameplay::ManagerServices::missionEvents() { return *state->missionEvents; }
 
 void gameplay::ManagerServices::updateCaptures(const playermodels::VacuumPath* path, const actorcapture::Vector* suctionDirection,
     actormodel::Matrix& retainedTransform, const actorcapture::Vector* originalScratch, const float* originalRegister,
@@ -646,8 +647,8 @@ void gameplay::ManagerServices::updateFurniture(unsigned frame) {
     });
 }
 
-void gameplay::ManagerServices::completePlayerFrame(const playeractor::LateFrameServices& services) {
-    state->lights.beginFrame();
+void gameplay::ManagerServices::completePlayerFrame(const playeractor::LateFrameServices& services, bool resetLights) {
+    if (resetLights) state->lights.beginFrame();
     for (unsigned index = 0; index < state->dependencies.playerCount; ++index) updatePlayerLate(index, services);
     state->players->state->update(state->lights);
     state->players->advanceClock();

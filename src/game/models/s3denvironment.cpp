@@ -63,6 +63,11 @@ namespace {
     }
 }
 
+s3denvironment::Curve s3denvironment::readCurve(const std::vector<std::uint8_t>& data,
+    std::size_t table, std::size_t descriptor, bool integer) {
+    return curve(data, table, descriptor, integer);
+}
+
 float s3denvironment::Curve::sample(float frame) const {
     if (keys.empty()) return 0;
     if (stride == 1) return keys[0];

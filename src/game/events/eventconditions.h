@@ -30,6 +30,7 @@ namespace gameevent {
     class ActivationState {
     public:
         void reset();
+        void clear(std::int16_t eventNumber);
         int value(std::int16_t eventNumber) const;
         void configure(ConditionState& state, const Conditions& conditions,
             std::uint8_t completedCount, const gameflags::State& flags);

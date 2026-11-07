@@ -48,6 +48,9 @@ add_library(JLib STATIC
 )
 
 add_library(Game STATIC
+    src/game/events/entrancescript.cpp
+    src/game/events/entranceeventowner.cpp
+    src/game/events/eventpathanimation.cpp
     src/game/actors/actoranimationsound.cpp
     src/game/actors/actoranimationsoundupdate.cpp
     src/game/actors/actorcapturedeformation.cpp

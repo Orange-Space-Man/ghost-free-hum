@@ -114,7 +114,7 @@ namespace gameplay {
         void updatePlayerLight(unsigned index);
         void updatePlayerAudio(unsigned index);
         void updatePlayerLate(unsigned index, const playeractor::LateFrameServices& services);
-        void completePlayerFrame(const playeractor::LateFrameServices& services);
+        void completePlayerFrame(const playeractor::LateFrameServices& services, bool resetLights = true);
         void setAudioInterfaceFrame(std::uint32_t frame);
         const std::array<std::uint32_t, 2>& playerFootstepFrames() const;
         bool beginPlayerCapture(std::int32_t index, const std::array<float, 3>& position, std::int32_t recipient);
@@ -126,6 +126,7 @@ namespace gameplay {
         particles::GlowPool& glows();
         const jmp::ActiveEntries& placements() const;
         const gameevent::MissionActivation& missionEvents() const;
+        gameevent::MissionActivation& missionEvents();
         void updateCaptures(const playermodels::VacuumPath* path, const actorcapture::Vector* suctionDirection,
             actormodel::Matrix& retainedTransform, const actorcapture::Vector* originalScratch = nullptr,
             const float* originalRegister = nullptr, const bool* emptyCompletion = nullptr);
