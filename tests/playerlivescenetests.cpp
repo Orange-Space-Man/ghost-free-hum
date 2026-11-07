@@ -52,6 +52,21 @@ int main(int argc, char** argv) {
         gameentry::State entry;
         require(gameentry::selectNewFile(saves, 0, entry, error), error.c_str());
         gameplay::Scene scene(argv[1], entry);
+        for (unsigned direction = 0; direction < 8; ++direction) {
+            gameentry::State interactionEntry;
+            require(gameentry::selectNewFile(saves, 0, interactionEntry, error), error.c_str());
+            gameplay::Scene interactionScene(argv[1], interactionEntry);
+            std::cout << "Live moving interactions " << direction << std::endl;
+            for (unsigned frame = 0; frame < 420; ++frame) {
+                playerinput::PadStatus pad;
+                if (direction < 2 || direction >= 4) pad.stickX = direction % 2 ? -87 : 87;
+                if (direction >= 2) pad.stickY = direction == 3 || direction >= 6 ? -87 : 87;
+                if (frame % 45 == 30) pad.buttons = 0x100;
+                interactionScene.update(pad, 0, frame);
+                for (float coordinate : *interactionScene.playerView().position)
+                    require(std::isfinite(coordinate), "Moving interactions must preserve a finite player position.");
+            }
+        }
         unsigned tick = 0;
         for (unsigned button : {0x100u, 0x200u, 0x400u, 0x800u, 0x10u, 0x20u, 0x40u}) {
             std::cout << "Live button " << button << std::endl;

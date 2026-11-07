@@ -166,7 +166,7 @@ int main(int argc, char** argv) {
                 check(!global, "Global sound teardown must clear the caller's retained handle.");
             }
             for (unsigned id : {0x828u, 0x3bu, 0x43u, 0x801u, 2u, 0x805u, 9u, 0x288au, 0x1028u,
-                0x837u, 0x84cu, 0x813u, 0x2814u, 0x2805u, 0x281cu}) {
+                0x837u, 0x84cu, 0x813u, 0x2814u, 0x2805u, 0x281cu, 0x2828u, 0x288eu, 0x826u, 0x2800u, 0x827u}) {
                 std::cout << "Checking player-frame sound " << std::hex << id << std::dec << '\n';
                 jaudio::PositionalSound* binding = nullptr;
                 check(playback.play(id, position, &binding) != nullptr, "Player-frame sound must acquire an original handle.");
