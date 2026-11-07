@@ -158,6 +158,18 @@ int CaptureApplication::run(HINSTANCE instance) {
                     throw std::runtime_error("Gameplay simulation did not preserve its 30 Hz clock.");
                 draw(false);
                 gamerenderer::capture(capturePath.wstring() + L".foyer.png");
+                for (unsigned direction = 0; direction < 4; ++direction) {
+                    for (unsigned frame = 0; frame < 32; ++frame) {
+                        playerinput::PadStatus pad;
+                        if (frame < 12) {
+                            if (direction < 2) pad.stickX = direction ? -87 : 87;
+                            else pad.stickY = direction == 2 ? 87 : -87;
+                        }
+                        gameplayScene->update(pad, 0, frame);
+                        draw(false);
+                    }
+                    gamerenderer::capture(capturePath.wstring() + L".equipment-" + std::to_wstring(direction) + L".png");
+                }
                 const auto movementStart = *gameplayScene->playerView().position;
                 for (unsigned frame = 0; frame < 60; ++frame) {
                     playerinput::PadStatus pad;
