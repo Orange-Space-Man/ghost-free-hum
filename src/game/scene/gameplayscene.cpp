@@ -60,6 +60,7 @@ gameplay::Scene::Scene(const std::filesystem::path& package, gameentry::State& e
         if (!model.read(actor->model->model->bytes, error)) throw std::runtime_error(error);
         actors.push_back(actor);
         actorModels.push_back(std::move(model));
+        actorModelResources.push_back(actor->model->model);
     }
     if (actors.empty()) throw std::runtime_error("First-area scene has no manager-owned visible actors.");
 }
@@ -197,6 +198,7 @@ void gameplay::Scene::publishCamera() {
 void gameplay::Scene::drawGameplay(bool present) {
     if (textures.empty()) throw std::runtime_error("Gameplay graphics are not prepared.");
     if (!gamerenderer::useScene("gameplay")) throw std::runtime_error("Gameplay graphics ownership is unavailable.");
+    refreshActorModels();
     gamerenderer::bindSceneTarget(true);
     modelrenderer::initializeModelState(pipeline);
     pipeline.scissor = true;
@@ -237,6 +239,25 @@ void gameplay::Scene::drawGameplay(bool present) {
     picture.width = 640;
     picture.height = 480;
     gamerenderer::drawInterface({picture}, present);
+}
+
+void gameplay::Scene::refreshActorModels() {
+    bool changed = false;
+    for (unsigned i = 0; i < actors.size(); ++i) {
+        const auto& resource = actors[i]->model->model;
+        if (resource == actorModelResources[i]) continue;
+        s3dmodel::Model model;
+        std::string error;
+        if (!resource || !model.read(resource->bytes, error))
+            throw std::runtime_error(resource ? error : "Actor model replacement has no resource.");
+        actorModels[i] = std::move(model);
+        actorModelResources[i] = resource;
+        changed = true;
+    }
+    if (changed) {
+        textures = gamerenderer::loadPreviews(actorModels, 640, 480);
+        gamerenderer::cacheScene("gameplay");
+    }
 }
 
 void gameplay::Scene::drawActors(unsigned stage) {
