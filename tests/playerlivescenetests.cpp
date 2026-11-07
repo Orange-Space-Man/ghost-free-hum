@@ -30,6 +30,7 @@ int main(int argc, char** argv) {
         for (unsigned direction = 0; direction < 4; ++direction) {
             gameentry::State entry;
             require(gameentry::selectNewFile(saves, 0, entry, error), error.c_str());
+            entry.inventory[0x20 + 48] = 1;
             gameplay::Scene scene(argv[1], entry);
             const auto origin = *scene.playerView().position;
             for (unsigned tick = 0; tick < 30; ++tick) scene.update({}, 0, tick);
@@ -51,10 +52,12 @@ int main(int argc, char** argv) {
         }
         gameentry::State entry;
         require(gameentry::selectNewFile(saves, 0, entry, error), error.c_str());
+        entry.inventory[0x20 + 48] = 1;
         gameplay::Scene scene(argv[1], entry);
         for (unsigned direction = 0; direction < 8; ++direction) {
             gameentry::State interactionEntry;
             require(gameentry::selectNewFile(saves, 0, interactionEntry, error), error.c_str());
+            interactionEntry.inventory[0x20 + 48] = 1;
             gameplay::Scene interactionScene(argv[1], interactionEntry);
             std::cout << "Live moving interactions " << direction << std::endl;
             for (unsigned frame = 0; frame < 420; ++frame) {

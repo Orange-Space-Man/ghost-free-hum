@@ -158,6 +158,12 @@ int CaptureApplication::run(HINSTANCE instance) {
                     throw std::runtime_error("Gameplay simulation did not preserve its 30 Hz clock.");
                 draw(false);
                 gamerenderer::capture(capturePath.wstring() + L".foyer.png");
+                for (unsigned checkpoint : {250u, 400u, 422u}) {
+                    while (gameplayScene->updates() < checkpoint) advance(true);
+                    draw(false);
+                    gamerenderer::capture(capturePath.wstring() + L".entrance-" + std::to_wstring(checkpoint) + L".png");
+                }
+                if (gameEntry.inventory[0x20 + 48] != 1) throw std::runtime_error("Entrance event did not complete before movement checks.");
                 for (unsigned direction = 0; direction < 4; ++direction) {
                     for (unsigned frame = 0; frame < 32; ++frame) {
                         playerinput::PadStatus pad;
