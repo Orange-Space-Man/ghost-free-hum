@@ -35,6 +35,7 @@ int CaptureApplication::run(HINSTANCE instance) {
         bool captureOpeningFlow = false;
         bool captureNewGameFlow = false;
         bool profileOpening = false;
+        bool profileFoyer = false;
         int argc = 0;
         LPWSTR* argv = CommandLineToArgvW(GetCommandLineW(), &argc);
         if (argv != nullptr) {
@@ -60,6 +61,8 @@ int CaptureApplication::run(HINSTANCE instance) {
                     captureOpeningFlow = true;
                 } else if (value == L"--profile-opening") {
                     profileOpening = true;
+                } else if (value == L"--profile-foyer") {
+                    profileFoyer = true;
                 } else if (value == L"--capture-opening" && index + 2 < argc) {
                     capturePath = argv[++index];
                     openingFrame = std::stoi(argv[++index]);
@@ -147,12 +150,39 @@ int CaptureApplication::run(HINSTANCE instance) {
                 for (unsigned frame = 0; frame < 300; ++frame) advance(true);
                 draw(false);
                 gamerenderer::capture(capturePath);
-                for (unsigned frame = 0; frame < 2000 && openingActive; ++frame) advance(true);
+                double transitionMilliseconds = 0;
+                for (unsigned frame = 0; frame < 30000 && openingActive; ++frame) {
+                    const auto before = std::chrono::steady_clock::now();
+                    advance(true);
+                    if (openingFade.finished() && gameplayPreparation.valid()) Sleep(1);
+                    if (gameplayActive) transitionMilliseconds = std::chrono::duration<double, std::milli>(
+                        std::chrono::steady_clock::now() - before).count();
+                }
                 if (!gameplayActive || menuActive || saves.working != initialSave)
                     throw std::runtime_error("New-game destination or save preservation failed.");
                 const auto initialUpdates = gameplayScene->updates();
+                const auto firstDrawStart = std::chrono::steady_clock::now();
                 draw(false);
+                gamerenderer::waitForFrame();
+                const auto firstDrawMilliseconds = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - firstDrawStart).count();
                 gamerenderer::capture(capturePath.wstring() + L".foyer-start.png");
+                if (profileFoyer) {
+                    std::ofstream timings(capturePath.wstring() + L".foyer-timings.csv");
+                    timings << "transition_ms," << transitionMilliseconds << "\nfirst_draw_ms," << firstDrawMilliseconds << "\nframe,update_ms,draw_ms\n";
+                    for (unsigned frame = 0; frame < 422; ++frame) {
+                        const auto before = std::chrono::steady_clock::now();
+                        gameplayScene->update({}, 0, frame + 1);
+                        const auto updated = std::chrono::steady_clock::now();
+                        draw(false);
+                        gamerenderer::waitForFrame();
+                        const auto drawn = std::chrono::steady_clock::now();
+                        timings << frame << ',' << std::chrono::duration<double, std::milli>(updated - before).count()
+                            << ',' << std::chrono::duration<double, std::milli>(drawn - updated).count() << '\n';
+                        gamerenderer::capture(capturePath.wstring() + L".frame-" + std::to_wstring(frame) + L".bmp");
+                    }
+                    close();
+                    return 0;
+                }
                 for (unsigned frame = 0; frame < 240; ++frame) advance(true);
                 if (gameplayScene->updates() != initialUpdates + 120)
                     throw std::runtime_error("Gameplay simulation did not preserve its 30 Hz clock.");
@@ -229,6 +259,10 @@ int CaptureApplication::run(HINSTANCE instance) {
                 enterOpening(2, gameEntry.cutscene);
                 openingSkip = true;
                 for (unsigned frame = 0; frame < 33; ++frame) advance(true);
+                for (unsigned wait = 0; !gameplayActive && wait < 30000; ++wait) {
+                    advance(true);
+                    Sleep(1);
+                }
                 if (!gameplayActive) throw std::runtime_error("New-game skip lost the gameplay destination.");
                 for (unsigned frame = 0; frame < 240; ++frame) advance(true);
                 draw(false);
@@ -242,6 +276,11 @@ int CaptureApplication::run(HINSTANCE instance) {
                 for (unsigned frame = 0; frame < 400; ++frame) advance(true);
                 draw(false);
                 gamerenderer::capture(capturePath.wstring() + L".reset-title.png");
+                if (!gameentry::selectNewFile(saves, 0, gameEntry, error)) throw std::runtime_error(error);
+                enterOpening(2, gameEntry.cutscene);
+                SendMessageW(window, WM_KEYDOWN, VK_F1, 0);
+                if (gameplayPreparation.valid() || gameplayScene || gameplayActive || openingActive || gameEntry.initialized)
+                    throw std::runtime_error("F1 retained a background scene from the previous game.");
                 close();
                 return 0;
             }

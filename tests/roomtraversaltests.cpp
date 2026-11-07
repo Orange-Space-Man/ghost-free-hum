@@ -70,6 +70,11 @@ int main() {
         auto portal = roomportal::corners({0, 0, -1}, 2, 2);
         require(roomportal::project(portal, projection, parent, parent) == roomtraversal::Bounds{24, 24, 76, 76},
             "Portal projection divides by W before viewport mapping and pixel expansion.");
+        require(roomportal::projectVisible(portal, projection, parent, parent) == roomportal::project(portal, projection, parent, parent),
+            "Native clipping retains original bounds for portals in front of the near plane.");
+        const roomportal::Matrix perspective{1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, -1, 0, 0, -1, 0};
+        require(roomportal::projectVisible(roomportal::corners({0, 0, 2}, 2, 2), perspective, parent, parent) == roomtraversal::Bounds{},
+            "A portal wholly behind the eye must not create a mirrored visible rectangle.");
         portal = roomportal::corners({0, 1, -1}, 2, 2);
         require(roomportal::project(portal, projection, parent, parent) == roomtraversal::Bounds{24, 0, 76, 51},
             "Projection flips Y and clips expanded bounds to the parent.");

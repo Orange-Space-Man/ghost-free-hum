@@ -42,6 +42,16 @@ int main(int argc, char** argv) {
             const auto published = resources.publishCamera();
             require(published.visibilityMode == (frame >= 5 && frame < 416 ? 2 : 0),
                 "The cinematic visibility mode must follow camera ownership and return to normal after release.");
+            if (frame >= 309 && frame <= 315) {
+                const auto visible = resources.prepareVisibility(published.worldProjection, {0, 0, 640, 480});
+                bool upperFoyer = false;
+                for (const auto& room : visible) if (room.room == 0x1f01021e) {
+                    upperFoyer = true;
+                    require(room.bounds[0] == 0 && room.bounds[1] == 0,
+                        "The entrance camera crossing the upper portal must not clip away the corner.");
+                }
+                require(upperFoyer, "The upper foyer must stay submitted throughout the camera crossing.");
+            }
             const auto camera = published.camera;
             if (frame == 4) savedCamera = camera;
             for (float value : camera.position) require(std::isfinite(value), "Entrance camera position must be finite.");
