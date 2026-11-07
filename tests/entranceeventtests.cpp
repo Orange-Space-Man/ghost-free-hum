@@ -39,7 +39,10 @@ int main(int argc, char** argv) {
                     restored.fieldOfView == savedCamera.fieldOfView, "CAMENDFAST must restore the retained camera before follow resumes.");
             }
             resources.updateCamera();
-            const auto camera = resources.publishCamera().camera;
+            const auto published = resources.publishCamera();
+            require(published.visibilityMode == (frame >= 5 && frame < 416 ? 2 : 0),
+                "The cinematic visibility mode must follow camera ownership and return to normal after release.");
+            const auto camera = published.camera;
             if (frame == 4) savedCamera = camera;
             for (float value : camera.position) require(std::isfinite(value), "Entrance camera position must be finite.");
             if (frame >= 5 && frame < 416 && camera.position != lastCamera) ++cameraChanges;
