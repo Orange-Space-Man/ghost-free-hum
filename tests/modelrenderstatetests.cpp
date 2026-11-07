@@ -347,6 +347,19 @@ int main(int argc, char** argv) {
             modellighting::initialize(owner, view, {room}, true, {10, 20, 30, 40}, trig);
             require(std::abs(owner.lights[0].distance[1] - 0.01f) < 1e-7f && owner.lights[0].direction[2] == 1 &&
                 owner.lights[0].angular[1] < -6, "Original room spot upload differs.");
+            const auto actorLighting = modellighting::actorEnvironment(owner);
+            s3dmodel::Material actorMaterial;
+            actorMaterial.color = {1, 1, 1, 1};
+            s3dmodel::Vertex front, behind;
+            front.position = {11, 22, -67}; front.normal = {0, 0, 1};
+            behind.position = {11, 22, 133}; behind.normal = {0, 0, -1};
+            const auto frontColor = actorLighting.shade(front, actorMaterial, true);
+            const auto behindColor = actorLighting.shade(behind, actorMaterial, true);
+            require(std::abs(frontColor[0] - 20.0f / 255) < 1e-6f &&
+                std::abs(behindColor[0] - 10.0f / 255) < 1e-6f,
+                "Actors must share room spotlight attenuation without illuminating the back of its cone.");
+            require(actorLighting.lights.size() == 1,
+                "Actor diffuse lighting must not include retained specular or secondary slots.");
             room.cutoff = 0;
             modellighting::initialize(owner, view, {room}, true, {}, trig);
             require(std::abs(owner.lights[0].distance[2] - 0.0001f) < 1e-9f, "Original point-light quadratic attenuation differs.");
