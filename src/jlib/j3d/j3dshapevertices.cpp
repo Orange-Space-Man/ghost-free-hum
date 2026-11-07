@@ -91,6 +91,38 @@ std::vector<j3dmodel::ShapePrimitive> j3dmodel::decodeShapeGroup(const Geometry&
                     continue;
                 }
                 const bool normal = attribute == 10 || attribute == 25;
+                if (attribute == 11 || attribute == 12) {
+                    const auto format = formats.at(attribute);
+                    const unsigned sizes[]{2, 3, 4, 2, 3, 4};
+                    if (format.type > 5) throw std::runtime_error("Invalid J3D vertex color format.");
+                    const auto size = sizes[format.type];
+                    std::size_t offset = cursor;
+                    if (mode == 1) {
+                        take(size);
+                    } else {
+                        const auto index = take(mode == 2 ? 1 : 2);
+                        const auto base = geometry.vertexOffsets.at(attribute - 8);
+                        if (!base) throw std::runtime_error("J3D color array is not bound.");
+                        offset = std::size_t(base) + std::size_t(index) * size;
+                    }
+                    const auto packed = input.integer(offset, size);
+                    auto& color = vertex.colors[attribute - 11];
+                    if (format.type == 0) {
+                        const auto r = (packed >> 11) & 31, g = (packed >> 5) & 63, b = packed & 31;
+                        color = {std::uint8_t((r << 3) | (r >> 2)), std::uint8_t((g << 2) | (g >> 4)),
+                            std::uint8_t((b << 3) | (b >> 2)), 255};
+                    } else if (format.type == 3 || format.type == 4) {
+                        const unsigned bits = format.type == 3 ? 4 : 6, mask = (1u << bits) - 1;
+                        for (unsigned c = 0; c < 4; ++c) {
+                            const auto value = (packed >> ((3 - c) * bits)) & mask;
+                            color[c] = std::uint8_t(bits == 4 ? value * 17 : (value << 2) | (value >> 4));
+                        }
+                    } else {
+                        for (unsigned c = 0; c < 3; ++c) color[c] = std::uint8_t(packed >> ((size - 1 - c) * 8));
+                        color[3] = format.type == 5 ? std::uint8_t(packed) : 255;
+                    }
+                    continue;
+                }
                 if (attribute != 9 && !normal && (attribute < 13 || attribute > 20))
                     throw std::runtime_error("J3D shape attribute requires an additional original vertex decoder.");
                 const auto format = formats.at(normal ? 10 : attribute);

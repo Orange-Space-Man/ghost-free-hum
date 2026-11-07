@@ -12,6 +12,7 @@ namespace {
     const roomtraversal::Bounds fullBounds{0, 0, 640, 480};
     constexpr unsigned roomLightingEnabledAddress = 0x804d07c8;
     constexpr unsigned equipmentAmbientScaleAddress = 0x804d9b60;
+    constexpr unsigned lightProjectionDepthAddress = 0x804dabc4;
 
     template<class T> T constant(const std::vector<std::uint8_t>& executable, unsigned address) {
         std::vector<std::uint8_t> bytes;
@@ -52,6 +53,25 @@ gameplay::Scene::Scene(const std::filesystem::path& package, gameentry::State& e
     auto& managers = resources.managers();
     useRoomLights = constant<std::uint32_t>(resources.executable(), roomLightingEnabledAddress) != 0;
     equipmentAmbientScale = constant<float>(resources.executable(), equipmentAmbientScaleAddress);
+    lightProjectionDepth = constant<float>(resources.executable(), lightProjectionDepthAddress);
+    modelTransforms = std::make_unique<j3dmodel::TransformTables>(resources.executable());
+    j3dmodel::MaterialLight coneLight;
+    for (unsigned i = 0; i < 3; ++i) {
+        coneLight.position[i] = constant<float>(resources.executable(), 0x8020c660 + i * 16);
+        coneLight.direction[i] = constant<float>(resources.executable(), 0x8020c684 + i * 16);
+    }
+    const auto coneColor = constant<std::uint32_t>(resources.executable(), 0x804db454);
+    for (unsigned i = 0; i < 4; ++i) coneLight.color[i] = static_cast<std::uint8_t>(coneColor >> (24 - i * 8));
+    const float coneOne = constant<float>(resources.executable(), 0x804db458);
+    const float coneZero = constant<float>(resources.executable(), 0x804db448);
+    coneLight.attenuation = {coneOne, coneZero, coneZero, coneOne, coneZero, coneZero};
+    lightMaterialState.light(7, coneLight);
+    for (unsigned channel = 0; channel < 2; ++channel) {
+        const auto color = constant<std::uint32_t>(resources.executable(), 0x804db44c + channel * 4);
+        std::array<std::uint8_t, 4> bytes;
+        for (unsigned i = 0; i < 4; ++i) bytes[i] = static_cast<std::uint8_t>(color >> (24 - i * 8));
+        lightMaterialState.ambientColor(channel, bytes);
+    }
     const auto* player = managers.playerEvents().player(0);
     ambient = resources.rooms().entries().at(player->room() >> 24).ambient;
     managers.updatePlacement(0);
@@ -78,6 +98,7 @@ void gameplay::Scene::prepareGraphics() {
 }
 
 void gameplay::Scene::prepareModelGraphics(ID3D11Device* device) {
+    lightRenderer.load(device, resources.managers().players().models->model(playermodels::SharedModel::Light));
     const auto load = [&](const doors::ModelResource& model) {
         if (models.count(&model)) return;
         auto& batches = models[&model];
@@ -138,6 +159,8 @@ void gameplay::Scene::update(const playerinput::PadStatus& pad, std::int16_t por
     }
     managers.updateContacts();
     resources.updateCamera();
+    publishCamera();
+    rooms = resources.prepareVisibility(visibilityProjection, fullBounds);
     managers.updateFurniture(ticks);
     auto targetAmbient = resources.rooms().entries().at(player->room() >> 24).ambient;
     if (player->view.field8B8 && player->view.field8A0 != 5)
@@ -212,10 +235,6 @@ void gameplay::Scene::drawModel(const doors::ModelResource& model,
 
 void gameplay::Scene::draw(bool present) {
     const bool gameplayDrawn = sceneControl.gameplayEnabled;
-    if (gameplayDrawn && presentationTick) {
-        publishCamera();
-        rooms = resources.prepareVisibility(visibilityProjection, fullBounds);
-    }
     if (gameplayDrawn) drawGameplay(false);
     if (presentationTick) {
         keyPresentation.advanceDraw(presentationButtons);
@@ -282,11 +301,33 @@ void gameplay::Scene::drawGameplay(bool present) {
     drawFurniture(1);
     drawRooms(1);
     resources.managers().doors().submitTranslucent(0, false, submitDoor);
+    drawPlayerLight();
     startupscene::Picture picture;
     picture.texture = textures[0];
     picture.width = 640;
     picture.height = 480;
     gamerenderer::drawInterface({picture}, present);
+}
+
+void gameplay::Scene::drawPlayerLight() {
+    auto& managers = resources.managers();
+    auto* player = managers.playerEvents().player(0);
+    auto& light = *player->components->light;
+    auto& shared = *managers.players().models;
+    shared.buffer(4).clear();
+    shared.buffer(5).clear();
+    if (!(player->state.flags792 & 4) || player->state.flags1140[2] || !light.state) return;
+    light.prepare(view, lightProjectionDepth, *modelTransforms, shared);
+    gamerenderer::bindSceneTarget(false);
+    for (unsigned index : {4u, 5u}) {
+        const auto& buffer = shared.buffer(index);
+        for (unsigned i = 0; i < buffer.entries.size(); ++i) {
+            const auto bucket = buffer.draw ? buffer.entries.size() - 1 - i : i;
+            for (auto* packet = buffer.entries[bucket]; packet; packet = packet->next)
+                lightRenderer.draw(gamerenderer::modelContext(), *light.instance, *packet, lightMaterialState,
+                    projection, light.instance->field8 & 12, index == 4 ? 3 : 4);
+        }
+    }
 }
 
 void gameplay::Scene::refreshActorModels() {

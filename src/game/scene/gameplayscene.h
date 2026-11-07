@@ -3,6 +3,7 @@
 #include "game/scene/gameplayresourceowner.h"
 #include "platform/d3d11/modelbatchrenderer.h"
 #include "game/startup/keypresentationowner.h"
+#include "platform/d3d11/j3dpacketrenderer.h"
 
 namespace gameplay {
     class Scene {
@@ -48,6 +49,11 @@ namespace gameplay {
         float equipmentAmbientScale = 0;
         std::array<std::uint8_t, 4> ambient{};
         s3denvironment::Light actorLight;
+        std::unique_ptr<j3dmodel::TransformTables> modelTransforms;
+        j3drenderer::PacketRenderer lightRenderer;
+        j3dmodel::MaterialState lightMaterialState;
+        float lightProjectionDepth = 0;
+        void drawPlayerLight();
         void updateOpacity();
         void publishCamera();
         void drawGameplay(bool present);

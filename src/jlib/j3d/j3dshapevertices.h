@@ -7,6 +7,7 @@ namespace j3dmodel {
         std::array<float, 3> position{};
         std::array<std::array<float, 3>, 3> normals{};
         std::array<std::array<float, 2>, 8> coordinates{};
+        std::array<std::array<std::uint8_t, 4>, 2> colors{{{255, 255, 255, 255}, {255, 255, 255, 255}}};
         std::array<std::uint8_t, 9> matrixIndices{};
         bool skipped = false;
     };

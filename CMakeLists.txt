@@ -21,6 +21,7 @@ add_library(JLib STATIC
     src/jlib/j3d/j3dmodelinstance.cpp
     src/jlib/j3d/j3dmodelcalculation.cpp
     src/jlib/j3d/j3dmaterialcalculation.cpp
+    src/jlib/j3d/j3dtextureanimation.cpp
     src/jlib/j3d/j3dpixelstate.cpp
     src/jlib/j3d/j3dtevcommands.cpp
     src/jlib/j3d/j3dmaterialstate.cpp

@@ -6,7 +6,7 @@
 namespace {
     void checkOperation(const std::array<int, 5>& operation) {
         const bool supported = operation[0] == 0 || operation[0] == 1 || (operation[0] >= 8 && operation[0] <= 15);
-        if (!supported || operation[1] != 0 || operation[2] != 0 ||
+        if (!supported || operation[1] < 0 || operation[1] > 2 || operation[2] < 0 || operation[2] > 3 ||
             operation[3] < 0 || operation[3] > 1 || operation[4] < 0 || operation[4] > 3)
             throw std::runtime_error("J3D combiner requires an unimplemented arithmetic mode.");
     }
@@ -75,9 +75,13 @@ j3drenderer::CombinerProgram j3drenderer::buildCombinerProgram(const j3dmodel::M
         std::copy(input.colorInputs.begin(), input.colorInputs.end(), stage.color.begin());
         std::copy(input.alphaInputs.begin(), input.alphaInputs.end(), stage.alpha.begin());
         stage.colorOperation = input.colorOperation[0];
+        stage.colorBias = input.colorOperation[1];
+        stage.colorScale = input.colorOperation[2];
         stage.colorClamp = input.colorOperation[3] != 0;
         stage.colorOutput = input.colorOperation[4];
         stage.alphaOperation = input.alphaOperation[0];
+        stage.alphaBias = input.alphaOperation[1];
+        stage.alphaScale = input.alphaOperation[2];
         stage.alphaClamp = input.alphaOperation[3] != 0;
         stage.alphaOutput = input.alphaOperation[4];
         result.program.stages.push_back(stage);

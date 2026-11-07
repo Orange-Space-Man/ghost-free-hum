@@ -9,6 +9,7 @@ namespace modelmaterial {
         unsigned colorOperation = 0, alphaOperation = 0, colorOutput = 0, alphaOutput = 0;
         bool colorClamp = true, alphaClamp = true, resetSwap = false, setKonst = false;
         unsigned konstColor = 0, konstAlpha = 0;
+        unsigned colorBias = 0, colorScale = 0, alphaBias = 0, alphaScale = 0;
     };
 
     struct Coordinate {

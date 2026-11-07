@@ -27,7 +27,7 @@ cbuffer Transform : register(b0) {
     float4 positionMatrix[3]; float4 normalMatrix[3]; float4 projection[4];
     Coordinate coordinates[8]; uint4 counts;
 };
-struct Input { float3 position:POSITION; float3 normal:NORMAL0; float3 binormal:NORMAL1; float3 tangent:NORMAL2; float2 uv[8]:TEXCOORD0; };
+struct Input { float3 position:POSITION; float3 normal:NORMAL0; float3 binormal:NORMAL1; float3 tangent:NORMAL2; float2 uv[8]:TEXCOORD0; float4 color[2]:COLOR0; };
 struct Output {
     float4 position:SV_POSITION; float4 color:COLOR0;
     float3 normal:NORMAL0; float3 binormal:NORMAL1; float3 tangent:NORMAL2;
@@ -46,8 +46,8 @@ Output main(Input input) {
     output.viewPosition=view.xyz;
     output.normal=normalTransform(input.normal); output.binormal=normalTransform(input.binormal); output.tangent=normalTransform(input.tangent);
     float3 normal=normalize(output.normal);
-    if(counts.y>0) output.color=float4(illuminate(0,view.xyz,normal,255).rgb,illuminate(2,view.xyz,normal,255).a)/255.0;
-    if(counts.y>1) output.secondaryColor=float4(illuminate(1,view.xyz,normal,255).rgb,illuminate(3,view.xyz,normal,255).a)/255.0;
+    if(counts.y>0) output.color=float4(illuminate(0,view.xyz,normal,round(input.color[0]*255)).rgb,illuminate(2,view.xyz,normal,round(input.color[0]*255)).a)/255.0;
+    if(counts.y>1) output.secondaryColor=float4(illuminate(1,view.xyz,normal,round(input.color[1]*255)).rgb,illuminate(3,view.xyz,normal,round(input.color[1]*255)).a)/255.0;
     output.uv0=input.uv[0]; output.uv1=input.uv[1]; output.uv2=input.uv[2]; output.uv3=input.uv[3];
     for(uint i=0;i<counts.x;++i) {
         uint type=coordinates[i].control.x, origin=coordinates[i].control.y;
@@ -61,6 +61,8 @@ Output main(Input input) {
             else value=float4(input.uv[origin-4],1,1);
             output.generated[i]=float2(dot(coordinates[i].transform[0],value),dot(coordinates[i].transform[1],value));
             if(type==0) output.generatedQ[i/4][i%4]=dot(coordinates[i].transform[2],value);
+        } else if(type==10) {
+            output.generated[i]=origin==19?output.color.rg:output.secondaryColor.rg;
         } else {
             float3 direction=normalize(lights[type-2].position.xyz-view.xyz);
             output.generated[i]=output.generated[origin-12]+float2(dot(direction,output.tangent),dot(direction,output.binormal));
@@ -90,7 +92,6 @@ modellighting::Inputs j3drenderer::prepareLighting(const j3dmodel::MaterialState
     for (unsigned i = 0; i < 4; ++i) {
         if (i % 2 >= state.colorChannels) continue;
         const auto& channel = state.channels[i];
-        if (channel.ambientSource || channel.materialSource) throw std::runtime_error("J3D vertex-color lighting requires a color vertex stream.");
         if (channel.enabled > 1 || channel.diffuse > 2 || channel.attenuation > 2 || channel.lights > 255 ||
             (channel.enabled && (channel.lights & ~loaded))) throw std::runtime_error("J3D lighting references invalid channels or unloaded lights.");
         result.channels[i].control = {channel.enabled, channel.ambientSource, channel.materialSource, channel.lights};
@@ -115,6 +116,8 @@ void j3drenderer::VertexShader::load(ID3D11Device* device) {
         unsigned(offsetof(Vertex, normals)) + i * 12, D3D11_INPUT_PER_VERTEX_DATA, 0});
     for (unsigned i = 0; i < 8; ++i) elements.push_back({"TEXCOORD", i, DXGI_FORMAT_R32G32_FLOAT, 0,
         unsigned(offsetof(Vertex, coordinates)) + i * 8, D3D11_INPUT_PER_VERTEX_DATA, 0});
+    for (unsigned i = 0; i < 2; ++i) elements.push_back({"COLOR", i, DXGI_FORMAT_R8G8B8A8_UNORM, 0,
+        unsigned(offsetof(Vertex, colors)) + i * 4, D3D11_INPUT_PER_VERTEX_DATA, 0});
     check(device->CreateInputLayout(elements.data(), unsigned(elements.size()), code->GetBufferPointer(), code->GetBufferSize(), result.layout.GetAddressOf()), "Cannot create J3D vertex layout.");
     D3D11_BUFFER_DESC buffer{};
     buffer.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
@@ -165,8 +168,9 @@ void j3drenderer::VertexShader::bindMatrices(ID3D11DeviceContext* context, const
                 if (matrix > 61) throw std::runtime_error("Invalid J3D texture matrix row.");
                 std::copy_n(state.matrixRows.begin() + matrix, 3, output.matrix.begin());
             }
-        } else if (!(type >= 2 && type <= 9 && source >= 12 && source - 12 < i && state.lights[type - 2]))
-            throw std::runtime_error("Unsupported J3D texture generator or missing emboss light.");
+        } else if (!(type == 10 && (source == 19 || source == 20)) &&
+            !(type >= 2 && type <= 9 && source >= 12 && source - 12 < i && state.lights[type - 2]))
+            throw std::runtime_error("Unsupported J3D texture generator " + std::to_string(type) + " source " + std::to_string(source) + ".");
     }
     context->UpdateSubresource(constants.Get(), 0, nullptr, &data, 0, 0);
     context->UpdateSubresource(lighting.Get(), 0, nullptr, &lights, 0, 0);

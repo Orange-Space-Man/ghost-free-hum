@@ -92,11 +92,13 @@ struct Input {
     float4 secondaryColor : COLOR1;
     float4 generatedQ[2] : TEXCOORD13;
 };
-int combine(int a, int b, int c, int d, int subtract) {
+int combine(int a, int b, int c, int d, int subtract, int bias, int scale) {
     a &= 255; b &= 255; c &= 255;
     int weight = c + (c >> 7);
-    int fraction = (a * (256 - weight) + b * weight + 128 - subtract) >> 8;
-    return d + (subtract != 0 ? -fraction : fraction);
+    int multiplier = scale==3 ? 1 : (1<<scale);
+    int fraction = ((a * (256 - weight) + b * weight) * multiplier + (scale==3 ? 0 : 128-subtract)) >> 8;
+    int result = (d + (bias==1 ? 128 : bias==2 ? -128 : 0)) * multiplier + (subtract != 0 ? -fraction : fraction);
+    return scale==3 ? result>>1 : result;
 }
 )";
     for (unsigned slot = 0; slot < 8; ++slot)
@@ -136,12 +138,12 @@ int combine(int a, int b, int c, int d, int subtract) {
             source << "int3 c" << i << "=" << color(stage.color[i]) << "; int a" << i << "=" << alpha(stage.alpha[i]) << ";\n";
         source << "int3 result; for(int channel=0;channel<3;++channel) result[channel]=";
         if (stage.colorOperation <= 1)
-            source << "combine(c0[channel],c1[channel],c2[channel],c3[channel]," << stage.colorOperation << ");\n";
+            source << "combine(c0[channel],c1[channel],c2[channel],c3[channel]," << stage.colorOperation << "," << stage.colorBias << "," << stage.colorScale << ");\n";
         else
             source << "c3[channel]+((" << comparison(stage.colorOperation, false) << ") ? (c2[channel] & 255) : 0);\n";
         source << "int opacity=";
         if (stage.alphaOperation <= 1)
-            source << "combine(a0,a1,a2,a3," << stage.alphaOperation << ");\n";
+            source << "combine(a0,a1,a2,a3," << stage.alphaOperation << "," << stage.alphaBias << "," << stage.alphaScale << ");\n";
         else
             source << "a3+((" << comparison(stage.alphaOperation, true) << ") ? (a2 & 255) : 0);\n";
         source << "r[" << stage.colorOutput << "].rgb=clamp(result," << (stage.colorClamp ? 0 : -1024) << "," << (stage.colorClamp ? 255 : 1023) << ");\n";

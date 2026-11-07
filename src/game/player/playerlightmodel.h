@@ -2,6 +2,7 @@
 
 #include "game/scene/gameplaycameraowner.h"
 #include "game/player/playersharedmodels.h"
+#include "jlib/j3d/j3dmodelcalculation.h"
 
 namespace playeractor { class Player; }
 
@@ -9,6 +10,8 @@ namespace playermodels {
     class LightModel {
     public:
         LightModel(const SharedModels& shared, gameplaycamera::CameraOwner& camera);
+        void prepare(const j3dmodel::Matrix& view, float projectionDepth,
+            const j3dmodel::TransformTables& tables, SharedModels& shared);
         std::uint8_t state = 0;
         playeractor::Player* owner = nullptr;
         gameplaycamera::CameraOwner* camera;

@@ -46,7 +46,7 @@ j3dmodel::Matrix j3dmodel::TransformTables::transform(const Joint& joint) const 
 void j3dmodel::calculateBasic(ModelInstance& instance, const TransformTables& tables) {
     const auto& data = *instance.model;
     const auto& geometry = data.geometry;
-    if (!data.calculator || data.calculator->kind != 0 || data.calculator->animation || instance.deform || instance.skin)
+    if (!data.calculator || data.calculator->kind > 1 || data.calculator->animation || instance.deform || instance.skin)
         throw std::runtime_error("Basic J3D calculation requires its original unanimated calculator without deformation.");
     for (const auto& calculator : data.jointCalculators)
         if (calculator) throw std::runtime_error("Joint calculator overrides require their original runtime path.");
@@ -58,8 +58,10 @@ void j3dmodel::calculateBasic(ModelInstance& instance, const TransformTables& ta
         std::array<float, 3> scale;
     };
     auto base = instance.matrix;
-    for (unsigned row = 0; row < 3; ++row)
-        for (unsigned column = 0; column < 3; ++column) base[row * 4 + column] *= instance.scale[column];
+    const bool softimage = data.calculator->kind == 1;
+    if (!softimage)
+        for (unsigned row = 0; row < 3; ++row)
+            for (unsigned column = 0; column < 3; ++column) base[row * 4 + column] *= instance.scale[column];
     std::vector<Visit> pending;
     if (geometry.hierarchy.root >= 0) pending.push_back({geometry.hierarchy.root, base, instance.scale});
     std::vector<bool> seen(geometry.joints.size());
@@ -77,11 +79,17 @@ void j3dmodel::calculateBasic(ModelInstance& instance, const TransformTables& ta
         const bool unitScale = scale == std::array<float, 3>{1, 1, 1};
         instance.jointScaleFlags[joint.index] = unitScale ? 1 : 0;
         auto local = tables.transform(joint);
-        if (!unitScale)
+        if (softimage)
+            for (unsigned row = 0; row < 3; ++row) local[row * 4 + 3] *= visit.scale[row];
+        else if (!unitScale)
             for (unsigned row = 0; row < 3; ++row)
                 for (unsigned column = 0; column < 3; ++column) local[row * 4 + column] *= joint.scale[column];
         const auto matrix = concatenateMatrix(visit.parent, local);
         instance.jointMatrices[joint.index] = matrix;
+        if (softimage && !unitScale)
+            for (unsigned row = 0; row < 3; ++row)
+                for (unsigned column = 0; column < 3; ++column)
+                    instance.jointMatrices[joint.index][row * 4 + column] *= scale[column];
         if (links.sibling >= 0) pending.push_back({links.sibling, visit.parent, visit.scale});
         if (links.child >= 0) pending.push_back({links.child, matrix, scale});
     }
