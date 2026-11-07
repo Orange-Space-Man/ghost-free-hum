@@ -68,8 +68,28 @@ gameplay::Scene::Scene(const std::filesystem::path& package, gameentry::State& e
 void gameplay::Scene::prepareGraphics() {
     textures = gamerenderer::loadPreviews(actorModels, 640, 480);
     gamerenderer::cacheScene("gameplay");
+    if (models.empty()) prepareModelGraphics(gamerenderer::modelDevice());
+}
+
+void gameplay::Scene::prepareModelGraphics(ID3D11Device* device) {
     const auto load = [&](const doors::ModelResource& model) {
-        if (!models.count(&model)) models[&model].load(gamerenderer::modelDevice(), model);
+        if (models.count(&model)) return;
+        auto& batches = models[&model];
+        batches.load(device, model);
+        modellighting::State lighting;
+        modellighting::initialize(lighting, view, {}, false, {}, trig);
+        modellighting::prepareModel(lighting, view, lightOrigin, lightTarget, false, trig);
+        modelrenderer::PipelineState warmPipeline;
+        modelrenderer::initializeModelState(warmPipeline);
+        warmPipeline.scissor = true;
+        std::array<modelrenderer::StageRegisters, 16> registers{};
+        modeldraw::TraversalState state;
+        state.overrideOpacity = true;
+        for (unsigned pass = 0; pass < 3; ++pass) {
+            modeldraw::traverse(model.drawing, pass, 255, state, [&](const modeldraw::DrawCommand& command) {
+                batches.prepare(command, pass, lighting, warmPipeline, registers);
+            });
+        }
     };
     for (const auto& resident : resources.residentRooms().slots()) {
         if (resident.room == 0xffffffff) continue;

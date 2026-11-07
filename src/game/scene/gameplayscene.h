@@ -10,6 +10,7 @@ namespace gameplay {
         std::string debugInfo();
         Scene(const std::filesystem::path& package, gameentry::State& entry);
         void prepareGraphics();
+        void prepareModelGraphics(ID3D11Device* device);
         void update(const playerinput::PadStatus& pad = {}, std::int16_t port = -1, std::uint32_t audioFrame = 0);
         void updateAudio();
         std::shared_ptr<jaudio::PositionalPlayback> playback();

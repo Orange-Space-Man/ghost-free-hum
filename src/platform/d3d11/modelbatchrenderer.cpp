@@ -48,6 +48,26 @@ void modelrenderer::Batches::draw(ID3D11DeviceContext* context, const modeldraw:
     const auto inputs = modellighting::prepare(lightState);
     selectModelPass(rasterState, pass);
     selectBatchCull(rasterState, batch.cull, mode);
+    auto& materialShader = shader(command, program, specular, shadow, rasterState, retained);
+    textures.bind(context, command.material, program);
+    materialShader.draw(context, combiner, geometry, command.batch, matrices, coordinates, inputs);
+    lighting = lightState;
+    pipeline = rasterState;
+    for (const auto& stage : program.stages) {
+        auto& registers = retained[stage.index];
+        if (stage.resetSwap) registers.textureSwap = registers.rasterSwap = {0, 1, 2, 3};
+        if (stage.setKonst) {
+            registers.colorConstant = stage.konstColor;
+            registers.alphaConstant = stage.konstAlpha;
+        }
+    }
+}
+
+std::size_t modelrenderer::Batches::shaderCount() const { return shaders.size(); }
+
+modelrenderer::MaterialShader& modelrenderer::Batches::shader(const modeldraw::DrawCommand& command,
+    const modelmaterial::StageProgram& program, bool specular, bool shadow, const PipelineState& rasterState,
+    const std::array<StageRegisters, 16>& retained) {
     const auto& alpha = rasterState.alpha;
     std::vector<unsigned> key{static_cast<unsigned>(command.material), static_cast<unsigned>(command.batch),
         unsigned(command.alternateMaterial), unsigned(specular), unsigned(shadow), alpha.first, alpha.firstReference,
@@ -67,10 +87,19 @@ void modelrenderer::Batches::draw(ID3D11DeviceContext* context, const modeldraw:
         shader.load(owner.Get(), program, retained, rasterState);
         found = shaders.emplace(std::move(key), std::move(shader)).first;
     }
-    textures.bind(context, command.material, program);
-    found->second.draw(context, combiner, geometry, command.batch, matrices, coordinates, inputs);
-    lighting = lightState;
-    pipeline = rasterState;
+    return found->second;
+}
+
+void modelrenderer::Batches::prepare(const modeldraw::DrawCommand& command, unsigned pass,
+    modellighting::State& lighting, PipelineState& pipeline, std::array<StageRegisters, 16>& retained) {
+    const auto& batch = drawing.batch(command.batch);
+    const auto& material = materials.at(command.material);
+    lighting.material.lightingFlags = command.lightingFlags;
+    const bool specular = modellighting::configureMaterial(lighting, material, command.opacity, batch.lighting, command.lightingFlags);
+    const auto program = modelmaterial::buildStages(material, batch.textureCount, batch.normalMode, specular, false);
+    selectModelPass(pipeline, pass);
+    selectBatchCull(pipeline, batch.cull, 0);
+    shader(command, program, specular, false, pipeline, retained);
     for (const auto& stage : program.stages) {
         auto& registers = retained[stage.index];
         if (stage.resetSwap) registers.textureSwap = registers.rasterSwap = {0, 1, 2, 3};
@@ -80,5 +109,3 @@ void modelrenderer::Batches::draw(ID3D11DeviceContext* context, const modeldraw:
         }
     }
 }
-
-std::size_t modelrenderer::Batches::shaderCount() const { return shaders.size(); }

@@ -4,6 +4,7 @@
 #include <cstring>
 #include <cmath>
 #include <stdexcept>
+#include <vector>
 
 namespace {
     float coordinate(std::int32_t center, int offset) {
@@ -82,6 +83,47 @@ roomtraversal::Bounds roomportal::clip(std::uint8_t positiveDepthCount,
     if (parent[3] < bounds[3]) bounds[3] = parent[3];
     if (bounds[0] == bounds[2] || bounds[1] == bounds[3]) return {};
     return bounds;
+}
+
+roomtraversal::Bounds roomportal::projectVisible(const std::array<Point, 4>& points, const Matrix& matrix,
+    const roomtraversal::Bounds& viewport, const roomtraversal::Bounds& parent) {
+    std::array<std::array<float, 4>, 4> projected;
+    unsigned inside = 0;
+    // GX clip depth spans [-w, 0]; clip before dividing or narrowing screen coordinates.
+    for (unsigned i = 0; i < points.size(); ++i) {
+        projected[i] = transform(matrix, points[i]);
+        if (projected[i][2] + projected[i][3] >= 0) ++inside;
+    }
+    if (inside == 4) return project(points, matrix, viewport, parent);
+    if (!inside) return {};
+    std::vector<std::array<float, 4>> clipped;
+    auto previous = projected.back();
+    float previousDistance = previous[2] + previous[3];
+    for (const auto& current : projected) {
+        const float distance = current[2] + current[3];
+        if ((distance >= 0) != (previousDistance >= 0)) {
+            const float fraction = previousDistance / (previousDistance - distance);
+            std::array<float, 4> intersection;
+            for (unsigned i = 0; i < 4; ++i) intersection[i] = previous[i] + fraction * (current[i] - previous[i]);
+            clipped.push_back(intersection);
+        }
+        if (distance >= 0) clipped.push_back(current);
+        previous = current;
+        previousDistance = distance;
+    }
+    std::array<float, 4> bounds{float(parent[2]), float(parent[3]), float(parent[0]), float(parent[1])};
+    for (const auto& point : clipped) {
+        const float x = viewport[0] + (point[0] / point[3] + 1) * (viewport[2] - viewport[0]) * 0.5f;
+        const float y = viewport[1] + (1 - point[1] / point[3]) * (viewport[3] - viewport[1]) * 0.5f;
+        bounds[0] = std::min(bounds[0], x - 1);
+        bounds[1] = std::min(bounds[1], y - 1);
+        bounds[2] = std::max(bounds[2], x + 1);
+        bounds[3] = std::max(bounds[3], y + 1);
+    }
+    return clip(0, parent, {static_cast<std::int16_t>(std::clamp(bounds[0], float(parent[0]), float(parent[2]))),
+        static_cast<std::int16_t>(std::clamp(bounds[1], float(parent[1]), float(parent[3]))),
+        static_cast<std::int16_t>(std::clamp(bounds[2], float(parent[0]), float(parent[2]))),
+        static_cast<std::int16_t>(std::clamp(bounds[3], float(parent[1]), float(parent[3])))});
 }
 
 roomtraversal::Bounds roomportal::enclose(const std::array<std::int16_t, 4>& x,

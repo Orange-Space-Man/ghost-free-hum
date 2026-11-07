@@ -29,7 +29,7 @@ std::vector<roomtraversal::Submission> roomtraversal::Walk::stationary(unsigned 
             const auto& portal = portals.entries.at(link);
             if (!doordata::traversalEnabled(portal) || portal.rooms[0] != index || portal.attributes[1] == 3 ||
                 portal.rooms[1] == room || services.doorBlocked(portal.identity)) continue;
-            const auto clipped = roomportal::project(roomportal::corners(portal.center, portal.dimensions[0],
+            const auto clipped = roomportal::projectVisible(roomportal::corners(portal.center, portal.dimensions[0],
                 portal.dimensions[1]), projection, viewport, bounds);
             if ((!clipped[0] && !clipped[2]) || (!clipped[1] && !clipped[3])) continue;
             mark(portal.rooms[1], depth + 1, clipped);

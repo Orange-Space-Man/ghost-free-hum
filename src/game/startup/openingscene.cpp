@@ -217,6 +217,7 @@ void openingscene::Scene::draw(bool present) {
 bool openingscene::Scene::finished() const { return timeline.finished; }
 
 void openingscene::Scene::drawFrozen(bool present, unsigned fadeAlpha) {
+    if (!gamerenderer::useScene(graphicsKey(loadedSegment))) throw std::runtime_error("Opening graphics ownership is unavailable.");
     startupscene::Picture picture;
     picture.texture = texture;
     picture.width = 640;

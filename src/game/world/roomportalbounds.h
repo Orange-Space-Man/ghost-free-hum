@@ -11,6 +11,8 @@ namespace roomportal {
     std::array<float, 4> transform(const Matrix& matrix, const Point& point);
     roomtraversal::Bounds project(const std::array<Point, 4>& points, const Matrix& matrix,
         const roomtraversal::Bounds& viewport, const roomtraversal::Bounds& parent);
+    roomtraversal::Bounds projectVisible(const std::array<Point, 4>& points, const Matrix& matrix,
+        const roomtraversal::Bounds& viewport, const roomtraversal::Bounds& parent);
     roomtraversal::Bounds clip(std::uint8_t positiveDepthCount, const roomtraversal::Bounds& parent,
         roomtraversal::Bounds bounds);
     roomtraversal::Bounds enclose(const std::array<std::int16_t, 4>& x,

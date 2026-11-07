@@ -19,6 +19,7 @@
 #include "game/scene/gameentrystate.h"
 #include "platform/windows/windowpadinput.h"
 #include <windows.h>
+#include <future>
 
 namespace gameapplication {
     class Application {
@@ -67,6 +68,7 @@ namespace gameapplication {
         unsigned gameplayPhase = 0;
         HWND applicationWindow = nullptr;
         std::unique_ptr<gameplay::Scene> gameplayScene;
+        std::future<std::unique_ptr<gameplay::Scene>> gameplayPreparation;
         unsigned openingDestination = 1;
         unsigned preparedCutscene = 0x4c;
 

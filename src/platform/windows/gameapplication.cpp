@@ -48,15 +48,30 @@ void gameapplication::Application::enterOpening(unsigned destination, unsigned c
     openingSkip = false;
     openingFade.reset();
     boundaryReported = false;
+    if (destination == 2) {
+        gameplayPreparation = {};
+        gameplayScene.reset();
+        Microsoft::WRL::ComPtr<ID3D11Device> device = gamerenderer::modelDevice();
+        gameplayPreparation = std::async(std::launch::async, [this, path = currentAssets, device] {
+            auto prepared = std::make_unique<gameplay::Scene>(path, gameEntry);
+            prepared->prepareModelGraphics(device.Get());
+            return prepared;
+        });
+    }
     if (audioEnabled) startupaudio::playStream(openingAudio);
 }
 
 void gameapplication::Application::advanceOpening() {
+    if (gameplayPreparation.valid() && gameplayPreparation.wait_for(std::chrono::seconds(0)) == std::future_status::ready) {
+        gameplayScene = gameplayPreparation.get();
+        gameplayScene->prepareGraphics();
+    }
     if (openingFade.active()) {
         if (!openingFade.finished()) {
             openingFade.update();
             return;
         }
+        if (openingDestination == 2 && !gameplayScene) return;
         openingActive = false;
         openingSkip = false;
         openingFade.reset();
@@ -66,9 +81,6 @@ void gameapplication::Application::advanceOpening() {
                 startupaudio::bindPositionalPlayback({});
                 startupaudio::stop();
             }
-            gameplayScene.reset();
-            gameplayScene = std::make_unique<gameplay::Scene>(currentAssets, gameEntry);
-            gameplayScene->prepareGraphics();
             gameplayPhase = 0;
             gameplayActive = true;
             if (audioEnabled) startupaudio::bindPositionalPlayback(gameplayScene->playback());
@@ -214,6 +226,7 @@ void gameapplication::Application::draw(bool present) {
 }
 
 void gameapplication::Application::close() {
+    gameplayPreparation = {};
     startupaudio::bindPositionalPlayback({});
     gameplayScene.reset();
     startupaudio::close();
@@ -221,6 +234,7 @@ void gameapplication::Application::close() {
 }
 
 void gameapplication::Application::restart() {
+    gameplayPreparation = {};
     startupaudio::bindPositionalPlayback({});
     gameplayScene.reset();
     gameplayActive = false;
