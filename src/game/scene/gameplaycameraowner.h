@@ -10,7 +10,7 @@ namespace gameplaycamera {
         void reset();
         std::uint16_t flags;
         std::uint32_t callback;
-        std::array<std::uint8_t, 0x38> fields8;
+        std::uint8_t visibilityMode = 0;
         std::array<float, 16> matrix;
         std::array<float, 3> up, target, position;
         std::uint16_t fieldA4;

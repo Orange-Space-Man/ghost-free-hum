@@ -112,7 +112,6 @@ void gameplay::Scene::update(const playerinput::PadStatus& pad, std::int16_t por
     }
     managers.updateContacts();
     resources.updateCamera();
-    rooms = resources.prepareVisibility(visibilityProjection, fullBounds);
     managers.updateFurniture(ticks);
     updateOpacity();
     managers.updatePoses();
@@ -164,6 +163,7 @@ void gameplay::Scene::drawModel(const doors::ModelResource& model,
     modellighting::initialize(lighting, view, {}, false, resources.rooms().entries().at(room).ambient, trig);
     modellighting::prepareModel(lighting, view, lightOrigin, lightTarget, false, trig);
     modeldraw::TraversalState state;
+    state.overrideOpacity = overrideRoomOpacity;
     state.flaggedOpacity = flaggedOpacity;
     state.limitedOpacity = limitedOpacity;
     modeldraw::traverse(model.drawing, pass, opacity, state, [&](const modeldraw::DrawCommand& command) {
@@ -177,7 +177,10 @@ void gameplay::Scene::drawModel(const doors::ModelResource& model,
 
 void gameplay::Scene::draw(bool present) {
     const bool gameplayDrawn = sceneControl.gameplayEnabled;
-    if (gameplayDrawn && presentationTick) publishCamera();
+    if (gameplayDrawn && presentationTick) {
+        publishCamera();
+        rooms = resources.prepareVisibility(visibilityProjection, fullBounds);
+    }
     if (gameplayDrawn) drawGameplay(false);
     if (presentationTick) {
         keyPresentation.advanceDraw(presentationButtons);
@@ -196,6 +199,9 @@ void gameplay::Scene::draw(bool present) {
 
 void gameplay::Scene::publishCamera() {
     const auto camera = resources.publishCamera();
+    if (camera.visibilityMode != 0 && camera.visibilityMode != 2)
+        throw std::runtime_error("Gameplay requires the selected camera visibility traversal.");
+    overrideRoomOpacity = camera.visibilityMode == 2;
     view = camera.view;
     projection = camera.projection;
     visibilityProjection = camera.worldProjection;

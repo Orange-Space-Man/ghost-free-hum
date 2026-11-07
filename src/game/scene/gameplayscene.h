@@ -40,6 +40,7 @@ namespace gameplay {
         std::array<modelrenderer::StageRegisters, 16> retained{};
         unsigned ticks = 0;
         std::uint8_t flaggedOpacity = 0, limitedOpacity = 0;
+        bool overrideRoomOpacity = false;
         float opacityDistance = 0;
         std::array<float, 3> lightOrigin{}, lightTarget{};
         s3denvironment::Light actorLight;

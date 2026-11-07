@@ -103,7 +103,7 @@ void gameevent::EntranceOwner::camera(std::string_view name) {
     cameraPath = std::make_unique<CameraPath>(resource(name));
     cameraFrame = 0;
     cameraOwner.flags |= 1;
-    cameraOwner.fields8[8] = 2;
+    cameraOwner.visibilityMode = 2;
     cameraPath->sample(0, cameraOwner);
 }
 

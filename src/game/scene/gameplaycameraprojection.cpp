@@ -55,6 +55,7 @@ gameplaycamera::DrawState gameplaycamera::Projection::publish(CameraOwner& owner
         direction = {radius * horizontal[0], length * vertical[0], radius * horizontal[2]};
     }
     DrawState result{};
+    result.visibilityMode = owner.visibilityMode;
     result.camera.position = owner.position;
     result.camera.up = owner.up;
     result.camera.fieldOfView = owner.fieldOfView;

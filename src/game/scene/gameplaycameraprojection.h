@@ -9,6 +9,7 @@ namespace gameplaycamera {
         s3denvironment::Camera camera;
         actormodel::Matrix view;
         std::array<float, 16> projection, worldProjection;
+        std::uint8_t visibilityMode = 0;
     };
 
     class Projection {

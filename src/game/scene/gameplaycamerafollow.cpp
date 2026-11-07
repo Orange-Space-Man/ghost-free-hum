@@ -106,7 +106,7 @@ void gameplaycamera::Follow::update(CameraOwner& camera, const playeractor::View
         throw std::runtime_error("Camera follow requires the selected original scanner, ladder or override callback.");
     camera.aspect = static_cast<float>(camera.viewport[2] - camera.viewport[0]) /
         static_cast<float>(camera.viewport[3] - camera.viewport[1]);
-    camera.fields8[8] = 0;
+    camera.visibilityMode = 0;
     camera.fieldOfView = fieldOfView;
     camera.nearPlane = nearPlane;
     camera.farPlane = farPlane;
