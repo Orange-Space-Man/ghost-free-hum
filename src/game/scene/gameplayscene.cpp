@@ -10,6 +10,8 @@
 
 namespace {
     const roomtraversal::Bounds fullBounds{0, 0, 640, 480};
+    constexpr unsigned roomLightingEnabledAddress = 0x804d07c8;
+    constexpr unsigned equipmentAmbientScaleAddress = 0x804d9b60;
 
     template<class T> T constant(const std::vector<std::uint8_t>& executable, unsigned address) {
         std::vector<std::uint8_t> bytes;
@@ -48,6 +50,10 @@ gameplay::Scene::Scene(const std::filesystem::path& package, gameentry::State& e
         actorLight.distance[1] = (1 - lightBrightness) / (lightBrightness * lightDistance);
     publishCamera();
     auto& managers = resources.managers();
+    useRoomLights = constant<std::uint32_t>(resources.executable(), roomLightingEnabledAddress) != 0;
+    equipmentAmbientScale = constant<float>(resources.executable(), equipmentAmbientScaleAddress);
+    const auto* player = managers.playerEvents().player(0);
+    ambient = resources.rooms().entries().at(player->room() >> 24).ambient;
     managers.updatePlacement(0);
     resources.furniture().initializeObjects();
     rooms = resources.prepareVisibility(visibilityProjection, fullBounds);
@@ -77,7 +83,7 @@ void gameplay::Scene::prepareModelGraphics(ID3D11Device* device) {
         auto& batches = models[&model];
         batches.load(device, model);
         modellighting::State lighting;
-        modellighting::initialize(lighting, view, {}, false, {}, trig);
+        modellighting::initialize(lighting, view, {}, useRoomLights, ambient, trig);
         modellighting::prepareModel(lighting, view, lightOrigin, lightTarget, false, trig);
         modelrenderer::PipelineState warmPipeline;
         modelrenderer::initializeModelState(warmPipeline);
@@ -133,6 +139,14 @@ void gameplay::Scene::update(const playerinput::PadStatus& pad, std::int16_t por
     managers.updateContacts();
     resources.updateCamera();
     managers.updateFurniture(ticks);
+    auto targetAmbient = resources.rooms().entries().at(player->room() >> 24).ambient;
+    if (player->view.field8B8 && player->view.field8A0 != 5)
+        for (unsigned channel = 0; channel < 3; ++channel)
+            targetAmbient[channel] = static_cast<std::uint8_t>(equipmentAmbientScale * targetAmbient[channel]);
+    for (unsigned channel = 0; channel < 3; ++channel) {
+        const int difference = int(targetAmbient[channel]) - ambient[channel];
+        ambient[channel] = static_cast<std::uint8_t>(int(ambient[channel]) + std::clamp(difference, -10, 10));
+    }
     updateOpacity();
     managers.updatePoses();
     managers.completePlayerFrame({}, false);
@@ -180,10 +194,11 @@ void gameplay::Scene::drawModel(const doors::ModelResource& model,
     const D3D11_RECT rectangle{bounds[0], bounds[1], bounds[2], bounds[3]};
     context->RSSetScissorRects(1, &rectangle);
     modellighting::State lighting;
-    modellighting::initialize(lighting, view, {}, false, resources.rooms().entries().at(room).ambient, trig);
+    modellighting::initialize(lighting, view, resources.managers().lights().lights(), useRoomLights, ambient, trig);
     modellighting::prepareModel(lighting, view, lightOrigin, lightTarget, false, trig);
     modeldraw::TraversalState state;
     state.overrideOpacity = overrideRoomOpacity;
+    state.nodeLightingOverride = resources.managers().roomCleared(room);
     state.flaggedOpacity = flaggedOpacity;
     state.limitedOpacity = limitedOpacity;
     modeldraw::traverse(model.drawing, pass, opacity, state, [&](const modeldraw::DrawCommand& command) {
@@ -317,8 +332,16 @@ void gameplay::Scene::drawActors(unsigned stage) {
         s3denvironment::Lighting lighting;
         const auto lightMode = constant<std::uint16_t>(resources.executable(), 0x8033b598 + actor.type() * 0x1c) & 6;
         if (lightMode == 2) {
-            for (unsigned channel = 0; channel < 3; ++channel) lighting.ambient[channel] = actor.fieldsE9[channel] / 255.0f;
-            lighting.lights.push_back(actorLight);
+            if (useRoomLights) {
+                modellighting::State roomLighting;
+                const dooranimation::Matrix identity{1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0};
+                modellighting::initialize(roomLighting, identity, resources.managers().lights().lights(), true,
+                    {actor.fieldsE9[0], actor.fieldsE9[1], actor.fieldsE9[2], 255}, trig);
+                lighting = modellighting::actorEnvironment(roomLighting);
+            } else {
+                for (unsigned channel = 0; channel < 3; ++channel) lighting.ambient[channel] = actor.fieldsE9[channel] / 255.0f;
+                lighting.lights.push_back(actorLight);
+            }
         } else if (lightMode != 0) throw std::runtime_error("Actor requires its original secondary lighting path.");
         gamerenderer::drawPreview(i, actorModels[i], batches, lighting, &resources.camera(), false, 1U << stage);
     }

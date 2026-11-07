@@ -126,6 +126,26 @@ modellighting::Inputs modellighting::prepare(const State& state) {
     return result;
 }
 
+s3denvironment::Lighting modellighting::actorEnvironment(const State& state) {
+    s3denvironment::Lighting result;
+    for (unsigned component = 0; component < 3; ++component)
+        result.ambient[component] = state.ambient[0][component] / 255.0f;
+    for (unsigned index = 0; index < state.lights.size(); ++index) {
+        if (!(state.material.lightMask & (1U << index))) continue;
+        const auto& source = state.lights[index];
+        s3denvironment::Light light;
+        for (unsigned component = 0; component < 3; ++component) {
+            light.position[component] = source.position[component];
+            light.direction[component] = source.direction[component];
+            light.color[component] = source.color[component] / 255.0f;
+            light.angular[component] = source.angular[component];
+            light.distance[component] = source.distance[component];
+        }
+        result.lights.push_back(light);
+    }
+    return result;
+}
+
 bool modellighting::configureMaterial(State& state, const modelmaterial::Material& material, std::uint8_t opacity,
     std::uint8_t lighting, std::uint8_t lightingFlags) {
     auto result = state;

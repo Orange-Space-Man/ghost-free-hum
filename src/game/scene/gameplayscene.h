@@ -44,6 +44,9 @@ namespace gameplay {
         bool overrideRoomOpacity = false;
         float opacityDistance = 0;
         std::array<float, 3> lightOrigin{}, lightTarget{};
+        bool useRoomLights = true;
+        float equipmentAmbientScale = 0;
+        std::array<std::uint8_t, 4> ambient{};
         s3denvironment::Light actorLight;
         void updateOpacity();
         void publishCamera();

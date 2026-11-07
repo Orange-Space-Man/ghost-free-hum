@@ -3,6 +3,7 @@
 #include "game/models/modelmaterialstate.h"
 #include "game/world/dooranimationpose.h"
 #include "game/math/originalfloattrig.h"
+#include "game/models/s3denvironment.h"
 
 namespace modellighting {
     struct Light {
@@ -42,5 +43,6 @@ namespace modellighting {
     bool configureMaterial(State& state, const modelmaterial::Material& material, std::uint8_t opacity,
         std::uint8_t lighting, std::uint8_t lightingFlags);
     Inputs prepare(const State& state);
+    s3denvironment::Lighting actorEnvironment(const State& state);
     const char* shaderSource();
 }
