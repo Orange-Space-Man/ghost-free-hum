@@ -231,6 +231,7 @@ struct gameplay::ManagerServices::State {
         fireServices = std::make_unique<enemystrategy::FireGeneratorEnvironment>(enemystrategy::FireGeneratorEnvironment{
             commonResources, particles->pool(), glows, player->view, dependencies.actors.rooms, *runtime});
         strategies->bindPlacement(dependencies.strategies, *barrierServices, *fireServices, ambient);
+        strategies->bindPose(dependencies.actors.pose);
         generators = std::make_unique<charactergenerator::Manager>(dependencies.types, dependencies.creation,
             dependencies.strategies, *strategies, *enemies, *runtime, dependencies.mission);
         webs = std::make_unique<modeleffects::CobwebPlacements>(models->factory, dependencies.actors.pose);

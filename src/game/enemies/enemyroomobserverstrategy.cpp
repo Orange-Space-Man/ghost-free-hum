@@ -3,6 +3,13 @@
 
 #include <stdexcept>
 
+namespace {
+    class CompletedAction final : public enemystrategy::Strategy {
+    public:
+        void behavior() override { setNextState(0x100); }
+    };
+}
+
 enemystrategy::RoomObserver::RoomObserver(const Factory& factory, const Catalog& catalog) : factory(factory), catalog(catalog) {}
 
 void enemystrategy::RoomObserver::initializeBehavior() {
@@ -10,7 +17,9 @@ void enemystrategy::RoomObserver::initializeBehavior() {
         if (!condition) throw std::runtime_error("Original room observer has no condition strategy.");
         condition->setNextState(0);
     } else if (state == 2) {
-        throw std::runtime_error("Original room-observer action services are not bound.");
+        if (!actionStrategy) throw std::runtime_error("Original room-observer action services are not bound: action " +
+            std::to_string(action) + ", row " + std::to_string(owner ? owner->source.row : -1));
+        actionStrategy->setNextState(0);
     }
 }
 
@@ -30,12 +39,18 @@ void enemystrategy::RoomObserver::behavior() {
         condition = factory.construct(catalog.constructor(selection < std::size(selectors) ? selectors[selection] : 0x7f));
         condition->owner = owner;
         condition->context = context;
+        actionStrategy.reset();
+        if (action == 0 || action == 2 || action == 4 || action == 5 || action == 6 || action > 12) {
+            actionStrategy = std::make_unique<CompletedAction>();
+            actionStrategy->owner = owner;
+            actionStrategy->context = context;
+        }
         setNextState(1);
     } else if (state == 1) {
         condition->update();
         if (condition->state == 0x100) setNextState(2);
     } else if (state == 2) {
-        throw std::runtime_error("Original room-observer action services are not bound.");
+        actionStrategy->update();
     }
 }
 

@@ -7,6 +7,7 @@ namespace charactergenerator {
     struct Event {
         unsigned message;
         std::array<std::uint8_t, 381>* types = nullptr;
+        characterowner::Owner* child = nullptr;
     };
 
     class Observer {

@@ -186,7 +186,11 @@ std::vector<roomtraversal::Submission> gameplay::ResourceOwner::prepareVisibilit
         saved, state->entry.map, {[&doors](unsigned id) { return doors.blocked(id); }, centerVisible});
     const auto* player = state->managers->actors().actor(state->managers->enemies().appearPoint(0).actor);
     if (!player) throw std::runtime_error("Room visibility requires the manager-owned player.");
-    if (player->room() != 0x02000102) throw std::runtime_error("Gameplay visibility requires the room-transition context outside the initial foyer.");
+    if (player->room() >> 24 >= rooms.size() || rooms[player->room() >> 24].id != player->room())
+        throw std::runtime_error("Gameplay visibility requires a resolved player room.");
+    if (std::none_of(state->residentRooms->slots().begin(), state->residentRooms->slots().end(),
+        [&](const roomresidency::Resident& resident) { return resident.room == (player->room() & 255); }))
+        throw std::runtime_error("Gameplay room transition requires the original room resource lifecycle.");
     auto submissions = traversal.stationary(player->room() >> 24, buffer, projection, viewport, 1, 255);
     for (const auto& room : rooms) {
         const auto offset = 0xa0 + (room.id & 255) * 2;

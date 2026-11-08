@@ -12,6 +12,11 @@ namespace gameplaycamera {
         unsigned preset() const;
 
     private:
+        struct Room {
+            unsigned id, flags;
+            std::array<float, 3> minimum, extent;
+        };
+        std::vector<Room> rooms;
         void select(unsigned value, unsigned delay);
         void approach(std::array<float, 3>& value, const std::array<float, 3>& target, float rate) const;
         std::array<std::array<float, 4>, 5> presets;

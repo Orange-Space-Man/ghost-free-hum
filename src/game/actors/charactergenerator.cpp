@@ -67,7 +67,7 @@ void charactergenerator::Generator::remove(characterowner::Owner& owner) {
     }
     --count;
     if (auto* observer = dynamic_cast<Observer*>(strategy.get())) {
-        Event event{0};
+        Event event{0, nullptr, target};
         observer->receive(event);
     }
 }

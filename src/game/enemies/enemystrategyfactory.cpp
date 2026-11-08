@@ -18,6 +18,8 @@
 #include "game/enemies/enemybarrierstrategy.h"
 #include "game/enemies/enemybatgeneratorstrategy.h"
 #include "game/enemies/enemygoldratgeneratorstrategy.h"
+#include "game/enemies/enemyratgeneratorstrategy.h"
+#include "game/enemies/enemytelesageneratorstrategy.h"
 #include "game/enemies/enemyfiregeneratorstrategy.h"
 #include "game/enemies/enemyfakedoorstrategy.h"
 #include "game/enemies/enemyroomobserverstrategy.h"
@@ -42,6 +44,10 @@ std::unique_ptr<enemystrategy::Strategy> enemystrategy::Factory::construct(std::
         if (!fire) throw std::runtime_error("Original generator room services are not bound.");
         return std::make_unique<BatGenerator>(runtime, fire->rooms, constructor == glme01::alternateBatGeneratorFactory);
     case glme01::goldRatGeneratorFactory: return std::make_unique<GoldRatGenerator>(runtime);
+    case glme01::telesaGeneratorFactory: return std::make_unique<TelesaGenerator>(runtime);
+    case glme01::ratGeneratorFactory:
+        if (!pose) throw std::runtime_error("Original rat-generator pose services are not bound.");
+        return std::make_unique<RatGenerator>(runtime, *pose);
     case glme01::fireGeneratorFactory:
         if (!fire) throw std::runtime_error("Original fire-generator services are not bound.");
         return std::make_unique<FireGenerator>(*fire);
@@ -109,6 +115,7 @@ std::unique_ptr<enemystrategy::Strategy> enemystrategy::Factory::construct(std::
 }
 
 void enemystrategy::Factory::bindItems(ItemEnvironment* environment) { items = environment; }
+void enemystrategy::Factory::bindPose(const actormodel::InitialPose& value) { pose = &value; }
 
 void enemystrategy::Factory::bindPlacement(const Catalog& value, BarrierEnvironment& barrierServices,
     FireGeneratorEnvironment& fireServices, const std::array<std::uint8_t, 4>& roomAmbient) {

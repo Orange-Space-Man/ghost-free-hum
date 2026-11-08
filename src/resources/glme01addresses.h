@@ -86,6 +86,8 @@ namespace glme01 {
     inline constexpr std::uint32_t batGeneratorFactory = 0x800ef0c4;
     inline constexpr std::uint32_t alternateBatGeneratorFactory = 0x800ef0fc;
     inline constexpr std::uint32_t goldRatGeneratorFactory = 0x800eeec8;
+    inline constexpr std::uint32_t ratGeneratorFactory = 0x800ef004;
+    inline constexpr std::uint32_t telesaGeneratorFactory = 0x800eff50;
     inline constexpr std::uint32_t fireGeneratorFactory = 0x800ef864;
     inline constexpr std::uint32_t fakeDoorFactory = 0x800efff8;
     inline constexpr std::uint32_t roomObserverFactory = 0x800ef388;

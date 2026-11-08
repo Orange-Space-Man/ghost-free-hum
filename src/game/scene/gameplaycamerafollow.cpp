@@ -42,18 +42,21 @@ namespace {
 
 gameplaycamera::Follow::Follow(const std::vector<std::uint8_t>& executable) {
     const auto descriptor = word(executable, mapTwoDescriptor);
-    if ((word(executable, descriptor) >> 24) <= 2) throw std::runtime_error("Camera follow requires the original foyer room.");
-    const auto room = word(executable, descriptor + 20) + 2 * 48;
-    roomId = word(executable, room);
-    roomFlags = word(executable, room + 4);
-    if (roomId != 0x02000102 || roomFlags != 0)
-        throw std::runtime_error("Camera follow requires the original first-visit room descriptor.");
-    for (unsigned axis = 0; axis < 3; ++axis) {
-        const auto lower = word(executable, room + 8 + axis * 4);
-        const auto upper = word(executable, room + 20 + axis * 4);
-        minimum[axis] = static_cast<float>(static_cast<std::int32_t>(lower));
-        extent[axis] = static_cast<float>(static_cast<std::int32_t>(upper - lower));
+    const auto count = word(executable, descriptor) >> 24;
+    const auto records = word(executable, descriptor + 20);
+    for (unsigned index = 0; index < count; ++index) {
+        const auto address = records + index * 48;
+        Room room{word(executable, address), word(executable, address + 4)};
+        for (unsigned axis = 0; axis < 3; ++axis) {
+            const auto lower = word(executable, address + 8 + axis * 4);
+            const auto upper = word(executable, address + 20 + axis * 4);
+            room.minimum[axis] = static_cast<float>(static_cast<std::int32_t>(lower));
+            room.extent[axis] = static_cast<float>(static_cast<std::int32_t>(upper - lower));
+        }
+        rooms.push_back(room);
     }
+    roomId = 0xffffffff;
+    roomFlags = 0;
     for (unsigned mode = 0; mode < presets.size(); ++mode)
         for (unsigned field = 0; field < 4; ++field) presets[mode][field] = scalar(executable, presetTable + mode * 16 + field * 4);
     parameters = presets[0];
@@ -100,8 +103,16 @@ void gameplaycamera::Follow::approach(std::array<float, 3>& value, const std::ar
 void gameplaycamera::Follow::update(CameraOwner& camera, const playeractor::View& player, unsigned room, unsigned playerIndex) {
     if (!player.position) throw std::runtime_error("Camera follow requires the published player position.");
     if (playerIndex >= leadX.size()) throw std::out_of_range("Camera player index exceeds the original subject table.");
-    if (room != roomId && (room >> 24) != 255)
-        throw std::runtime_error("Camera follow requires room-transition bindings outside the foyer.");
+    if (room != roomId && (room >> 24) != 255) {
+        const auto& record = rooms.at(room >> 24);
+        if (record.id != room) throw std::runtime_error("Camera follow requires a resolved room descriptor.");
+        if (record.flags || (room & 255) == 0xe || (room & 255) == 0x29 || (room & 255) == 0x44)
+            throw std::runtime_error("Camera follow requires the room's specialized camera dependencies.");
+        roomId = room;
+        roomFlags = record.flags;
+        minimum = record.minimum;
+        extent = record.extent;
+    }
     if ((camera.flags & 5) || player.field895 || player.field894 || player.field8C9)
         throw std::runtime_error("Camera follow requires the selected original scanner, ladder or override callback.");
     camera.aspect = static_cast<float>(camera.viewport[2] - camera.viewport[0]) /

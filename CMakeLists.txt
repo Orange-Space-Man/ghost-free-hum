@@ -135,6 +135,8 @@ add_library(Game STATIC
     src/game/effects/waterfalleffectpool.cpp
     src/game/enemies/enemybarrierstrategy.cpp
     src/game/enemies/enemybatgeneratorstrategy.cpp
+    src/game/enemies/enemyratgeneratorstrategy.cpp
+    src/game/enemies/enemytelesageneratorstrategy.cpp
     src/game/enemies/enemybombstrategy.cpp
     src/game/enemies/enemyconditionstrategy.cpp
     src/game/enemies/enemycreationcatalog.cpp

@@ -16,6 +16,7 @@ namespace enemystrategy {
         const Factory& factory;
         const Catalog& catalog;
         std::unique_ptr<Strategy> condition;
+        std::unique_ptr<Strategy> actionStrategy;
         unsigned action = 0;
     };
 }
