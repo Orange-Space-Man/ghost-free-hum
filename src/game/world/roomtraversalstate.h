@@ -7,6 +7,16 @@
 namespace roomtraversal {
     using Bounds = std::array<std::int16_t, 4>;
 
+    enum class TransitionMode : std::uint8_t { Idle, RevealCurrent, HidePrevious, SameFloor };
+
+    struct Transition {
+        void initialize(std::uint32_t room);
+        void update(std::uint32_t room);
+        std::uint32_t currentRoom = 0, previousRoom = 0;
+        TransitionMode mode = TransitionMode::Idle;
+        std::uint8_t flags = 0, opacity = 255, floorOpacity = 255;
+    };
+
     struct Record {
         std::uint16_t flags = 0;
         std::uint8_t depth = 0;

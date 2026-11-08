@@ -84,6 +84,7 @@ struct gameplay::ResourceOwner::State {
         spawn.rotation = player->rotation;
         spawn.roomId = player->room();
         cameraRoom = spawn.roomId;
+        roomTransition.initialize(spawn.roomId);
         if (!gameplaycamera::initialize(executable, spawn, camera, error)) throw std::runtime_error(error);
         auto& owner = *cameras.cameras[0];
         owner.position = camera.position;
@@ -122,6 +123,7 @@ struct gameplay::ResourceOwner::State {
     std::int32_t audioLife = 0;
     std::vector<std::uint32_t> roomFlags;
     roomtraversal::State visibility;
+    roomtraversal::Transition roomTransition;
     std::unique_ptr<actormodel::Resources> models;
     std::unique_ptr<actormodel::InitialPose> pose;
     std::unique_ptr<roomlocation::Rooms> rooms;
@@ -142,10 +144,11 @@ gameplay::ManagerServices& gameplay::ResourceOwner::managers() { return *state->
 const s3denvironment::Camera& gameplay::ResourceOwner::camera() const { return state->camera; }
 
 void gameplay::ResourceOwner::updateCamera() {
-    if (state->entrance->updateCamera()) return;
     const auto* player = state->managers->playerEvents().player(0);
     if (!player) throw std::runtime_error("Camera update requires the manager-owned player.");
     if (player->room()) state->cameraRoom = player->room();
+    state->roomTransition.update(state->cameraRoom);
+    if (state->entrance->updateCamera()) return;
     state->cameraFollow->update(*state->cameras.cameras[0], player->view, state->cameraRoom);
 }
 
@@ -191,7 +194,8 @@ std::vector<roomtraversal::Submission> gameplay::ResourceOwner::prepareVisibilit
     if (std::none_of(state->residentRooms->slots().begin(), state->residentRooms->slots().end(),
         [&](const roomresidency::Resident& resident) { return resident.room == (player->room() & 255); }))
         throw std::runtime_error("Gameplay room transition requires the original room resource lifecycle.");
-    auto submissions = traversal.stationary(player->room() >> 24, buffer, projection, viewport, 1, 255);
+    auto submissions = traversal.stationary(player->room() >> 24, buffer, projection, viewport, 1,
+        state->roomTransition.floorOpacity, &state->roomTransition);
     for (const auto& room : rooms) {
         const auto offset = 0xa0 + (room.id & 255) * 2;
         state->entry.inventory.at(offset) = static_cast<std::uint8_t>(saved[room.id & 255] >> 8);

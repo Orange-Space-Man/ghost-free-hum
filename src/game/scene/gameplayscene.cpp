@@ -117,6 +117,12 @@ void gameplay::Scene::prepareModelGraphics(ID3D11Device* device) {
                 batches.prepare(command, pass, lighting, warmPipeline, registers);
             });
         }
+        for (const auto flags : {0u, 1u}) {
+            state.lightingFlags = static_cast<std::uint8_t>(flags);
+            modeldraw::traverse(model.drawing, 2, 100, state, [&](const modeldraw::DrawCommand& command) {
+                batches.prepare(command, 2, lighting, warmPipeline, registers);
+            });
+        }
     };
     for (const auto& resident : resources.residentRooms().slots()) {
         if (resident.room == 0xffffffff) continue;
@@ -211,7 +217,7 @@ void gameplay::Scene::updateOpacity() {
 
 void gameplay::Scene::drawModel(const doors::ModelResource& model,
     const std::function<const dooranimation::Matrix&(unsigned)>& matrix, unsigned pass, std::uint8_t opacity,
-    unsigned room, const roomtraversal::Bounds& bounds) {
+    unsigned room, const roomtraversal::Bounds& bounds, bool lowOpacity) {
     auto* context = gamerenderer::modelContext();
     gamerenderer::bindSceneTarget(false);
     const D3D11_RECT rectangle{bounds[0], bounds[1], bounds[2], bounds[3]};
@@ -220,6 +226,7 @@ void gameplay::Scene::drawModel(const doors::ModelResource& model,
     modellighting::initialize(lighting, view, resources.managers().lights().lights(), useRoomLights, ambient, trig);
     modellighting::prepareModel(lighting, view, lightOrigin, lightTarget, false, trig);
     modeldraw::TraversalState state;
+    state.lightingFlags = lowOpacity ? 1 : 0;
     state.overrideOpacity = overrideRoomOpacity;
     state.nodeLightingOverride = resources.managers().roomCleared(room);
     state.flaggedOpacity = flaggedOpacity;
@@ -272,16 +279,16 @@ void gameplay::Scene::drawGameplay(bool present) {
     const auto drawRooms = [&](unsigned stage) {
         for (const auto& submission : rooms) for (const auto& resident : resources.residentRooms().slots()) {
             if (resident.room != (submission.room & 255)) continue;
+            if (!stage && submission.marker != -1) continue;
             for (unsigned pass = stage ? 2u : 0u; pass < (stage ? 3u : 2u); ++pass)
                 drawModel(resident.drawing, [&](unsigned node) -> const dooranimation::Matrix& { return resident.drawing.initialMatrices.at(node); },
                     pass, static_cast<std::uint8_t>(submission.marker), submission.room >> 24, submission.bounds);
         }
     };
     const auto submitDoor = [&](const doors::ModelResource& model, const doors::PoseOwner& pose, unsigned modelPass,
-        std::uint8_t opacity, bool shadow) {
-        if (shadow) throw std::runtime_error("Door shadow submission is not available.");
+        std::uint8_t opacity, bool lowOpacity) {
         drawModel(model, [&](unsigned node) -> const dooranimation::Matrix& { return pose.matrix(node); },
-            modelPass, opacity, rooms.front().room >> 24, fullBounds);
+            modelPass, opacity, rooms.front().room >> 24, fullBounds, lowOpacity);
     };
     const auto drawFurniture = [&](unsigned stage) {
         for (const auto& object : resources.furniture().slots()) {

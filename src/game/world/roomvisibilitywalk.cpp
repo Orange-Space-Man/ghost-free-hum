@@ -11,16 +11,18 @@ roomtraversal::Walk::Walk(const std::vector<SceneRoom>& rooms, const doordata::T
 }
 
 std::vector<roomtraversal::Submission> roomtraversal::Walk::stationary(unsigned room, unsigned buffer,
-    const roomportal::Matrix& projection, const Bounds& viewport, std::uint8_t clippingMode, std::uint8_t floorOpacity) {
+    const roomportal::Matrix& projection, const Bounds& viewport, std::uint8_t clippingMode, std::uint8_t floorOpacity,
+    const Transition* transition) {
     if ((rooms.at(room).attributes & 1) && floorOpacity) throw std::runtime_error("Room traversal requires the floor-overlap branch.");
     visibility.reset(buffer, static_cast<std::int16_t>(rooms.size()));
     std::vector<Submission> result;
-    const auto mark = [&](unsigned index, unsigned depth, const Bounds& bounds) {
+    const auto mark = [&](unsigned index, unsigned depth, const Bounds& bounds, std::uint8_t opacity = 255) {
         const auto id = rooms.at(index).id;
-        result.push_back({id, -1, bounds});
+        const auto marker = static_cast<std::int8_t>(opacity);
+        result.push_back({id, marker, bounds});
         auto unused = std::uint16_t{};
         auto& saved = map == 2 ? savedFlags.at(id & 255) : unused;
-        visibility.mark(buffer, map, id, flags.at(index), saved, static_cast<std::uint8_t>(depth), -1,
+        visibility.mark(buffer, map, id, flags.at(index), saved, static_cast<std::uint8_t>(depth), marker,
             clippingMode, bounds, viewport);
     };
     std::function<void(unsigned, unsigned, const Bounds&)> walk;
@@ -36,6 +38,16 @@ std::vector<roomtraversal::Submission> roomtraversal::Walk::stationary(unsigned 
             walk(portal.rooms[1], depth + 1, clipped);
         }
     };
+    if (transition && transition->mode == TransitionMode::RevealCurrent) {
+        const auto previous = transition->previousRoom >> 24;
+        if ((rooms.at(previous).attributes & 1) && floorOpacity)
+            throw std::runtime_error("Room transition requires the floor-overlap branch.");
+        flags.at(previous) &= ~1u;
+        mark(previous, 0, viewport);
+        walk(previous, 0, viewport);
+        mark(room, 0, viewport, transition->opacity);
+        return result;
+    }
     mark(room, 0, viewport);
     walk(room, 0, viewport);
     for (auto link : rooms.at(room).portals) {
@@ -53,5 +65,7 @@ std::vector<roomtraversal::Submission> roomtraversal::Walk::stationary(unsigned 
         walk(neighbor, 0, viewport);
     }
     flags.at(room) &= ~1u;
+    if (transition && transition->mode == TransitionMode::HidePrevious)
+        mark(transition->previousRoom >> 24, 0, viewport, transition->opacity);
     return result;
 }

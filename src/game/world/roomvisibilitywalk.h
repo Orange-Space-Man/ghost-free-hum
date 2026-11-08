@@ -28,7 +28,8 @@ namespace roomtraversal {
             std::vector<std::uint32_t>& flags, std::vector<std::uint16_t>& savedFlags, unsigned map,
             const WalkServices& services);
         std::vector<Submission> stationary(unsigned room, unsigned buffer, const roomportal::Matrix& projection,
-            const Bounds& viewport, std::uint8_t clippingMode, std::uint8_t floorOpacity);
+            const Bounds& viewport, std::uint8_t clippingMode, std::uint8_t floorOpacity,
+            const Transition* transition = nullptr);
 
     private:
         const std::vector<SceneRoom>& rooms;

@@ -60,6 +60,7 @@ namespace gameplay {
         void refreshActorModels();
         void drawActors(unsigned stage);
         void drawModel(const doors::ModelResource& model, const std::function<const dooranimation::Matrix&(unsigned)>& matrix,
-            unsigned pass, std::uint8_t opacity, unsigned room, const roomtraversal::Bounds& bounds);
+            unsigned pass, std::uint8_t opacity, unsigned room, const roomtraversal::Bounds& bounds,
+            bool lowOpacity = false);
     };
 }
