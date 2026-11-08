@@ -4,6 +4,7 @@
 #include "platform/d3d11/modelbatchrenderer.h"
 #include "game/startup/keypresentationowner.h"
 #include "platform/d3d11/j3dpacketrenderer.h"
+#include "game/effects/modeleffectlighting.h"
 
 namespace gameplay {
     class Scene {
@@ -52,8 +53,13 @@ namespace gameplay {
         std::unique_ptr<j3dmodel::TransformTables> modelTransforms;
         j3drenderer::PacketRenderer lightRenderer;
         j3dmodel::MaterialState lightMaterialState;
+        std::unique_ptr<modeleffects::Lighting> effectLighting;
+        j3dmodel::MaterialState effectMaterialState;
+        std::map<const j3dmodel::ModelData*, j3drenderer::PacketRenderer> effectRenderers;
+        unsigned visibleModelEffects = 0;
         float lightProjectionDepth = 0;
         void drawPlayerLight();
+        void drawModelEffects();
         void updateOpacity();
         void publishCamera();
         void drawGameplay(bool present);

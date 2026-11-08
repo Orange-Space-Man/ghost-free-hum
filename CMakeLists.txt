@@ -114,6 +114,7 @@ add_library(Game STATIC
     src/game/effects/icejaileffectpool.cpp
     src/game/effects/icicleeffectpool.cpp
     src/game/effects/modeleffectmanager.cpp
+    src/game/effects/modeleffectlighting.cpp
     src/game/effects/modeleffectowner.cpp
     src/game/effects/modeleffectpool.cpp
     src/game/effects/particleadvancement.cpp

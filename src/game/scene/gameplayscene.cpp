@@ -3,6 +3,7 @@
 #include "platform/d3d11/gamerenderer.h"
 #include "game/models/modeldrawmatrices.h"
 #include "game/startup/startupresources.h"
+#include "game/effects/barriereffectpool.h"
 
 #include <algorithm>
 #include <cstring>
@@ -55,6 +56,7 @@ gameplay::Scene::Scene(const std::filesystem::path& package, gameentry::State& e
     equipmentAmbientScale = constant<float>(resources.executable(), equipmentAmbientScaleAddress);
     lightProjectionDepth = constant<float>(resources.executable(), lightProjectionDepthAddress);
     modelTransforms = std::make_unique<j3dmodel::TransformTables>(resources.executable());
+    effectLighting = std::make_unique<modeleffects::Lighting>(resources.executable());
     j3dmodel::MaterialLight coneLight;
     for (unsigned i = 0; i < 3; ++i) {
         coneLight.position[i] = constant<float>(resources.executable(), 0x8020c660 + i * 16);
@@ -99,6 +101,13 @@ void gameplay::Scene::prepareGraphics() {
 
 void gameplay::Scene::prepareModelGraphics(ID3D11Device* device) {
     lightRenderer.load(device, resources.managers().players().models->model(playermodels::SharedModel::Light));
+    for (auto* pool : resources.managers().modelEffects().registered()) {
+        if (!dynamic_cast<modeleffects::BarrierPool*>(pool)) continue;
+        for (const auto& owner : pool->owners) {
+            const auto& model = owner->model->model;
+            effectRenderers[model.get()].load(device, model);
+        }
+    }
     const auto load = [&](const doors::ModelResource& model) {
         if (models.count(&model)) return;
         auto& batches = models[&model];
@@ -179,6 +188,7 @@ void gameplay::Scene::update(const playerinput::PadStatus& pad, std::int16_t por
     updateOpacity();
     managers.updatePoses();
     managers.completePlayerFrame({}, false);
+    managers.modelEffects().update(resources.rooms(), resources.visibility());
     ++ticks;
 }
 
@@ -308,12 +318,32 @@ void gameplay::Scene::drawGameplay(bool present) {
     drawFurniture(1);
     drawRooms(1);
     resources.managers().doors().submitTranslucent(0, false, submitDoor);
+    drawModelEffects();
     drawPlayerLight();
     startupscene::Picture picture;
     picture.texture = textures[0];
     picture.width = 640;
     picture.height = 480;
     gamerenderer::drawInterface({picture}, present);
+}
+
+void gameplay::Scene::drawModelEffects() {
+    auto& managers = resources.managers();
+    auto& effects = managers.modelEffects();
+    const auto mask = effectLighting->prepare(effectMaterialState, view, managers.lights().lights(), trig);
+    const auto instances = effects.prepareBarriers(resources.rooms(), resources.visibility(), view, *modelTransforms, mask);
+    visibleModelEffects = static_cast<unsigned>(instances.size());
+    std::map<const j3dmodel::MaterialPacket*, j3dmodel::ModelInstance*> owners;
+    for (auto* instance : instances)
+        for (auto& packet : instance->materials) owners.emplace(&packet, instance);
+    gamerenderer::bindSceneTarget(false);
+    for (unsigned pass = 0; pass < effects.drawBuffers.size(); ++pass) {
+        effects.drawBuffers[pass]->visit([&](j3dmodel::MaterialPacket& packet) {
+            auto& instance = *owners.at(&packet);
+            effectRenderers.at(instance.model.get()).draw(gamerenderer::modelContext(), instance, packet,
+                effectMaterialState, projection, instance.field8 & 12, pass + 3);
+        });
+    }
 }
 
 void gameplay::Scene::drawPlayerLight() {
@@ -396,6 +426,9 @@ void gameplay::Scene::drawActors(unsigned stage) {
 }
 
 std::string gameplay::Scene::debugInfo() {
+    unsigned activeEffects = 0;
+    for (const auto* pool : resources.managers().modelEffects().registered())
+        for (const auto& owner : pool->owners) if (owner->flags & 1) ++activeEffects;
     unsigned ownedActors = 0, furniture = 0, residentRooms = 0, visibleDoors = 0;
     for (const auto* actor : resources.managers().actors().entries()) if (actor) ++ownedActors;
     for (const auto& object : resources.furniture().slots()) if (object.flags & 2) ++furniture;
@@ -404,5 +437,6 @@ std::string gameplay::Scene::debugInfo() {
     for (unsigned i = 0; i < doors.size(); ++i) if (doors.leaf(i).flags & 1) ++visibleDoors;
     return "Foyer | Registered actors: " + std::to_string(ownedActors) + " | Scene models: " + std::to_string(actors.size()) +
         " | Furniture: " + std::to_string(furniture) + " | Visible doors: " + std::to_string(visibleDoors) +
-        " | Resident rooms: " + std::to_string(residentRooms) + "\nSimulation: 30 Hz | Tick: " + std::to_string(ticks);
+        " | Resident rooms: " + std::to_string(residentRooms) + "\nModel effects: " + std::to_string(activeEffects) +
+        " | Drawing: " + std::to_string(visibleModelEffects) + "\nSimulation: 30 Hz | Tick: " + std::to_string(ticks);
 }

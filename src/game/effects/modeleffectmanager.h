@@ -3,6 +3,7 @@
 #include "game/effects/crystaleffectpool.h"
 #include "game/effects/rivereffectpool.h"
 #include "jlib/j3d/j3ddrawbuffer.h"
+#include "jlib/j3d/j3dmodelcalculation.h"
 #include "game/player/playeractorview.h"
 
 namespace modeleffects {
@@ -29,6 +30,9 @@ namespace modeleffects {
         void clear();
         void update(const roomlocation::Rooms& rooms, const roomtraversal::State& visibility);
         void setPaused(bool paused);
+        std::vector<j3dmodel::ModelInstance*> prepareBarriers(const roomlocation::Rooms& rooms,
+            const roomtraversal::State& visibility, const j3dmodel::Matrix& view,
+            const j3dmodel::TransformTables& tables, unsigned lightMask);
         const std::vector<Pool*>& registered() const;
         Factory factory;
         std::array<std::unique_ptr<j3dmodel::DrawBuffer>, 2> drawBuffers;
