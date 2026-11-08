@@ -57,6 +57,7 @@ gameplay::Scene::Scene(const std::filesystem::path& package, gameentry::State& e
     lightProjectionDepth = constant<float>(resources.executable(), lightProjectionDepthAddress);
     modelTransforms = std::make_unique<j3dmodel::TransformTables>(resources.executable());
     effectLighting = std::make_unique<modeleffects::Lighting>(resources.executable());
+    particleBillboards = std::make_unique<particles::Billboards>(resources.executable());
     j3dmodel::MaterialLight coneLight;
     for (unsigned i = 0; i < 3; ++i) {
         coneLight.position[i] = constant<float>(resources.executable(), 0x8020c660 + i * 16);
@@ -100,6 +101,8 @@ void gameplay::Scene::prepareGraphics() {
 }
 
 void gameplay::Scene::prepareModelGraphics(ID3D11Device* device) {
+    particleRenderer.load(device);
+    particleRenderer.prepare(resources.managers().particles().pool());
     lightRenderer.load(device, resources.managers().players().models->model(playermodels::SharedModel::Light));
     for (auto* pool : resources.managers().modelEffects().registered()) {
         if (!dynamic_cast<modeleffects::BarrierPool*>(pool)) continue;
@@ -188,7 +191,9 @@ void gameplay::Scene::update(const playerinput::PadStatus& pad, std::int16_t por
     updateOpacity();
     managers.updatePoses();
     managers.completePlayerFrame({}, false);
+    managers.glows().update();
     managers.modelEffects().update(resources.rooms(), resources.visibility());
+    managers.particles().update();
     ++ticks;
 }
 
@@ -319,7 +324,11 @@ void gameplay::Scene::drawGameplay(bool present) {
     drawRooms(1);
     resources.managers().doors().submitTranslucent(0, false, submitDoor);
     drawModelEffects();
+    particleRenderer.draw(gamerenderer::modelContext(), resources.managers().particles().prepareGlows(
+        resources.managers().glows(), view), view, projection);
     drawPlayerLight();
+    particleRenderer.draw(gamerenderer::modelContext(), particleBillboards->prepare(resources.managers().particles().pool(),
+        resources.rooms(), resources.visibility(), view), view, projection);
     startupscene::Picture picture;
     picture.texture = textures[0];
     picture.width = 640;
@@ -426,6 +435,10 @@ void gameplay::Scene::drawActors(unsigned stage) {
 }
 
 std::string gameplay::Scene::debugInfo() {
+    unsigned particleCount = 0;
+    const auto& emitters = *resources.managers().particles().pool().destination;
+    for (const auto* emitter = emitters.sentinel.next; emitter != &emitters.sentinel; emitter = emitter->next)
+        particleCount += emitter->nodes.count + emitter->shortNodes.count;
     unsigned activeEffects = 0;
     for (const auto* pool : resources.managers().modelEffects().registered())
         for (const auto& owner : pool->owners) if (owner->flags & 1) ++activeEffects;
@@ -438,5 +451,6 @@ std::string gameplay::Scene::debugInfo() {
     return "Foyer | Registered actors: " + std::to_string(ownedActors) + " | Scene models: " + std::to_string(actors.size()) +
         " | Furniture: " + std::to_string(furniture) + " | Visible doors: " + std::to_string(visibleDoors) +
         " | Resident rooms: " + std::to_string(residentRooms) + "\nModel effects: " + std::to_string(activeEffects) +
-        " | Drawing: " + std::to_string(visibleModelEffects) + "\nSimulation: 30 Hz | Tick: " + std::to_string(ticks);
+        " | Drawing: " + std::to_string(visibleModelEffects) + " | Candles: " + std::to_string(resources.managers().candleCount()) +
+        " | Particles: " + std::to_string(particleCount) + "\nSimulation: 30 Hz | Tick: " + std::to_string(ticks);
 }

@@ -5,6 +5,7 @@
 #include "game/actors/characterplacementruntime.h"
 #include "game/enemies/enemygeneratormanager.h"
 #include "game/world/cobwebplacementmanager.h"
+#include "game/world/candleplacementmanager.h"
 #include "game/enemies/enemybarrierstrategy.h"
 #include "game/enemies/enemyfiregeneratorstrategy.h"
 #include "resources/roomarchivereader.h"
@@ -104,6 +105,7 @@ struct gameplay::ManagerServices::State {
         placement.reset();
         sender.reset();
         generators.reset();
+        candles.reset();
         webs.reset();
         if (owners) owners->bindUpdates(nullptr);
         if (audio) audio->playback.stop();
@@ -235,8 +237,13 @@ struct gameplay::ManagerServices::State {
         generators = std::make_unique<charactergenerator::Manager>(dependencies.types, dependencies.creation,
             dependencies.strategies, *strategies, *enemies, *runtime, dependencies.mission);
         webs = std::make_unique<modeleffects::CobwebPlacements>(models->factory, dependencies.actors.pose);
+        candles = std::make_unique<particles::CandlePlacements>(commonResources, particles->pool(), glows, player->view,
+            dependencies.actors.rooms, dependencies.visibility, dependencies.randomState,
+            [this](unsigned room) { return runtime->roomCleared(room); },
+            [this](unsigned id, const auto& position) { audio->playback.play(id, position); });
         sender = std::make_unique<jmp::MessageSender>();
         sender->addReceiver(enemies.get());
+        sender->addReceiver(candles.get());
         sender->addReceiver(webs.get());
         sender->addReceiver(generators.get());
         roomDependencies = std::make_unique<roomdependencies::Catalog>(dependencies.executable, mapMode);
@@ -265,6 +272,7 @@ struct gameplay::ManagerServices::State {
     std::unique_ptr<jmp::MessageSender> sender;
     std::unique_ptr<charactergenerator::Manager> generators;
     std::unique_ptr<modeleffects::CobwebPlacements> webs;
+    std::unique_ptr<particles::CandlePlacements> candles;
     std::unique_ptr<jmp::EntryActivation> placement;
     std::vector<const jmp::ToolData*> placementTables;
     gamearchive::Resources commonResources, mapResources;
@@ -539,6 +547,7 @@ void gameplay::ManagerServices::updateContacts() {
 doors::State& gameplay::ManagerServices::doors() { return state->doors; }
 charactergenerator::Manager& gameplay::ManagerServices::generators() { return *state->generators; }
 particles::GlowPool& gameplay::ManagerServices::glows() { return state->glows; }
+unsigned gameplay::ManagerServices::candleCount() const { return state->candles->count(); }
 
 void gameplay::ManagerServices::updatePlacement(std::int32_t elapsedSeconds) {
     if (state->placementFailed) throw std::runtime_error("Original placement activation failed; reload the scene before retrying.");

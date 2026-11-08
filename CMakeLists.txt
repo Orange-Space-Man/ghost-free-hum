@@ -122,6 +122,8 @@ add_library(Game STATIC
     src/game/effects/particlechildren.cpp
     src/game/effects/particleeffectfactory.cpp
     src/game/effects/particleemission.cpp
+    src/game/effects/particlebillboards.cpp
+    src/game/world/candleplacementmanager.cpp
     src/game/effects/particleemitterstate.cpp
     src/game/effects/particleforces.cpp
     src/game/effects/particleglowpool.cpp
@@ -372,6 +374,7 @@ add_library(WindowsRuntime STATIC
     src/platform/d3d11/j3dvertexrenderer.cpp
     src/platform/d3d11/j3dpacketrenderer.cpp
     src/platform/d3d11/modelmaterialrenderer.cpp
+    src/platform/d3d11/particlebillboardrenderer.cpp
     src/platform/d3d11/modelrenderstate.cpp
     src/platform/d3d11/modeltexturerenderer.cpp
     src/platform/windows/gameapplication.cpp

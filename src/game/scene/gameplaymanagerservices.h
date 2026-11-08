@@ -124,6 +124,7 @@ namespace gameplay {
         doors::State& doors();
         charactergenerator::Manager& generators();
         particles::GlowPool& glows();
+        unsigned candleCount() const;
         const jmp::ActiveEntries& placements() const;
         const gameevent::MissionActivation& missionEvents() const;
         gameevent::MissionActivation& missionEvents();

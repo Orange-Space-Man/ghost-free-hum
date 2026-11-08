@@ -38,3 +38,4 @@ void particles::GlowPool::update() {
 }
 
 const std::array<particles::Glow, 45>& particles::GlowPool::entries() const { return values; }
+std::array<particles::Glow, 45>& particles::GlowPool::entries() { return values; }

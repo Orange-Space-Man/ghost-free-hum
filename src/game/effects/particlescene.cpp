@@ -46,6 +46,10 @@ void particles::Scene::refresh(const SecondarySource* secondary) {
 
 void particles::Scene::update() { emitters.update(simulation); }
 
+std::vector<particles::Billboard> particles::Scene::prepareGlows(GlowPool& glows, const std::array<float, 12>& view) {
+    return particles::prepareGlows(glows, resources.get(0x4b485f45, "ps_ball.bti"), randomState, view);
+}
+
 void particles::Scene::initializeElements() {
     if (elementalScene) throw std::logic_error("Elemental scene is already initialized.");
     elementalScene = std::make_unique<elements::Scene>(executable);

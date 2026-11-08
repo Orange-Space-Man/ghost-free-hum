@@ -5,6 +5,7 @@
 #include "game/effects/particleeffectfactory.h"
 #include "game/effects/particlebatch.h"
 #include "game/effects/elementparticlescene.h"
+#include "game/effects/particlebillboards.h"
 
 namespace actors { class Registry; }
 
@@ -19,6 +20,7 @@ namespace particles {
             const roomtraversal::State& visibility);
         void refresh(const SecondarySource* secondary);
         void update();
+        std::vector<Billboard> prepareGlows(GlowPool& glows, const std::array<float, 12>& view);
         void initializeElements();
         void initializeEffectBatches();
         void updateElements();

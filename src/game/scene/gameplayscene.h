@@ -5,6 +5,7 @@
 #include "game/startup/keypresentationowner.h"
 #include "platform/d3d11/j3dpacketrenderer.h"
 #include "game/effects/modeleffectlighting.h"
+#include "platform/d3d11/particlebillboardrenderer.h"
 
 namespace gameplay {
     class Scene {
@@ -57,6 +58,8 @@ namespace gameplay {
         j3dmodel::MaterialState effectMaterialState;
         std::map<const j3dmodel::ModelData*, j3drenderer::PacketRenderer> effectRenderers;
         unsigned visibleModelEffects = 0;
+        std::unique_ptr<particles::Billboards> particleBillboards;
+        particlerenderer::Renderer particleRenderer;
         float lightProjectionDepth = 0;
         void drawPlayerLight();
         void drawModelEffects();

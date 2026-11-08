@@ -19,6 +19,7 @@ namespace particles {
         bool release(Glow* glow);
         void update();
         const std::array<Glow, 45>& entries() const;
+        std::array<Glow, 45>& entries();
 
     private:
         std::array<Glow, 45> values{};
