@@ -79,6 +79,7 @@ namespace doors {
         void updatePresentation(unsigned buffer, const std::vector<RoomVisit>& visits,
             const std::array<std::uint32_t, 256>& roomIds, std::uint32_t playerRoom,
             const std::array<float, 3>& playerPosition);
+        void restorePresentation(unsigned buffer);
         void submitOpaque(unsigned buffer, bool overrideOpacity, const ModelSubmitter& submit) const;
         void submitTranslucent(unsigned buffer, bool overrideOpacity, const ModelSubmitter& submit) const;
         void update(unsigned map, std::uint32_t frameCounter, gameflags::State& flags,
@@ -94,6 +95,7 @@ namespace doors {
     private:
         std::shared_ptr<const Resources> resources;
         std::vector<Leaf> leaves;
+        std::array<std::vector<std::uint32_t>, 8> presentationFlags;
         std::array<std::array<std::uint8_t, 2>, 256> descriptorPairs{}, savedPairs{};
         unsigned shakeFrame = 10;
         int active = -1;

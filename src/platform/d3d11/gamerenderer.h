@@ -18,10 +18,12 @@ namespace gamerenderer {
     void waitForFrame();
     ID3D11Device* modelDevice();
     ID3D11DeviceContext* modelContext();
-    void bindSceneTarget(bool clear);
+    void bindSceneTarget(bool clear, const D3D11_VIEWPORT* viewport = nullptr);
+    ID3D11ShaderResourceView* sceneTexture();
     std::vector<std::size_t> loadPreviews(const std::vector<s3dmodel::Model>& models, unsigned width = 148, unsigned height = 116);
     void drawPreview(std::size_t index, const s3dmodel::Model& model, const std::vector<s3dmodel::Batch>& batches,
         const s3denvironment::Lighting& lighting, const s3denvironment::Camera* camera = nullptr, bool clear = true, unsigned passes = 3, bool receiver = false,
-        const std::vector<float>& trigonometry = {}, const s3denvironment::Fog* fog = nullptr);
+        const std::vector<float>& trigonometry = {}, const s3denvironment::Fog* fog = nullptr,
+        const D3D11_VIEWPORT* viewport = nullptr);
     void close();
 }

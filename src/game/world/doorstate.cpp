@@ -339,11 +339,21 @@ void doors::State::updatePresentation(unsigned buffer, const std::vector<RoomVis
     const std::array<std::uint32_t, 256>& roomIds, std::uint32_t playerRoom,
     const std::array<float, 3>& playerPosition) {
     updateVisibility(buffer, visits, roomIds, playerRoom);
+    auto& retainedFlags = presentationFlags.at(buffer);
+    retainedFlags.clear();
     for (auto& value : leaves) {
         const bool controlled = (value.flags & 2) != 0;
         const auto target = controlled ? distanceOpacity(value.position, playerPosition) : 0;
         value.references[buffer] = advanceOpacity(value.references[buffer], controlled, target);
+        retainedFlags.push_back(value.flags & 0x2003);
     }
+}
+
+void doors::State::restorePresentation(unsigned buffer) {
+    const auto& retainedFlags = presentationFlags.at(buffer);
+    if (retainedFlags.size() != leaves.size()) throw std::runtime_error("Door presentation buffer has not been prepared.");
+    for (unsigned i = 0; i < leaves.size(); ++i)
+        leaves[i].flags = (leaves[i].flags & ~0x2003U) | retainedFlags[i];
 }
 
 void doors::State::submitOpaque(unsigned buffer, bool overrideOpacity, const ModelSubmitter& submit) const {

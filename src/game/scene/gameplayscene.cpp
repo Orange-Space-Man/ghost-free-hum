@@ -103,6 +103,7 @@ void gameplay::Scene::prepareGraphics() {
 void gameplay::Scene::prepareModelGraphics(ID3D11Device* device) {
     particleRenderer.load(device);
     sheetRenderer.load(device);
+    mirrorRenderer.load(device, resources.mirror());
     particleRenderer.prepare(resources.managers().particles().pool());
     lightRenderer.load(device, resources.managers().players().models->model(playermodels::SharedModel::Light));
     for (auto* pool : resources.managers().modelEffects().registered()) {
@@ -235,7 +236,7 @@ void gameplay::Scene::drawModel(const doors::ModelResource& model,
     const std::function<const dooranimation::Matrix&(unsigned)>& matrix, unsigned pass, std::uint8_t opacity,
     unsigned room, const roomtraversal::Bounds& bounds, bool lowOpacity) {
     auto* context = gamerenderer::modelContext();
-    gamerenderer::bindSceneTarget(false);
+    gamerenderer::bindSceneTarget(false, &drawViewport);
     const D3D11_RECT rectangle{bounds[0], bounds[1], bounds[2], bounds[3]};
     context->RSSetScissorRects(1, &rectangle);
     modellighting::State lighting;
@@ -289,7 +290,44 @@ void gameplay::Scene::drawGameplay(bool present) {
     if (textures.empty()) throw std::runtime_error("Gameplay graphics are not prepared.");
     if (!gamerenderer::useScene("gameplay")) throw std::runtime_error("Gameplay graphics ownership is unavailable.");
     refreshActorModels();
-    gamerenderer::bindSceneTarget(true);
+    if (resources.mirror().visible(resources.visibility())) {
+        const auto retainedView = view;
+        const auto retainedProjection = projection;
+        const auto retainedOpacity = overrideRoomOpacity;
+        auto retainedRooms = std::move(rooms);
+        const auto reflected = resources.mirror().camera(resources.camera());
+        view = reflected.view;
+        projection = reflected.projection;
+        for (unsigned column = 0; column < 4; ++column) projection[8 + column] += projection[12 + column];
+        overrideRoomOpacity = true;
+        const auto width = static_cast<std::int16_t>(resources.mirror().width());
+        const auto height = static_cast<std::int16_t>(resources.mirror().height());
+        const roomtraversal::Bounds mirrorBounds{static_cast<std::int16_t>(320 - width), static_cast<std::int16_t>(240 - height),
+            static_cast<std::int16_t>(320 + width), static_cast<std::int16_t>(240 + height)};
+        rooms = resources.prepareVisibility(reflected.worldProjection, mirrorBounds, 5);
+        drawWorld(true, reflected.camera);
+        mirrorRenderer.capture(gamerenderer::modelContext(), gamerenderer::sceneTexture());
+        view = retainedView;
+        projection = retainedProjection;
+        overrideRoomOpacity = retainedOpacity;
+        rooms = std::move(retainedRooms);
+        resources.managers().doors().restorePresentation(0);
+    }
+    drawWorld(false, resources.camera());
+    startupscene::Picture picture;
+    picture.texture = textures[0];
+    picture.width = 640;
+    picture.height = 480;
+    gamerenderer::drawInterface({picture}, present);
+}
+
+void gameplay::Scene::drawWorld(bool reflection, const s3denvironment::Camera& camera) {
+    const unsigned visibilityBuffer = reflection ? 5 : 0;
+    drawViewport = reflection ? D3D11_VIEWPORT{320 - float(resources.mirror().width()), 240 - float(resources.mirror().height()),
+        float(resources.mirror().width() * 2), float(resources.mirror().height() * 2), 0, 1} : D3D11_VIEWPORT{0, 0, 640, 480, 0, 1};
+    gamerenderer::bindSceneTarget(true, &drawViewport);
+    if (!reflection && resources.mirror().visible(resources.visibility()))
+        mirrorRenderer.draw(gamerenderer::modelContext(), view, projection);
     modelrenderer::initializeModelState(pipeline);
     pipeline.scissor = true;
     const auto drawRooms = [&](unsigned stage) {
@@ -308,8 +346,8 @@ void gameplay::Scene::drawGameplay(bool present) {
     };
     const auto drawFurniture = [&](unsigned stage) {
         for (const auto& object : resources.furniture().slots()) {
-            if ((object.flags & 3) != 3 || !object.model || !resources.visibility().marked(object.room >> 24, 0, 0)) continue;
-            const auto marker = resources.visibility().rawMarker(object.room >> 24, 0);
+            if ((object.flags & 3) != 3 || !object.model || !resources.visibility().marked(object.room >> 24, visibilityBuffer, 0)) continue;
+            const auto marker = resources.visibility().rawMarker(object.room >> 24, visibilityBuffer);
             if (!stage && (marker != -1 || object.opacity != 255)) continue;
             for (unsigned pass = stage ? 2u : 0u; pass < (stage ? 3u : 2u); ++pass)
                 drawModel(*object.model, [&](unsigned node) -> const dooranimation::Matrix& { return object.matrices.at(node); },
@@ -317,29 +355,25 @@ void gameplay::Scene::drawGameplay(bool present) {
         }
     };
     drawRooms(0);
-    resources.managers().doors().submitOpaque(0, false, submitDoor);
+    resources.managers().doors().submitOpaque(visibilityBuffer, false, submitDoor);
     drawFurniture(0);
-    drawActors(0);
+    drawActors(0, camera, visibilityBuffer);
     drawSheets(2);
-    drawActors(1);
+    drawActors(1, camera, visibilityBuffer);
     drawFurniture(1);
     drawRooms(1);
-    resources.managers().doors().submitTranslucent(0, false, submitDoor);
+    resources.managers().doors().submitTranslucent(visibilityBuffer, false, submitDoor);
+    if (reflection) return;
     drawModelEffects();
     particleRenderer.draw(gamerenderer::modelContext(), resources.managers().particles().prepareGlows(
         resources.managers().glows(), view), view, projection);
     drawPlayerLight();
     particleRenderer.draw(gamerenderer::modelContext(), particleBillboards->prepare(resources.managers().particles().pool(),
         resources.rooms(), resources.visibility(), view), view, projection);
-    startupscene::Picture picture;
-    picture.texture = textures[0];
-    picture.width = 640;
-    picture.height = 480;
-    gamerenderer::drawInterface({picture}, present);
 }
 
 void gameplay::Scene::drawSheets(unsigned pass) {
-    gamerenderer::bindSceneTarget(false);
+    gamerenderer::bindSceneTarget(false, &drawViewport);
     const auto* player = resources.managers().playerEvents().player(0);
     const auto& owner = *player->components->grids;
     modellighting::State lighting;
@@ -408,10 +442,10 @@ void gameplay::Scene::refreshActorModels() {
     }
 }
 
-void gameplay::Scene::drawActors(unsigned stage) {
+void gameplay::Scene::drawActors(unsigned stage, const s3denvironment::Camera& camera, unsigned visibilityBuffer) {
     for (unsigned i = 0; i < actors.size(); ++i) {
         const auto& actor = *actors[i];
-        if ((actor.flags & 0x6100) || actor.room() >> 24 == 255 || !resources.visibility().marked(actor.room() >> 24, 0, 0)) continue;
+        if ((actor.flags & 0x6100) || actor.room() >> 24 == 255 || !resources.visibility().marked(actor.room() >> 24, visibilityBuffer, 0)) continue;
         const auto* player = dynamic_cast<const playeractor::Player*>(&actor);
         auto world = player ? playerorientation::toMatrix(player->state.quaternion) :
             poseTables.world({}, {actor.rotation[0], actor.rotation[1], actor.rotation[2]}, {1, 1, 1});
@@ -443,7 +477,7 @@ void gameplay::Scene::drawActors(unsigned stage) {
                 lighting.lights.push_back(actorLight);
             }
         } else if (lightMode != 0) throw std::runtime_error("Actor requires its original secondary lighting path.");
-        gamerenderer::drawPreview(i, actorModels[i], batches, lighting, &resources.camera(), false, 1U << stage);
+        gamerenderer::drawPreview(i, actorModels[i], batches, lighting, &camera, false, 1U << stage, false, {}, nullptr, &drawViewport);
     }
 }
 

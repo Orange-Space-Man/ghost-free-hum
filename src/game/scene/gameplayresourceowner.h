@@ -6,6 +6,7 @@
 #include "game/world/roomresidency.h"
 #include "game/world/roomfurnitureowner.h"
 #include "game/world/roomvisibilitywalk.h"
+#include "game/world/roommirror.h"
 
 namespace gameplay {
     class ResourceOwner {
@@ -28,6 +29,7 @@ namespace gameplay {
         std::vector<std::uint32_t>& roomFlags();
         const roomresidency::InitialRooms& residentRooms() const;
         roomfurniture::Owner& furniture();
+        roommirror::Owner& mirror();
         std::vector<roomtraversal::Submission> prepareVisibility(const roomportal::Matrix& projection,
             const roomtraversal::Bounds& viewport, unsigned buffer = 0,
             const std::function<bool(const std::array<std::int32_t, 3>&)>& centerVisible = {});

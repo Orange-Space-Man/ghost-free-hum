@@ -7,6 +7,7 @@
 #include "game/effects/modeleffectlighting.h"
 #include "platform/d3d11/particlebillboardrenderer.h"
 #include "platform/d3d11/playersheetrenderer.h"
+#include "platform/d3d11/roommirrorrenderer.h"
 
 namespace gameplay {
     class Scene {
@@ -62,6 +63,8 @@ namespace gameplay {
         std::unique_ptr<particles::Billboards> particleBillboards;
         particlerenderer::Renderer particleRenderer;
         playersheets::Renderer sheetRenderer;
+        roommirror::Renderer mirrorRenderer;
+        D3D11_VIEWPORT drawViewport{0, 0, 640, 480, 0, 1};
         void drawSheets(unsigned pass);
         float lightProjectionDepth = 0;
         void drawPlayerLight();
@@ -69,8 +72,9 @@ namespace gameplay {
         void updateOpacity();
         void publishCamera();
         void drawGameplay(bool present);
+        void drawWorld(bool reflection, const s3denvironment::Camera& camera);
         void refreshActorModels();
-        void drawActors(unsigned stage);
+        void drawActors(unsigned stage, const s3denvironment::Camera& camera, unsigned visibilityBuffer);
         void drawModel(const doors::ModelResource& model, const std::function<const dooranimation::Matrix&(unsigned)>& matrix,
             unsigned pass, std::uint8_t opacity, unsigned room, const roomtraversal::Bounds& bounds,
             bool lowOpacity = false);

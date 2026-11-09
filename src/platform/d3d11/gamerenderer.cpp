@@ -489,7 +489,7 @@ std::vector<std::size_t> gamerenderer::loadPreviews(const std::vector<s3dmodel::
 
 void gamerenderer::drawPreview(std::size_t index, const s3dmodel::Model& model, const std::vector<s3dmodel::Batch>& batches,
     const s3denvironment::Lighting& lighting, const s3denvironment::Camera* sceneCamera, bool clearTarget, unsigned passes, bool receiver,
-    const std::vector<float>& trigonometry, const s3denvironment::Fog* fog) {
+    const std::vector<float>& trigonometry, const s3denvironment::Fog* fog, const D3D11_VIEWPORT* sceneViewport) {
     auto& preview = previews.at(index);
     auto& surface = sceneCamera ? previews.at(0) : preview;
     ID3D11ShaderResourceView* empty = nullptr;
@@ -501,7 +501,7 @@ void gamerenderer::drawPreview(std::size_t index, const s3dmodel::Model& model, 
         context->ClearDepthStencilView(surface.depth.Get(), D3D11_CLEAR_DEPTH, 1, 0);
     }
     const D3D11_VIEWPORT viewport{0,0,float(surface.width),float(surface.height),0,1};
-    context->RSSetViewports(1, &viewport);
+    context->RSSetViewports(1, sceneViewport ? sceneViewport : &viewport);
     context->RSSetState(solidState.Get());
     Constants camera;
     s3denvironment::Camera parameters;
@@ -614,8 +614,9 @@ void gamerenderer::drawPreview(std::size_t index, const s3dmodel::Model& model, 
 
 ID3D11Device* gamerenderer::modelDevice() { return device.Get(); }
 ID3D11DeviceContext* gamerenderer::modelContext() { return context.Get(); }
+ID3D11ShaderResourceView* gamerenderer::sceneTexture() { return interfaceTextures.at(previewTextureStart).Get(); }
 
-void gamerenderer::bindSceneTarget(bool clear) {
+void gamerenderer::bindSceneTarget(bool clear, const D3D11_VIEWPORT* sceneViewport) {
     auto& surface = previews.at(0);
     ID3D11ShaderResourceView* empty = nullptr;
     context->PSSetShaderResources(0, 1, &empty);
@@ -626,7 +627,7 @@ void gamerenderer::bindSceneTarget(bool clear) {
         context->ClearDepthStencilView(surface.depth.Get(), D3D11_CLEAR_DEPTH, 1, 0);
     }
     const D3D11_VIEWPORT viewport{0, 0, float(surface.width), float(surface.height), 0, 1};
-    context->RSSetViewports(1, &viewport);
+    context->RSSetViewports(1, sceneViewport ? sceneViewport : &viewport);
 }
 
 void gamerenderer::waitForFrame() {

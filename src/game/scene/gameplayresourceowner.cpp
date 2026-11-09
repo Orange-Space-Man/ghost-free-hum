@@ -34,6 +34,7 @@ struct gameplay::ResourceOwner::State {
         cameraProjection = std::make_unique<gameplaycamera::Projection>(executable);
         cameraFollow = std::make_unique<gameplaycamera::Follow>(executable);
         rooms = std::make_unique<roomlocation::Rooms>(executable, entry.map);
+        mirror = std::make_unique<roommirror::Owner>(executable, *rooms);
         collisions = std::make_unique<actorcollision::Catalog>(executable, modelCatalog);
         construction = std::make_unique<actors::Construction>(actors::Construction{
             modelCatalog, *models, parameters, *pose, actorGlobals, *rooms});
@@ -127,6 +128,7 @@ struct gameplay::ResourceOwner::State {
     std::unique_ptr<actormodel::Resources> models;
     std::unique_ptr<actormodel::InitialPose> pose;
     std::unique_ptr<roomlocation::Rooms> rooms;
+    std::unique_ptr<roommirror::Owner> mirror;
     std::unique_ptr<actorcollision::Catalog> collisions;
     std::unique_ptr<actors::Construction> construction;
     std::unique_ptr<roomresidency::InitialRooms> residentRooms;
@@ -165,6 +167,7 @@ gameplaycamera::DrawState gameplay::ResourceOwner::publishCamera() {
     return result;
 }
 const roomlocation::Rooms& gameplay::ResourceOwner::rooms() const { return *state->rooms; }
+roommirror::Owner& gameplay::ResourceOwner::mirror() { return *state->mirror; }
 const std::vector<std::uint8_t>& gameplay::ResourceOwner::executable() const { return state->executable; }
 gameassets::Package& gameplay::ResourceOwner::package() { return state->package; }
 roomtraversal::State& gameplay::ResourceOwner::visibility() { return state->visibility; }

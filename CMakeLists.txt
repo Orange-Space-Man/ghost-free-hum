@@ -260,6 +260,7 @@ add_library(Game STATIC
     src/game/player/playersheetsuction.cpp
     src/game/player/playersheetmaterial.cpp
     src/game/player/playersheetgeometry.cpp
+    src/game/world/roommirror.cpp
     src/game/player/playersheetframe.cpp
     src/game/player/playersheetplayerbinding.cpp
     src/game/player/playercaptureframe.cpp
@@ -377,6 +378,7 @@ add_library(WindowsRuntime STATIC
     src/platform/d3d11/modelmaterialrenderer.cpp
     src/platform/d3d11/particlebillboardrenderer.cpp
     src/platform/d3d11/playersheetrenderer.cpp
+    src/platform/d3d11/roommirrorrenderer.cpp
     src/platform/d3d11/modelrenderstate.cpp
     src/platform/d3d11/modeltexturerenderer.cpp
     src/platform/windows/gameapplication.cpp
