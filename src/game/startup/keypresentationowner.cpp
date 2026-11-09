@@ -5,8 +5,8 @@
 #include <stdexcept>
 
 keypresentation::Owner::Owner(const std::filesystem::path& package, const std::vector<std::uint8_t>& executable,
-    SceneControl& control, gameflags::State& flags, gameplaymusic::Owner& music) :
-    package(package), control(control), flags(flags), music(music) {
+    SceneControl& control, gameflags::State& flags, gameplaymusic::Owner& music, jaudio::PositionalPlayback& playback) :
+    package(package), control(control), flags(flags), music(music), playback(playback) {
     std::vector<std::uint8_t> definitions;
     std::string error;
     if (!dolresources::read(executable, glme01::cutsceneDefinitions + 3 * 24, 56 * 24, definitions, error))
@@ -38,6 +38,7 @@ bool keypresentation::Owner::request(bool missingKey, bool front, unsigned doorT
         release();
         throw std::runtime_error(error);
     }
+    loaded->bindAudio(playback.animationServices());
     movie = std::move(loaded);
     retained.loaded();
     return true;

@@ -4,6 +4,7 @@
 #include "game/startup/openingscene.h"
 #include "game/events/runtimeflags.h"
 #include "game/audio/gameplaymusicowner.h"
+#include "game/audio/jaudiopositionalplayback.h"
 
 #include <memory>
 
@@ -16,7 +17,7 @@ namespace keypresentation {
     class Owner {
     public:
         Owner(const std::filesystem::path& package, const std::vector<std::uint8_t>& executable, SceneControl& control, gameflags::State& flags,
-            gameplaymusic::Owner& music);
+            gameplaymusic::Owner& music, jaudio::PositionalPlayback& playback);
         ~Owner();
         Owner(const Owner&) = delete;
         Owner& operator=(const Owner&) = delete;
@@ -32,6 +33,7 @@ namespace keypresentation {
         SceneControl& control;
         gameflags::State& flags;
         gameplaymusic::Owner& music;
+        jaudio::PositionalPlayback& playback;
         State retained;
         std::array<unsigned, 56> modes{};
         std::unique_ptr<openingscene::Scene> movie;

@@ -34,7 +34,8 @@ namespace {
 }
 
 gameplay::Scene::Scene(const std::filesystem::path& package, gameentry::State& entry) : resources(package, entry),
-    keyPresentation(package, resources.executable(), sceneControl, resources.managers().flags(), resources.managers().music()) {
+    keyPresentation(package, resources.executable(), sceneControl, resources.managers().flags(), resources.managers().music(),
+        *resources.managers().playback()) {
     std::string error;
     if (!trig.read(resources.executable(), error) || !poseTables.read(resources.executable(), error)) throw std::runtime_error(error);
     opacityDistance = constant<float>(resources.executable(), 0x804d9abc);

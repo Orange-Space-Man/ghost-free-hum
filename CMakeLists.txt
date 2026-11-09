@@ -103,6 +103,7 @@ add_library(Game STATIC
     src/game/audio/gameplayroomaudio.cpp
     src/game/audio/gameplaymusicowner.cpp
     src/game/audio/gameplayaudiocontext.cpp
+    src/game/audio/roomambientaudio.cpp
     src/game/audio/jaudiopositionalplayback.cpp
     src/game/audio/jaudiopositionowners.cpp
     src/game/effects/barriereffectpool.cpp
@@ -365,6 +366,7 @@ add_library(WindowsRuntime STATIC
     src/game/menu/fileselectscene.cpp
     src/game/scene/gameplayscene.cpp
     src/game/startup/openingscene.cpp
+    src/game/startup/cutsceneanimationsound.cpp
     src/game/startup/keypresentationowner.cpp
     src/platform/d3d11/gamerenderer.cpp
     src/platform/d3d11/gameshadowrenderer.cpp

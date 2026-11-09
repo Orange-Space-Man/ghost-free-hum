@@ -27,6 +27,7 @@
 #include "game/player/playerfurnitureowner.h"
 #include "game/world/roomfurnitureresponse.h"
 #include "resources/glme01addresses.h"
+#include "game/audio/roomambientaudio.h"
 
 #include <stdexcept>
 #include <cmath>
@@ -63,11 +64,13 @@ namespace {
                     const std::array<float, 3> rounded{std::ceil(position[0]), std::ceil(position[1]), std::ceil(position[2])};
                     const unsigned room = rooms.resolve(rounded);
                     return context.parameters(room, polygon).packed;
-                }) { playback.bindMusic(music); }
+                }), ambience(dependencies.executable, playback) { playback.bindMusic(music); }
         jaudio::PositionOwners owners;
         gameplayaudio::Context context;
         gameplaymusic::Owner music;
         jaudio::PositionalPlayback playback;
+        gameplayaudio::RoomAmbience ambience;
+        std::array<float, 12> listener{1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0};
     };
 }
 
@@ -571,6 +574,7 @@ void gameplay::ManagerServices::updateCaptures(const playermodels::VacuumPath* p
 }
 
 void gameplay::ManagerServices::updateAudio(const std::array<float, 12>& listener) {
+    state->audio->listener = listener;
     state->audio->playback.update(listener);
 }
 
@@ -681,6 +685,7 @@ void gameplay::ManagerServices::updatePlayerAudio(unsigned index) {
         [this](unsigned room, std::int16_t polygon) {
             state->audio->playback.setPlayerContext(state->audio->context.parameters(room, polygon).packed);
             state->audio->music.setRoom(room, polygon);
+            state->audio->ambience.update(state->audio->context.parameters(room, polygon), state->audio->listener);
         }, [this](unsigned sound) { return state->audio->music.currentSound() == sound; },
         [this, player](unsigned preset) { return player->state.field7A0->repeats(state->dependencies.executable, preset); }});
 }

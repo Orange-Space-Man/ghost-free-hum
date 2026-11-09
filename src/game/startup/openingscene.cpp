@@ -38,6 +38,7 @@ bool openingscene::Scene::load(const std::filesystem::path& path, unsigned cutsc
 }
 
 void openingscene::Scene::loadSegment() {
+    if (audio) audio->load(resources.segments.at(timeline.segment));
     if (!prepared.at(timeline.segment).models.empty()) {
         const auto& cached = prepared.at(timeline.segment);
         models = cached.models;
@@ -117,6 +118,11 @@ void openingscene::Scene::reset() {
 
 bool openingscene::Scene::clearsEventFlag() const { return timeline.clearFlag55; }
 
+void openingscene::Scene::bindAudio(actoranimation::SoundServices services) {
+    audio = std::make_unique<AnimationSound>(std::move(services));
+    audio->load(resources.segments.at(timeline.segment));
+}
+
 void openingscene::Scene::update(bool flag55) {
     if (stepped) timeline.afterDraw(resources);
     const bool changedSegment = loadedSegment != timeline.segment;
@@ -127,6 +133,7 @@ void openingscene::Scene::update(bool flag55) {
         if (command.opcode == 0 && command.animation < state.skeletal.size()) {
             state.animation = command.animation;
             state.frame = command.frame;
+            if (audio) audio->select(command.model, command.animation, command.frame);
         } else if (command.opcode == 1 && command.animation < state.effects.size()) {
             state.active[command.animation] = true;
             state.effectFrames[command.animation] = command.frame;
@@ -145,6 +152,7 @@ void openingscene::Scene::update(bool flag55) {
             state.morphFrames[morph] = state.morphs[morph].advance(state.morphFrames[morph], timeline.animationStep);
         }
         if (!state.skeletal.empty()) {
+            if (audio) audio->update(i, state.frame, timeline.animationStep);
             const auto& animation = state.skeletal.at(state.animation);
             state.frame += timeline.animationStep;
             if (state.frame >= animation.frames) {
@@ -157,7 +165,11 @@ void openingscene::Scene::update(bool flag55) {
             state.effects[effect].apply(state.effectFrames[effect], models[i]);
             state.effectFrames[effect] = state.effects[effect].advance(state.effectFrames[effect], timeline.animationStep);
         }
-        if (timeline.resetAnimations && !changedSegment) { state.animation = 0; state.frame = 0; }
+        if (timeline.resetAnimations && !changedSegment) {
+            state.animation = 0;
+            state.frame = 0;
+            if (audio) audio->select(i, 0, 0);
+        }
     }
     stepped = true;
 }

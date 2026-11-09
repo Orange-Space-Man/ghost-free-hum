@@ -27,6 +27,7 @@ namespace jaudio {
             const std::array<float, 2>& velocity, PositionalSound*& binding);
         void playDeathEffects(const std::array<float, 3>& position);
         actoranimation::SoundServices animationServices(const std::array<float, 3>& position);
+        actoranimation::SoundServices animationServices();
         void update(const std::array<float, 12>& listenerMatrix);
         void bindMusic(gameplaymusic::Owner& owner);
         bool mix(DspMixer& mixer, std::string& error);
@@ -40,6 +41,7 @@ namespace jaudio {
         Handle& owned(actoranimation::SoundHandle& sound);
         void remove(Handle& handle);
         PositionalSound* playAt(unsigned id, const std::array<float, 3>* position, PositionalSound** binding);
+        actoranimation::SoundServices animationServicesAt(const std::array<float, 3>* position);
         PositionOwners& owners;
         gameplaymusic::Owner* music = nullptr;
         std::unique_ptr<Runtime> runtime;

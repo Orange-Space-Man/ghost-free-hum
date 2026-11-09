@@ -4,12 +4,14 @@
 #include "game/models/s3denvironment.h"
 #include "game/models/s3dmorph.h"
 #include "game/models/s3dshadow.h"
+#include "game/startup/cutsceneanimationsound.h"
 
 namespace openingscene {
     class Scene {
     public:
         bool load(const std::filesystem::path& path, unsigned cutscene, std::string& error);
         void prepareGraphics();
+        void bindAudio(actoranimation::SoundServices services);
         void reset();
         void update(bool flag55 = false);
         bool clearsEventFlag() const;
@@ -42,6 +44,7 @@ namespace openingscene {
         };
         std::vector<SegmentState> prepared;
         Timeline timeline;
+        std::unique_ptr<AnimationSound> audio;
         std::vector<s3dmodel::Model> models;
         std::vector<AnimationState> animations;
         std::vector<std::vector<s3dmodel::Batch>> batches;

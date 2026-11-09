@@ -13,10 +13,11 @@
 #include <stdexcept>
 
 namespace {
-    constexpr std::array<unsigned, 46> soundIds{0x839, 0x83d, 0x1809, 0x180a, 0x180b, 0x181e, 0x280f, 0x2810, 0x282b,
+    constexpr std::array<unsigned, 53> soundIds{0x839, 0x83d, 0x1809, 0x180a, 0x180b, 0x181e, 0x280f, 0x2810, 0x282b,
         0x186e, 0x1841, 0x810, 0x811, 0x850, 0x4808, 0x4828, 0x828, 0x3b, 0x43, 0x801, 2, 0x805, 9,
         0x288a, 0x1028, 0x837, 0x84c, 0x813, 0x2814, 0x2805, 0x281c,
-        0x1842, 0x182c, 0x1820, 0x1823, 0x1877, 0x1868, 0x4820, 0x4822, 0x1815, 0x1816, 0x2828, 0x288e, 0x826, 0x2800, 0x827};
+        0x1842, 0x182c, 0x1820, 0x1823, 0x1877, 0x1868, 0x4820, 0x4822, 0x1815, 0x1816, 0x2828, 0x288e, 0x826, 0x2800, 0x827,
+        0x182a, 0x1850, 0x1861, 0x1862, 0x1863, 0x1864, 0x103c};
     constexpr unsigned effectRecordCountAddress = 0x804d78b8;
     constexpr unsigned effectParameterCountAddress = 0x804d78d4;
     constexpr unsigned maximumDistanceAddress = 0x804dd170;
@@ -241,7 +242,14 @@ jaudio::PositionalSound* jaudio::PositionalPlayback::playAt(unsigned id, const s
         return nullptr;
     }
     if (!runtime->started) { runtime->master.start(); runtime->started = true; }
-    if (binding && *binding) (*binding)->stop(0);
+    if (binding && *binding && ((*binding)->flags() != id || (*binding)->ownerPosition != position)) (*binding)->stop(0);
+    for (auto& existing : handles) {
+        if (!existing->active || existing->id != id || existing->ownerPosition != position) continue;
+        if (!(id & 0x800) && existing->record && existing->record->state == 5) {
+            existing->record->state = 4;
+            return existing.get();
+        }
+    }
     for (auto& existing : handles) if (existing->active && existing->id == id && existing->ownerPosition == position) existing->stop(0);
     const unsigned index = static_cast<unsigned>(found - soundIds.begin());
     auto handle = std::make_unique<Handle>(*this, id, soundFlags[index]);
@@ -334,15 +342,25 @@ jaudio::PositionalPlayback::Handle& jaudio::PositionalPlayback::owned(actoranima
 }
 
 actoranimation::SoundServices jaudio::PositionalPlayback::animationServices(const std::array<float, 3>& position) {
+    return animationServicesAt(&position);
+}
+
+actoranimation::SoundServices jaudio::PositionalPlayback::animationServices() {
+    return animationServicesAt(nullptr);
+}
+
+actoranimation::SoundServices jaudio::PositionalPlayback::animationServicesAt(const std::array<float, 3>* position) {
     return {
-        [this, &position](unsigned id, actoranimation::SoundHandle*& binding) {
+        [this, position](unsigned id, actoranimation::SoundHandle*& binding) {
             std::lock_guard<std::recursive_mutex> lock(owners.mutex);
-            if (binding) owned(*binding).stop(0);
-            auto* sound = play(id, position);
+            if (binding && (binding->flags() != id || owned(*binding).ownerPosition != position)) owned(*binding).stop(0);
+            auto* sound = playAt(id, position, nullptr);
             if (!sound) { binding = nullptr; return; }
             auto& handle = owned(*sound);
+            if (handle.animationBinding && handle.animationBinding != &binding) *handle.animationBinding = nullptr;
             handle.animationBinding = &binding;
             binding = &handle;
+            if (!position) setPort(handle, 15, 0);
         },
         [this](actoranimation::SoundHandle& sound, float value) {
             std::lock_guard<std::recursive_mutex> lock(owners.mutex);

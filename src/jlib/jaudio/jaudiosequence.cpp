@@ -108,7 +108,15 @@ void jaudio::Interpreter::update(unsigned index, const Listener& listener) {
         for (unsigned commands = 0; !yield; ++commands) {
             if (commands == 4096) throw std::runtime_error("JAudio sequence did not yield.");
             const auto position = current.position;
-            const auto opcode = take(current, 1);
+            auto opcode = take(current, 1);
+            bool registerLoopCount = false;
+            if (opcode == 0xb0) {
+                opcode = take(current, 1);
+                const auto arguments = take(current, 1);
+                if (opcode != 0xc9 || arguments != 0x80)
+                    throw std::runtime_error("Unported JAudio register command at " + std::to_string(position));
+                registerLoopCount = true;
+            }
             if (opcode < 0x80) {
                 auto key = static_cast<std::uint8_t>(opcode + current.combinedTranspose);
                 const auto mode = take(current, 1);
@@ -270,7 +278,7 @@ void jaudio::Interpreter::update(unsigned index, const Listener& listener) {
                     current.position = offset;
                 }
             } else if (opcode == 0xc9) {
-                const auto count = take(current, 2);
+                const auto count = registerLoopCount ? readRegister(index, take(current, 1)) : take(current, 2);
                 if (current.returns.size() >= 16) throw std::runtime_error("JAudio loop stack overflow.");
                 current.loopCounts[current.returns.size()] = static_cast<std::uint16_t>(count);
                 current.returns.push_back(current.position);
