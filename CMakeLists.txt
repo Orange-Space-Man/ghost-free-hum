@@ -123,9 +123,11 @@ add_library(Game STATIC
     src/game/effects/particlebatch.cpp
     src/game/effects/particlechildren.cpp
     src/game/effects/particleeffectfactory.cpp
+    src/game/effects/actorglowbillboards.cpp
     src/game/effects/particleemission.cpp
     src/game/effects/particlebillboards.cpp
     src/game/world/candleplacementmanager.cpp
+    src/game/world/eventeffectplacements.cpp
     src/game/effects/particleemitterstate.cpp
     src/game/effects/particleforces.cpp
     src/game/effects/particleglowpool.cpp

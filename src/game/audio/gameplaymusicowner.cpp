@@ -113,6 +113,25 @@ void gameplaymusic::Owner::updateSequenceControls() {
     sequence.updateSequenceControls();
 }
 
+bool gameplaymusic::Owner::requestFirstKey(std::uint32_t audioFrame) {
+    std::lock_guard<std::recursive_mutex> lock(mutex);
+    if (lastRequestFrame == audioFrame) return false;
+    const auto* info = jaudio::soundInfo(resources, 0x8000001b);
+    if (!info || (*info)[0] || (*info)[1] || (*info)[2] || (*info)[3])
+        throw std::runtime_error("Unsupported original first-key sequence routing metadata.");
+    stop();
+    std::string error;
+    if (!sequence.loadFirstKey(package, resources, error)) {
+        preparedSound = 0;
+        throw std::runtime_error(error);
+    }
+    preparedSound = activeSound = 0x8000001b;
+    sequence.start();
+    soundState = 4;
+    lastRequestFrame = audioFrame;
+    return true;
+}
+
 void gameplaymusic::Owner::retainSection() {
     std::lock_guard<std::recursive_mutex> lock(mutex);
     if (hasMansionSequence() && soundState > 3) lastSection = sequence.rootPort(1);

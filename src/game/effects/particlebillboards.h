@@ -11,6 +11,8 @@ namespace particles {
         std::array<std::uint8_t, 4> color{}, secondary{};
         Resource texture;
         unsigned mode = 0, blend = 0, depth = 0, cull = 2;
+        float textureScale = 1;
+        std::array<unsigned, 2> textureWrap{};
     };
 
     class Billboards {

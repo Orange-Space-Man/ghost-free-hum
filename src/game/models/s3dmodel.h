@@ -14,6 +14,7 @@ namespace s3dmodel {
         std::array<float, 4> color{1, 1, 1, 1};
         unsigned matrix = 0;
         unsigned positionIndex = 0;
+        std::array<float, 3> binormal{}, tangent{};
     };
 
     struct Material {
@@ -24,6 +25,7 @@ namespace s3dmodel {
         unsigned sourceMode = 0;
         std::vector<s3dtexturestage::Stage> stages;
         std::uint8_t flags = 0;
+        bool bump = false;
     };
 
     struct Sampler {

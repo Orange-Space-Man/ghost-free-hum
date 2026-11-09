@@ -14,6 +14,9 @@ namespace {
     constexpr unsigned roomLightingEnabledAddress = 0x804d07c8;
     constexpr unsigned equipmentAmbientScaleAddress = 0x804d9b60;
     constexpr unsigned lightProjectionDepthAddress = 0x804dabc4;
+    constexpr unsigned actorHighlightColorAddress = 0x804da4e0;
+    constexpr unsigned actorHighlightAttenuationAddress = 0x804da4e8;
+    constexpr unsigned specularDistanceAddress = 0x804dd7c0;
 
     template<class T> T constant(const std::vector<std::uint8_t>& executable, unsigned address) {
         std::vector<std::uint8_t> bytes;
@@ -38,6 +41,8 @@ gameplay::Scene::Scene(const std::filesystem::path& package, gameentry::State& e
         *resources.managers().playback()) {
     std::string error;
     if (!trig.read(resources.executable(), error) || !poseTables.read(resources.executable(), error)) throw std::runtime_error(error);
+    textureTrigonometry.resize(5120);
+    for (unsigned i = 0; i < textureTrigonometry.size(); ++i) textureTrigonometry[i] = poseTables.sineAngle(i * 16);
     opacityDistance = constant<float>(resources.executable(), 0x804d9abc);
     limitedOpacity = constant<std::uint8_t>(resources.executable(), 0x804d0050);
     for (unsigned i = 0; i < 3; ++i) {
@@ -51,6 +56,25 @@ gameplay::Scene::Scene(const std::filesystem::path& package, gameentry::State& e
     const auto lightBrightness = constant<float>(resources.executable(), 0x804da4dc);
     if (lightDistance >= 0 && lightBrightness > 0 && lightBrightness < 1)
         actorLight.distance[1] = (1 - lightBrightness) / (lightBrightness * lightDistance);
+    actorHighlight.primarySpecular = true;
+    const auto highlightColor = constant<std::uint32_t>(resources.executable(), actorHighlightColorAddress);
+    std::array<float, 3> highlightDirection{poseTables.sineAngle(0x4000), lightBrightness, poseTables.sineAngle(0)};
+    float length = 0;
+    for (const auto component : highlightDirection) length += component * component;
+    length = std::sqrt(length);
+    const float specularDistance = constant<float>(resources.executable(), specularDistanceAddress);
+    for (unsigned i = 0; i < 3; ++i) {
+        highlightDirection[i] /= length;
+        actorHighlight.color[i] = ((highlightColor >> (24 - i * 8)) & 255) / 255.0f;
+        actorHighlight.position[i] = -highlightDirection[i] * specularDistance;
+        actorHighlight.direction[i] = -highlightDirection[i] + (i == 2 ? 1.0f : 0.0f);
+    }
+    length = 0;
+    for (const auto component : actorHighlight.direction) length += component * component;
+    for (auto& component : actorHighlight.direction) component /= std::sqrt(length);
+    actorHighlight.angular = {0, 0, lightBrightness};
+    actorHighlight.distance = {constant<float>(resources.executable(), actorHighlightAttenuationAddress), 0,
+        constant<float>(resources.executable(), actorHighlightAttenuationAddress + 4)};
     publishCamera();
     auto& managers = resources.managers();
     useRoomLights = constant<std::uint32_t>(resources.executable(), roomLightingEnabledAddress) != 0;
@@ -361,6 +385,9 @@ void gameplay::Scene::drawWorld(bool reflection, const s3denvironment::Camera& c
     drawFurniture(0);
     drawActors(0, camera, visibilityBuffer);
     drawSheets(2);
+    gamerenderer::bindSceneTarget(false, &drawViewport);
+    particleRenderer.draw(gamerenderer::modelContext(), resources.managers().particles().prepareActorGlows(
+        resources.managers().actors(), resources.visibility(), view, visibilityBuffer), view, projection);
     drawActors(1, camera, visibilityBuffer);
     drawFurniture(1);
     drawRooms(1);
@@ -426,28 +453,44 @@ void gameplay::Scene::drawPlayerLight() {
 }
 
 void gameplay::Scene::refreshActorModels() {
-    bool changed = false;
-    for (unsigned i = 0; i < actors.size(); ++i) {
-        const auto& resource = actors[i]->model->model;
-        if (resource == actorModelResources[i]) continue;
-        s3dmodel::Model model;
-        std::string error;
-        if (!resource || !model.read(resource->bytes, error))
-            throw std::runtime_error(resource ? error : "Actor model replacement has no resource.");
-        actorModels[i] = std::move(model);
-        actorModelResources[i] = resource;
-        changed = true;
+    std::vector<actors::MoveActor*> current;
+    for (auto* actor : resources.managers().actors().entries()) {
+        if (actor && actor->model && actor->model->model) current.push_back(actor);
     }
-    if (changed) {
-        textures = gamerenderer::loadPreviews(actorModels, 640, 480);
-        gamerenderer::cacheScene("gameplay");
+    bool changed = current != actors;
+    if (!changed) {
+        for (unsigned i = 0; i < current.size(); ++i)
+            changed |= current[i]->model->model != actorModelResources[i];
     }
+    if (!changed) return;
+    std::vector<s3dmodel::Model> updatedModels;
+    std::vector<actormodel::ResourceRef> retained;
+    for (auto* actor : current) {
+        const auto& resource = actor->model->model;
+        const auto previous = std::find(actors.begin(), actors.end(), actor);
+        const auto index = static_cast<std::size_t>(previous - actors.begin());
+        if (previous != actors.end() && actorModelResources[index] == resource)
+            updatedModels.push_back(std::move(actorModels[index]));
+        else {
+            s3dmodel::Model model;
+            std::string error;
+            if (!model.read(resource->bytes, error)) throw std::runtime_error("Actor " + std::to_string(actor->type()) + ": " + error);
+            updatedModels.push_back(std::move(model));
+        }
+        retained.push_back(resource);
+    }
+    actors = std::move(current);
+    actorModels = std::move(updatedModels);
+    actorModelResources = std::move(retained);
+    textures = gamerenderer::loadPreviews(actorModels, 640, 480);
+    gamerenderer::cacheScene("gameplay");
 }
 
 void gameplay::Scene::drawActors(unsigned stage, const s3denvironment::Camera& camera, unsigned visibilityBuffer) {
     for (unsigned i = 0; i < actors.size(); ++i) {
         const auto& actor = *actors[i];
-        if ((actor.flags & 0x6100) || actor.room() >> 24 == 255 || !resources.visibility().marked(actor.room() >> 24, visibilityBuffer, 0)) continue;
+        if ((actor.flags & 0x6100) || !(actor.model->color & 255) || actor.room() >> 24 == 255 ||
+            !resources.visibility().marked(actor.room() >> 24, visibilityBuffer, 0)) continue;
         const auto* player = dynamic_cast<const playeractor::Player*>(&actor);
         auto world = player ? playerorientation::toMatrix(player->state.quaternion) :
             poseTables.world({}, {actor.rotation[0], actor.rotation[1], actor.rotation[2]}, {1, 1, 1});
@@ -457,6 +500,14 @@ void gameplay::Scene::drawActors(unsigned stage, const s3denvironment::Camera& c
         }
         const auto& surface = actor.surface();
         actorModels[i].materials = surface.materials;
+        for (auto& material : actorModels[i].materials) {
+            for (unsigned channel = 0; channel < 4; ++channel) {
+                if (channel < 3 && !material.stages.empty()) continue;
+                const auto source = static_cast<unsigned>(std::round(material.color[channel] * 255));
+                const auto actorColor = (actor.model->color >> ((3 - channel) * 8)) & 255;
+                material.color[channel] = static_cast<float>((source * actorColor) / 255) / 255;
+            }
+        }
         auto batches = actorModels[i].batches;
         for (auto& batch : batches) for (auto& vertex : batch.vertices) {
             const auto matrix = dooranimation::concatenate(world, actor.model->matrix(0, vertex.matrix));
@@ -464,6 +515,8 @@ void gameplay::Scene::drawActors(unsigned stage, const s3denvironment::Camera& c
             dooranimation::Matrix normal;
             if (!modeldraw::normalMatrix(matrix, normal)) throw std::runtime_error("Singular first-area actor transform.");
             vertex.normal = transform(normal, vertex.normal, false);
+            vertex.binormal = transform(normal, vertex.binormal, false);
+            vertex.tangent = transform(normal, vertex.tangent, false);
         }
         s3denvironment::Lighting lighting;
         const auto lightMode = constant<std::uint16_t>(resources.executable(), 0x8033b598 + actor.type() * 0x1c) & 6;
@@ -478,8 +531,25 @@ void gameplay::Scene::drawActors(unsigned stage, const s3denvironment::Camera& c
                 for (unsigned channel = 0; channel < 3; ++channel) lighting.ambient[channel] = actor.fieldsE9[channel] / 255.0f;
                 lighting.lights.push_back(actorLight);
             }
-        } else if (lightMode != 0) throw std::runtime_error("Actor requires its original secondary lighting path.");
-        gamerenderer::drawPreview(i, actorModels[i], batches, lighting, &camera, false, 1U << stage, false, {}, nullptr, &drawViewport);
+        } else if (lightMode == 6) {
+            for (unsigned channel = 0; channel < 3; ++channel) lighting.ambient[channel] = actor.fieldsE9[channel] / 255.0f;
+            auto highlight = actorHighlight;
+            for (unsigned axis = 0; axis < 3; ++axis) {
+                highlight.position[axis] = highlight.direction[axis] = 0;
+                for (unsigned component = 0; component < 3; ++component) {
+                    highlight.position[axis] += view[component * 4 + axis] * (actorHighlight.position[component] - view[component * 4 + 3]);
+                    highlight.direction[axis] += view[component * 4 + axis] * actorHighlight.direction[component];
+                }
+            }
+            lighting.lights.push_back(highlight);
+        } else if (lightMode != 0) throw std::runtime_error("Invalid original actor lighting mode.");
+        const auto& roomLights = resources.managers().lights().lights();
+        if (!roomLights.empty()) {
+            lighting.embossLight = true;
+            lighting.embossPosition = roomLights.front().position;
+        }
+        gamerenderer::drawPreview(i, actorModels[i], batches, lighting, &camera, false, 1U << stage, false,
+            textureTrigonometry, nullptr, &drawViewport);
     }
 }
 

@@ -74,6 +74,7 @@ namespace gameplay {
         unsigned playerCount = 1;
         unsigned variant = 0;
         std::function<void(const enemies::Manager&)> prepareRooms;
+        std::function<void(const std::array<std::uint8_t, 262>&)> updateActorResources;
     };
 
     class ManagerServices {
@@ -126,6 +127,7 @@ namespace gameplay {
         charactergenerator::Manager& generators();
         particles::GlowPool& glows();
         unsigned candleCount() const;
+        bool eventEffect(std::string_view placement, std::string_view command);
         const jmp::ActiveEntries& placements() const;
         const gameevent::MissionActivation& missionEvents() const;
         gameevent::MissionActivation& missionEvents();

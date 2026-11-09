@@ -19,7 +19,7 @@ namespace particlerenderer {
         Microsoft::WRL::ComPtr<ID3D11VertexShader> vertexShader;
         Microsoft::WRL::ComPtr<ID3D11InputLayout> layout;
         Microsoft::WRL::ComPtr<ID3D11Buffer> vertices, matrices;
-        Microsoft::WRL::ComPtr<ID3D11SamplerState> sampler;
+        std::array<Microsoft::WRL::ComPtr<ID3D11SamplerState>, 9> samplers;
         std::map<particles::Resource, Texture, std::owner_less<particles::Resource>> textures;
         std::map<unsigned, modelrenderer::MaterialShader> materials;
         Texture& texture(const particles::Resource& source);

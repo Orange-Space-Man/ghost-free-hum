@@ -60,6 +60,7 @@ namespace {
         std::array<float, 2> coordinate{};
         std::array<float, 4> secondary{0, 0, 0, 1};
         std::array<float, 2> secondCoordinate{};
+        std::array<float, 2> bumpCoordinate{};
     };
 
     struct Constants {
@@ -80,14 +81,15 @@ namespace {
     constexpr char shader[] = R"(
 cbuffer Camera : register(b0) { row_major float4x4 viewProjection; };
 cbuffer Shadow : register(b2) { row_major float4x4 shadowProjection; float4 shadowColor; float4 shadowState; };
-struct VertexInput { float3 position : POSITION; float4 color : COLOR0; float2 coordinate : TEXCOORD0; float4 secondary : COLOR1; float2 secondCoordinate : TEXCOORD2; };
-struct PixelInput { float4 position : SV_POSITION; float4 color : COLOR0; float2 coordinate : TEXCOORD0; float4 shadowCoordinate : TEXCOORD1; float4 secondary : COLOR1; float2 secondCoordinate : TEXCOORD2; };
+struct VertexInput { float3 position : POSITION; float4 color : COLOR0; float2 coordinate : TEXCOORD0; float4 secondary : COLOR1; float2 secondCoordinate : TEXCOORD2; float2 bumpCoordinate : TEXCOORD3; };
+struct PixelInput { float4 position : SV_POSITION; float4 color : COLOR0; float2 coordinate : TEXCOORD0; float4 shadowCoordinate : TEXCOORD1; float4 secondary : COLOR1; float2 secondCoordinate : TEXCOORD2; float2 bumpCoordinate : TEXCOORD3; };
 PixelInput vertexMain(VertexInput input) {
     PixelInput output;
     output.position = mul(float4(input.position, 1), viewProjection);
     output.color = input.color;
     output.secondary = input.secondary;
     output.secondCoordinate = input.secondCoordinate;
+    output.bumpCoordinate = input.bumpCoordinate;
     output.coordinate = input.coordinate;
     output.shadowCoordinate = mul(float4(input.position, 1), shadowProjection);
     return output;
@@ -126,9 +128,10 @@ void gamerenderer::open(HWND window, const std::vector<roommaterials::Texture>& 
         {"COLOR", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 12, D3D11_INPUT_PER_VERTEX_DATA, 0},
         {"COLOR", 1, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 36, D3D11_INPUT_PER_VERTEX_DATA, 0},
         {"TEXCOORD", 2, DXGI_FORMAT_R32G32_FLOAT, 0, 52, D3D11_INPUT_PER_VERTEX_DATA, 0},
+        {"TEXCOORD", 3, DXGI_FORMAT_R32G32_FLOAT, 0, 60, D3D11_INPUT_PER_VERTEX_DATA, 0},
         {"TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT, 0, 28, D3D11_INPUT_PER_VERTEX_DATA, 0}
     };
-    check(device->CreateInputLayout(elements, 5, vertexCode->GetBufferPointer(), vertexCode->GetBufferSize(), &layout), "Could not create vertex layout");
+    check(device->CreateInputLayout(elements, static_cast<UINT>(std::size(elements)), vertexCode->GetBufferPointer(), vertexCode->GetBufferSize(), &layout), "Could not create vertex layout");
     D3D11_BUFFER_DESC buffer{};
     buffer.ByteWidth = sizeof(Constants);
     buffer.Usage = D3D11_USAGE_DEFAULT;
@@ -219,9 +222,13 @@ SamplerState filtering : register(s0);
 SamplerState shadowFiltering : register(s1);
 SamplerState lookupFiltering : register(s2);
 SamplerState secondFiltering : register(s3);
-float4 pixelMain(float4 position : SV_POSITION, float4 color : COLOR0, float2 coordinate : TEXCOORD0, float4 shadowCoordinate : TEXCOORD1, float4 secondary : COLOR1, float2 secondCoordinate : TEXCOORD2) : SV_TARGET {
+float4 pixelMain(float4 position : SV_POSITION, float4 color : COLOR0, float2 coordinate : TEXCOORD0, float4 shadowCoordinate : TEXCOORD1, float4 secondary : COLOR1, float2 secondCoordinate : TEXCOORD2, float2 bumpCoordinate : TEXCOORD3) : SV_TARGET {
         float4 result = lerp(black, white, image.Sample(filtering, coordinate)) * color;
         result.rgb = saturate(result.rgb * secondary.a + secondary.rgb);
+        if (opacity.w != 0) {
+            result.rgb = saturate(color.rgb + 0.5 * (image.Sample(filtering, coordinate).rgb - image.Sample(filtering, bumpCoordinate).rgb));
+            result.a = 1;
+        }
         if (opacity.z != 0) {
             float4 layer = secondImage.Sample(secondFiltering, secondCoordinate);
             result.rgb = lerp(result.rgb, layer.rgb, layer.a);
@@ -261,8 +268,8 @@ float4 pixelMain(float4 position : SV_POSITION, float4 color : COLOR0, float2 co
         return result;
 }
 [earlydepthstencil]
-float4 pixelEarly(float4 position : SV_POSITION, float4 color : COLOR0, float2 coordinate : TEXCOORD0, float4 shadowCoordinate : TEXCOORD1, float4 secondary : COLOR1, float2 secondCoordinate : TEXCOORD2) : SV_TARGET {
-    return pixelMain(position, color, coordinate, shadowCoordinate, secondary, secondCoordinate);
+float4 pixelEarly(float4 position : SV_POSITION, float4 color : COLOR0, float2 coordinate : TEXCOORD0, float4 shadowCoordinate : TEXCOORD1, float4 secondary : COLOR1, float2 secondCoordinate : TEXCOORD2, float2 bumpCoordinate : TEXCOORD3) : SV_TARGET {
+    return pixelMain(position, color, coordinate, shadowCoordinate, secondary, secondCoordinate, bumpCoordinate);
 }
 )";
         ComPtr<ID3DBlob> code;
@@ -582,7 +589,22 @@ void gamerenderer::drawPreview(std::size_t index, const s3dmodel::Model& model, 
                     secondary = {highlight[0], highlight[1], highlight[2], material.texture ? 0.5f : 0.0f};
                 }
                 const auto secondCoordinate = draw.generated ? s3dtexturestage::coordinate(draw.textureMatrix, source.normal) : source.coordinate;
-                *destination++ = {source.position, color, source.coordinate, secondary, secondCoordinate};
+                auto bumpCoordinate = source.coordinate;
+                if (material.bump) {
+                    if (!lighting.embossLight && lighting.lights.empty()) throw std::runtime_error("S3D emboss mapping requires the original first light position.");
+                    std::array<float, 3> direction{};
+                    float squared = 0;
+                    for (unsigned axis = 0; axis < 3; ++axis) {
+                        direction[axis] = (lighting.embossLight ? lighting.embossPosition[axis] : lighting.lights.front().position[axis]) - source.position[axis];
+                        squared += direction[axis] * direction[axis];
+                    }
+                    const float length = std::sqrt(squared);
+                    for (unsigned axis = 0; axis < 3; ++axis) {
+                        bumpCoordinate[0] += direction[axis] / length * source.tangent[axis];
+                        bumpCoordinate[1] += direction[axis] / length * source.binormal[axis];
+                    }
+                }
+                *destination++ = {source.position, color, source.coordinate, secondary, secondCoordinate, bumpCoordinate};
             }
         }
         context->Unmap(modelVertices.Get(), 0);
@@ -593,6 +615,7 @@ void gamerenderer::drawPreview(std::size_t index, const s3dmodel::Model& model, 
             const auto& batch = *draw.batch;
             const auto& material = model.materials.at(batch.material);
             auto stageColors = colors;
+            stageColors[2][3] = material.bump ? 1.0f : 0.0f;
             if (material.stages.size() == 2) {
                 const auto& sampler = model.samplers.at(material.stages[1].sampler);
                 context->PSSetShaderResources(3, 1, preview.textures.at(sampler.texture).GetAddressOf());

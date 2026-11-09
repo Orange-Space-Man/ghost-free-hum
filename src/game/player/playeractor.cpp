@@ -1,6 +1,7 @@
 #include "game/player/playeractor.h"
 #include "game/player/playercontrollerstate.h"
 #include "game/player/playeractorstate.h"
+#include "resources/dolresources.h"
 
 #include <algorithm>
 #include <cstring>
@@ -41,11 +42,27 @@ namespace {
 playeractor::Player::Player(const Construction& construction, unsigned id, unsigned type, unsigned capacity) :
     MoveActor(construction.base, id, type, capacity), state(*this, construction.globals, construction.base.pose),
     executable(construction.executable), globals(construction.globals), environment(construction.environment) {
+    constexpr unsigned attentionBlendAddress = 0x804d2ba4;
+    std::vector<std::uint8_t> bytes;
+    std::string error;
+    if (!dolresources::read(executable, attentionBlendAddress, 8, bytes, error)) throw std::runtime_error(error);
+    for (unsigned i = 0; i < attentionBlend.size(); ++i) {
+        const auto offset = i * 4;
+        attentionBlend[i] = real((unsigned(bytes[offset]) << 24) | (unsigned(bytes[offset + 1]) << 16) |
+            (unsigned(bytes[offset + 2]) << 8) | bytes[offset + 3]);
+    }
     fieldE8 = 0;
     life = state.maximumLife;
     components = std::make_unique<Components>(construction.executable, *this, state, construction.manager,
         construction.sharedGlobals, construction.camera);
     refreshView();
+}
+
+void playeractor::Player::setAttention(const std::array<float, 3>& target, unsigned mode) {
+    state.field1070 = mode;
+    state.field1074 = target;
+    state.field1074[1] = position[1];
+    state.field109C = flags & 0x10 ? 1.0f : attentionBlend[state.field1114 > 0 ? 1 : 0];
 }
 
 playeractor::Player::~Player() {

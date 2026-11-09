@@ -13,11 +13,11 @@
 #include <stdexcept>
 
 namespace {
-    constexpr std::array<unsigned, 56> soundIds{0x839, 0x83d, 0x1809, 0x180a, 0x180b, 0x181e, 0x280f, 0x2810, 0x282b,
+    constexpr std::array<unsigned, 59> soundIds{0x839, 0x83d, 0x1809, 0x180a, 0x180b, 0x181e, 0x280f, 0x2810, 0x282b,
         0x186e, 0x1841, 0x810, 0x811, 0x850, 0x4808, 0x4828, 0x828, 0x3b, 0x43, 0x801, 2, 0x805, 9,
         0x288a, 0x1028, 0x837, 0x84c, 0x813, 0x2814, 0x2805, 0x281c,
         0x1842, 0x182c, 0x1820, 0x1823, 0x1877, 0x1868, 0x4820, 0x4822, 0x1815, 0x1816, 0x2828, 0x288e, 0x826, 0x2800, 0x827,
-        0x182a, 0x1850, 0x1861, 0x1862, 0x1863, 0x1864, 0x103c, 0x1808, 0x187e, 0x4872};
+        0x182a, 0x1850, 0x1861, 0x1862, 0x1863, 0x1864, 0x103c, 0x1808, 0x187e, 0x4872, 0x1827, 0x4870, 0x4871};
     constexpr unsigned effectRecordCountAddress = 0x804d78b8;
     constexpr unsigned effectParameterCountAddress = 0x804d78d4;
     constexpr unsigned maximumDistanceAddress = 0x804dd170;
@@ -120,7 +120,7 @@ struct jaudio::PositionalPlayback::Runtime : EffectAdmissionServices, EffectCate
             std::memcpy(&defaults[index].pitch, &pitchBits, sizeof(pitchBits));
             defaults[index].volume = static_cast<float>(info[12]) / 127;
             defaults[index].fxmix = static_cast<float>(info[13]) / 127;
-            if (metadata[index].flags & ~0x50078cd7u) throw std::runtime_error("First-area effect " + std::to_string(soundIds[index]) +
+            if (metadata[index].flags & ~0xd0078cd7u) throw std::runtime_error("First-area effect " + std::to_string(soundIds[index]) +
                 " requires additional metadata hooks: " + std::to_string(metadata[index].flags));
         }
         master.start();

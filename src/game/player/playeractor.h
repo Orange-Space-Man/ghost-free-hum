@@ -31,6 +31,7 @@ namespace playeractor {
         Player(const Construction& construction, unsigned id, unsigned type, unsigned capacity);
         ~Player() override;
         void refreshView();
+        void setAttention(const std::array<float, 3>& target, unsigned mode);
         bool writeRecord();
         bool loadRecord(std::int32_t& audioLife);
         bool playFeedback(unsigned preset);
@@ -46,6 +47,7 @@ namespace playeractor {
         const std::vector<std::uint8_t>& executable;
         const Globals& globals;
         const ViewEnvironment& environment;
+        std::array<float, 2> attentionBlend{};
     };
 
     class Alternate final : public Player {

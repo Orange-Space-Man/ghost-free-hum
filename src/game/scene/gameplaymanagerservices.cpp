@@ -6,6 +6,7 @@
 #include "game/enemies/enemygeneratormanager.h"
 #include "game/world/cobwebplacementmanager.h"
 #include "game/world/candleplacementmanager.h"
+#include "game/world/eventeffectplacements.h"
 #include "game/enemies/enemybarrierstrategy.h"
 #include "game/enemies/enemyfiregeneratorstrategy.h"
 #include "resources/roomarchivereader.h"
@@ -112,6 +113,7 @@ struct gameplay::ManagerServices::State {
         sender.reset();
         generators.reset();
         candles.reset();
+        eventEffects.reset();
         webs.reset();
         if (owners) owners->bindUpdates(nullptr);
         if (audio) audio->playback.stop();
@@ -272,8 +274,10 @@ struct gameplay::ManagerServices::State {
             [this](unsigned room) { return runtime->roomCleared(room); },
             [this](unsigned id, const auto& position) { audio->playback.play(id, position); });
         sender = std::make_unique<jmp::MessageSender>();
+        eventEffects = std::make_unique<particles::EventEffectPlacements>(commonResources, particles->pool());
         sender->addReceiver(enemies.get());
         sender->addReceiver(candles.get());
+        sender->addReceiver(eventEffects.get());
         sender->addReceiver(webs.get());
         sender->addReceiver(generators.get());
         roomDependencies = std::make_unique<roomdependencies::Catalog>(dependencies.executable, mapMode);
@@ -303,6 +307,7 @@ struct gameplay::ManagerServices::State {
     std::unique_ptr<charactergenerator::Manager> generators;
     std::unique_ptr<modeleffects::CobwebPlacements> webs;
     std::unique_ptr<particles::CandlePlacements> candles;
+    std::unique_ptr<particles::EventEffectPlacements> eventEffects;
     std::unique_ptr<jmp::EntryActivation> placement;
     std::vector<const jmp::ToolData*> placementTables;
     gamearchive::Resources commonResources, mapResources;
@@ -592,6 +597,8 @@ void gameplay::ManagerServices::updatePlacement(std::int32_t elapsedSeconds) {
     state->missionEvents->updateAppearance(elapsedSeconds);
     try {
         state->placement->update();
+        if (state->dependencies.updateActorResources)
+            state->dependencies.updateActorResources(state->enemies->resourceMask());
     } catch (...) {
         state->placementFailed = true;
         throw;
@@ -758,4 +765,17 @@ void gameplay::ManagerServices::updatePlayerAudio(unsigned index) {
             state->audio->ambience.update(state->audio->context.parameters(room, polygon), state->audio->listener);
         }, [this](unsigned sound) { return state->audio->music.currentSound() == sound; },
         [this, player](unsigned preset) { return player->state.field7A0->repeats(state->dependencies.executable, preset); }});
+}
+
+bool gameplay::ManagerServices::eventEffect(std::string_view placement, std::string_view command) {
+    for (const auto* table : state->placementTables) {
+        const auto field = table->searchItemInfo("CodeName");
+        if (field < 0) continue;
+        const auto row = table->findEntryByValue(field, placement);
+        if (row < 0) continue;
+        jmp::ToolDataRef entry{table, row};
+        const std::string text(command);
+        return state->sender->dispatch(&jmp::MessageReceiver::message, entry, text.c_str());
+    }
+    return false;
 }

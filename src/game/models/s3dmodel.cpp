@@ -162,8 +162,11 @@ bool s3dmodel::Model::read(const std::vector<std::uint8_t>& data, std::string& e
                 require(stage.sampler < result.samplers.size(), "Invalid S3D stage sampler.");
                 require(stageIndex != 0 || stage.kind == 0 || stage.kind == 1, "Generated primary S3D texture coordinates are not implemented.");
                 const auto& sampler = result.samplers[stage.sampler];
-                require(!(sampler.mode & 4), "S3D bump texture stages are not implemented.");
-                material.mode = std::max(material.mode, sampler.mode & 3);
+                if (sampler.mode & 4) {
+                    require(stageIndex == 0 && stage.kind == 0 && data[start + 7] == 2,
+                        "Unsupported S3D emboss stage arrangement.");
+                    material.bump = true;
+                } else material.mode = std::max(material.mode, sampler.mode & 3);
                 material.stages.push_back(stage);
             }
             if (data[start + 7]) {
@@ -179,7 +182,7 @@ bool s3dmodel::Model::read(const std::vector<std::uint8_t>& data, std::string& e
                 if (!(mode & 4)) material.mode = std::max(material.mode, unsigned(mode & 3));
                 require(material.wrapS <= 2 && material.wrapT <= 2, "Invalid S3D texture wrap mode.");
             }
-            require(material.mode <= 2, "Unsupported S3D material mode.");
+            require(material.mode <= 2 || (material.bump && material.mode == 4), "Unsupported S3D material mode.");
             result.materials.push_back(material);
         }
         std::array<unsigned, 10> palette{};
@@ -192,7 +195,7 @@ bool s3dmodel::Model::read(const std::vector<std::uint8_t>& data, std::string& e
                     const auto material = word(data, address), shape = word(data, address + 2);
                     require(material < materialCount && shape < shapeCount, "Invalid S3D joint shape.");
                     const auto shapeRecord = shapeTable + shape * 8;
-                    require(!(dword(data, shapeRecord) & 0x02000000), "S3D NBT display lists are not supported.");
+                    const bool nbt = (dword(data, shapeRecord) & 0x02000000) != 0;
                     const auto first = word(data, shapeRecord + 6), count = word(data, shapeRecord + 4);
                     require(first <= packetCount && count <= packetCount - first, "Invalid S3D shape packet range.");
                     for (unsigned packet = first; packet < first + count; ++packet) {
@@ -219,7 +222,8 @@ bool s3dmodel::Model::read(const std::vector<std::uint8_t>& data, std::string& e
                             require(cursor <= end && end - cursor >= 2, "Truncated S3D vertex index.");
                             const auto value = word(data, cursor);
                             cursor += 2;
-                            require(value < word(data, countOffset), "Invalid S3D vertex array index.");
+                            if (value >= word(data, countOffset)) throw std::runtime_error("Invalid S3D vertex array index " + std::to_string(value) +
+                                " for count " + std::to_string(word(data, countOffset)) + " at " + std::to_string(countOffset) + ".");
                             return static_cast<std::size_t>(dword(data, section)) + value * stride;
                         };
                         while (cursor < end) {
@@ -243,6 +247,17 @@ bool s3dmodel::Model::read(const std::vector<std::uint8_t>& data, std::string& e
                                 if (!shadow && word(data, 18)) {
                                     position = index(76, 18, 12);
                                     for (unsigned axis = 0; axis < 3; ++axis) vertex.normal[axis] = number(data, position + axis * 4);
+                                    if (nbt) {
+                                        for (unsigned component = 1; component < 3; ++component) {
+                                            require(end - cursor >= 2, "Truncated S3D NBT index.");
+                                            position = static_cast<std::size_t>(dword(data, 76)) +
+                                                (word(data, cursor) + component) * 12;
+                                            cursor += 2;
+                                            range(data, position, 12);
+                                            auto& vector = component == 1 ? vertex.tangent : vertex.binormal;
+                                            for (unsigned axis = 0; axis < 3; ++axis) vector[axis] = number(data, position + axis * 4);
+                                        }
+                                    }
                                 }
                                 if (shadow) {
                                     require(cursor < end, "Truncated S3D shadow color index.");
@@ -338,10 +353,12 @@ std::vector<s3dmodel::Batch> s3dmodel::Model::animate(const std::vector<s3danima
                 matrix[2]*matrix[9]-matrix[1]*matrix[10], matrix[0]*matrix[10]-matrix[2]*matrix[8], matrix[1]*matrix[8]-matrix[0]*matrix[9],
                 matrix[1]*matrix[6]-matrix[2]*matrix[5], matrix[2]*matrix[4]-matrix[0]*matrix[6], matrix[0]*matrix[5]-matrix[1]*matrix[4]};
             const float determinant = matrix[0]*cofactors[0] + matrix[1]*cofactors[1] + matrix[2]*cofactors[2];
-            const auto normal = vertex.normal;
             if (batch.lighting && determinant == 0) throw std::runtime_error("Singular S3D lighting matrix.");
-            if (determinant != 0) for (unsigned row = 0; row < 3; ++row)
-                vertex.normal[row] = (cofactors[row * 3]*normal[0] + cofactors[row * 3 + 1]*normal[1] + cofactors[row * 3 + 2]*normal[2]) / determinant;
+            if (determinant != 0) for (auto* vector : {&vertex.normal, &vertex.tangent, &vertex.binormal}) {
+                const auto source = *vector;
+                for (unsigned row = 0; row < 3; ++row)
+                    (*vector)[row] = (cofactors[row * 3]*source[0] + cofactors[row * 3 + 1]*source[1] + cofactors[row * 3 + 2]*source[2]) / determinant;
+            }
         }
     }
     return result;

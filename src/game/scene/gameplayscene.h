@@ -34,6 +34,7 @@ namespace gameplay {
         unsigned presentationButtons = 0;
         originalmath::FloatTrig trig;
         dooranimation::PoseTables poseTables;
+        std::vector<float> textureTrigonometry;
         dooranimation::Matrix view{};
         roomportal::Matrix projection{}, visibilityProjection{};
         std::vector<roomtraversal::Submission> rooms;
@@ -52,7 +53,7 @@ namespace gameplay {
         bool useRoomLights = true;
         float equipmentAmbientScale = 0;
         std::array<std::uint8_t, 4> ambient{};
-        s3denvironment::Light actorLight;
+        s3denvironment::Light actorLight, actorHighlight;
         std::unique_ptr<j3dmodel::TransformTables> modelTransforms;
         j3drenderer::PacketRenderer lightRenderer;
         j3dmodel::MaterialState lightMaterialState;

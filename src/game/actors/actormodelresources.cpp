@@ -8,6 +8,7 @@ void actormodel::Resources::initializeEmbedded(const gamearchive::Archive& commo
     for (auto& model : models) {
         model.state = 0;
         model.archive.reset();
+        model.embedded = false;
     }
     for (unsigned type = 0; type < 381; ++type) {
         const auto index = catalog.type(type).model;
@@ -32,6 +33,60 @@ void actormodel::Resources::initializeEmbedded(const gamearchive::Archive& commo
             throw std::runtime_error(info.path + ": " + error);
         }
         model.state = 3;
+        model.embedded = true;
+    }
+}
+
+bool actormodel::Resources::request(unsigned index) {
+    auto& model = models.at(index);
+    if (model.embedded) return false;
+    if (model.state == 2) {
+        model.state = 1;
+        return true;
+    }
+    if (model.state == 1 || model.state == 3) return true;
+    model.state = 1;
+    return model.archive != nullptr;
+}
+
+void actormodel::Resources::complete(unsigned index, const std::vector<std::uint8_t>& bytes) {
+    auto& model = models.at(index);
+    if (model.state == 2) {
+        model.archive.reset();
+        model.state = 0;
+        return;
+    }
+    if (model.state != 1) throw std::runtime_error("Actor archive completion requires a pending request.");
+    auto archive = std::make_unique<Archive>();
+    std::string error;
+    if (!archive->read(bytes, catalog.model(index).layout, error))
+        throw std::runtime_error(catalog.model(index).path + ": " + error);
+    model.archive = std::move(archive);
+    model.state = 3;
+}
+
+bool actormodel::Resources::release(unsigned index) {
+    auto& model = models.at(index);
+    if (model.state == 0 || model.state == 2) return true;
+    if (model.state == 1) {
+        model.state = 2;
+        return true;
+    }
+    model.state = 0;
+    const bool absent = !model.archive;
+    model.archive.reset();
+    return absent;
+}
+
+void actormodel::Resources::update(const std::array<std::uint8_t, 262>& mask,
+    const std::function<std::vector<std::uint8_t>(std::string_view)>& load) {
+    for (unsigned index = 0; index < models.size(); ++index)
+        if (!models[index].embedded && !mask[index]) release(index);
+    for (unsigned index = 0; index < models.size(); ++index)
+        if (!models[index].embedded && mask[index]) request(index);
+    for (unsigned index = 0; index < models.size(); ++index) {
+        if (models[index].state == 2) complete(index, {});
+        else if (models[index].state == 1) complete(index, load(catalog.model(index).path));
     }
 }
 

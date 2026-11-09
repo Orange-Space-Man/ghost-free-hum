@@ -36,6 +36,7 @@ void playerevents::Payload::pull(const std::array<float, 3>* center, const void*
 }
 
 void playerevents::Payload::reset() {
+    lookPosition = nullptr;
     pullCenter = nullptr;
     pullOwner = nullptr;
     for (unsigned offset : {0x04u, 0x0cu, 0x10u, 0x24u, 0x2cu, 0x34u, 0x3cu, 0x40u, 0x44u, 0x50u,
@@ -58,4 +59,10 @@ void playerevents::Payload::reset() {
     word(0xfc, 0x3e99999a);
     bytes[0x1c] = bytes[0xa8] = bytes[0xc4] = 0;
     bytes[0xc5] = 1;
+}
+
+void playerevents::Payload::look(const std::array<float, 3>* position, std::int32_t actor) {
+    lookPosition = position;
+    word(0x2c, 0);
+    word(0x30, static_cast<std::uint32_t>(actor));
 }

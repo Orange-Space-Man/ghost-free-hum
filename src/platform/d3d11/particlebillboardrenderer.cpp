@@ -68,7 +68,13 @@ void particlerenderer::Renderer::load(ID3D11Device* owner) {
     sampling.Filter = D3D11_FILTER_MIN_MAG_LINEAR_MIP_POINT;
     sampling.AddressU = sampling.AddressV = sampling.AddressW = D3D11_TEXTURE_ADDRESS_CLAMP;
     sampling.MaxLOD = 0;
-    check(device->CreateSamplerState(&sampling, sampler.ReleaseAndGetAddressOf()), "Cannot create particle sampler.");
+    constexpr D3D11_TEXTURE_ADDRESS_MODE modes[] = {
+        D3D11_TEXTURE_ADDRESS_CLAMP, D3D11_TEXTURE_ADDRESS_WRAP, D3D11_TEXTURE_ADDRESS_MIRROR};
+    for (unsigned u = 0; u < 3; ++u) for (unsigned v = 0; v < 3; ++v) {
+        sampling.AddressU = modes[u];
+        sampling.AddressV = modes[v];
+        check(device->CreateSamplerState(&sampling, samplers[u * 3 + v].ReleaseAndGetAddressOf()), "Cannot create particle sampler.");
+    }
 }
 
 particlerenderer::Renderer::Texture& particlerenderer::Renderer::texture(const particles::Resource& source) {
@@ -160,12 +166,15 @@ void particlerenderer::Renderer::draw(ID3D11DeviceContext* context, const std::v
     const unsigned stride = sizeof(Vertex), offset = 0;
     context->IASetVertexBuffers(0, 1, vertices.GetAddressOf(), &stride, &offset);
     context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-    context->PSSetSamplers(0, 1, sampler.GetAddressOf());
     constexpr unsigned corners[] = {0, 1, 2, 0, 2, 3};
     constexpr std::array<float, 2> uv[] = {{0, 0}, {1, 0}, {1, 1}, {0, 1}};
     for (const auto& particle : particles) {
+        if (particle.textureWrap[0] > 2 || particle.textureWrap[1] > 2)
+            throw std::runtime_error("Invalid particle texture wrapping.");
+        context->PSSetSamplers(0, 1, samplers[particle.textureWrap[0] * 3 + particle.textureWrap[1]].GetAddressOf());
         std::array<Vertex, 6> output;
-        for (unsigned i = 0; i < 6; ++i) output[i] = {particle.positions[corners[i]], uv[corners[i]]};
+        for (unsigned i = 0; i < 6; ++i) output[i] = {particle.positions[corners[i]],
+            {uv[corners[i]][0] * particle.textureScale, uv[corners[i]][1] * particle.textureScale}};
         D3D11_MAPPED_SUBRESOURCE mapped{};
         check(context->Map(vertices.Get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped), "Cannot update particle vertices.");
         std::memcpy(mapped.pData, output.data(), sizeof(output));

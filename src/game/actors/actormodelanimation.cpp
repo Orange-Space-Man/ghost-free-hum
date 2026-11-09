@@ -15,6 +15,11 @@ const s3dmodel::Model& actors::MoveActor::surface() const {
     return entry.archive->surface();
 }
 
+actormodel::ResourceRef actors::MoveActor::glow() const {
+    const auto& entry = construction.resources.entry(construction.catalog.type(actorType).model);
+    return entry.archive ? entry.archive->geb : nullptr;
+}
+
 bool actors::MoveActor::setMaterialFlags(unsigned material, std::uint8_t mask, bool enabled) {
     if (!model || !model->model) return false;
     const auto& entry = construction.resources.entry(construction.catalog.type(actorType).model);

@@ -70,6 +70,10 @@ bool jaudio::Playback::loadEntrance(gameassets::Package& package, const Resource
     return loadMusic(package, resources, 0x80000019, error);
 }
 
+bool jaudio::Playback::loadFirstKey(gameassets::Package& package, const Resources& resources, std::string& error) {
+    return loadMusic(package, resources, 0x8000001b, error);
+}
+
 bool jaudio::Playback::loadEffects(gameassets::Package& package, const Resources& resources, std::string& error) {
     effectDispatch = false;
     stop();

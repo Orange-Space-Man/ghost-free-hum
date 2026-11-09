@@ -1,11 +1,12 @@
 #pragma once
 
 #include "game/events/entrancescript.h"
+#include "game/events/eventactorcommands.h"
 #include "game/events/eventpathanimation.h"
 #include "game/scene/gameplaymanagerservices.h"
 
 namespace gameevent {
-    class EntranceOwner final : private EntranceServices {
+    class EntranceOwner final : private EntranceServices, private ActorServices {
     public:
         EntranceOwner(gameassets::Package& package, const enemytypes::Catalog& types,
             gameentry::State& entry, const roomlocation::Rooms& rooms, gameplay::ManagerServices& managers,
@@ -29,8 +30,20 @@ namespace gameevent {
         void closeMessage() override;
         bool messageClosed() const override;
         void finish() override;
+        actors::MoveActor* find(std::string_view name) override;
+        bool actorExists(std::string_view name) const override;
+        void actorCommand(std::string_view name, const ActorCommand& command) override;
+        void lookPlayer(actors::MoveActor& target) override;
+        void sound(actors::MoveActor& actor, unsigned index) override;
+        void sound(unsigned index) override;
+        void setFlag(unsigned index) override;
+        void effect(std::string_view placement, std::string_view command) override;
+        void fullscreen(bool enabled) override;
+        void playerEvent(unsigned event) override;
+        void releaseActor() override;
+        void blendCamera() override;
         std::vector<std::uint8_t> resource(std::string_view name) const;
-        bool eligible(unsigned elapsedSeconds) const;
+        bool eligible(unsigned event, unsigned elapsedSeconds) const;
         gameassets::Package& package;
         const enemytypes::Catalog& types;
         gameentry::State& entry;
@@ -45,7 +58,9 @@ namespace gameevent {
         float savedFieldOfView = 0;
         std::uint16_t savedCC = 0, savedCE = 0;
         unsigned cameraFrame = 0, lightFrame = 0;
+        unsigned currentEvent = 0;
         std::uint32_t audioFrame = 0;
         bool menuAvailable = true;
+        bool fullscreenEnabled = false;
     };
 }

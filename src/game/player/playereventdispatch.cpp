@@ -24,6 +24,13 @@ unsigned playerevents::dispatch(playeractor::Player& player, unsigned message, c
     }
     const Payload defaults;
     const auto& values = payload ? *payload : defaults;
+    if (message == 7 || message == 8) {
+        if (values.word(0x2c) || static_cast<std::int32_t>(values.word(0x30)) >= 0)
+            throw std::runtime_error("Player attention requires a resolved native target.");
+        if (!values.lookPosition) return 0;
+        player.setAttention(*values.lookPosition, message == 7 ? 5 : 6);
+        return 1;
+    }
     if (message == 6) {
         const auto frames = static_cast<std::int32_t>(values.word(0x28));
         if (frames <= 0) return 0;
@@ -88,5 +95,12 @@ playeractor::Player* playerevents::Dispatcher::player(std::int32_t index) const 
 
 unsigned playerevents::Dispatcher::send(std::int32_t index, unsigned message, const Payload* payload) const {
     auto* recipient = player(index);
+    if (recipient && (message == 7 || message == 8) && payload && static_cast<std::int32_t>(payload->word(0x30)) >= 0) {
+        auto resolved = *payload;
+        const auto* target = actors.actor(payload->word(0x30));
+        if (!target) throw std::runtime_error("Player attention actor is absent from the original registry.");
+        resolved.look(&target->position);
+        return dispatch(*recipient, message, &resolved, collectionSound, suction);
+    }
     return recipient ? dispatch(*recipient, message, payload, collectionSound, suction) : 0;
 }

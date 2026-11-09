@@ -21,6 +21,8 @@ namespace particles {
         void refresh(const SecondarySource* secondary);
         void update();
         std::vector<Billboard> prepareGlows(GlowPool& glows, const std::array<float, 12>& view);
+        std::vector<Billboard> prepareActorGlows(const actors::Registry& actors, const roomtraversal::State& visibility,
+            const std::array<float, 12>& view, unsigned buffer) const;
         void initializeElements();
         void initializeEffectBatches();
         void updateElements();

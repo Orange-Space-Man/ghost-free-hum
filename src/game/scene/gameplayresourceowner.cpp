@@ -76,6 +76,15 @@ struct gameplay::ResourceOwner::State {
                 if (resident.room != 0xffffffff) furnitureOwner->create(resident.furniture, *furniture);
             }
         };
+        dependencies.updateActorResources = [this](const std::array<std::uint8_t, 262>& mask) {
+            models->update(mask, [this](std::string_view path) {
+                std::vector<std::uint8_t> compressed, bytes;
+                std::string error;
+                if (!package.read("files" + std::string(path), compressed, error) ||
+                    !roomarchive::decompress(compressed, bytes, error)) throw std::runtime_error(error);
+                return bytes;
+            });
+        };
         managers = std::make_unique<ManagerServices>(dependencies);
         managers->bindPlayerFurniture(*furnitureOwner);
         auto* player = managers->actors().actor(managers->enemies().appearPoint(0).actor);

@@ -16,6 +16,7 @@ namespace gameplaymusic {
         void start();
         bool requestDeath(std::uint32_t audioFrame);
         bool requestEntrance(std::uint32_t audioFrame);
+        bool requestFirstKey(std::uint32_t audioFrame);
         void stop();
         void setCutsceneActive(bool active);
         void updateSequenceControls();

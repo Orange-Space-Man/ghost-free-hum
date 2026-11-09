@@ -284,6 +284,14 @@ std::array<float, 4> s3denvironment::Lighting::shade(const s3dmodel::Vertex& ver
         for (unsigned axis = 0; axis < 3; ++axis) delta[axis] = light.position[axis] - vertex.position[axis];
         const float distanceSquared = dot(delta, delta), distance = std::sqrt(distanceSquared);
         const auto direction = normalize(delta);
+        if (light.primarySpecular) {
+            const float cosine = dot(vertex.normal, direction) >= 0 ? std::max(0.0f, dot(vertex.normal, light.direction)) : 0;
+            const float squared = cosine * cosine;
+            const float attenuation = std::max(0.0f, light.angular[0] + light.angular[1] * cosine + light.angular[2] * squared) /
+                (light.distance[0] + light.distance[1] * cosine + light.distance[2] * squared);
+            for (unsigned axis = 0; axis < 3; ++axis) illumination[axis] += light.color[axis] * attenuation;
+            continue;
+        }
         const float cosine = std::max(0.0f, dot(direction, light.direction));
         const float angular = std::max(0.0f, light.angular[0] + light.angular[1] * cosine + light.angular[2] * cosine * cosine);
         const float attenuation = angular / (light.distance[0] + light.distance[1] * distance + light.distance[2] * distanceSquared);
