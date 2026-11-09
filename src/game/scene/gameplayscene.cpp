@@ -102,6 +102,7 @@ void gameplay::Scene::prepareGraphics() {
 
 void gameplay::Scene::prepareModelGraphics(ID3D11Device* device) {
     particleRenderer.load(device);
+    sheetRenderer.load(device);
     particleRenderer.prepare(resources.managers().particles().pool());
     lightRenderer.load(device, resources.managers().players().models->model(playermodels::SharedModel::Light));
     for (auto* pool : resources.managers().modelEffects().registered()) {
@@ -319,6 +320,7 @@ void gameplay::Scene::drawGameplay(bool present) {
     resources.managers().doors().submitOpaque(0, false, submitDoor);
     drawFurniture(0);
     drawActors(0);
+    drawSheets(2);
     drawActors(1);
     drawFurniture(1);
     drawRooms(1);
@@ -334,6 +336,17 @@ void gameplay::Scene::drawGameplay(bool present) {
     picture.width = 640;
     picture.height = 480;
     gamerenderer::drawInterface({picture}, present);
+}
+
+void gameplay::Scene::drawSheets(unsigned pass) {
+    gamerenderer::bindSceneTarget(false);
+    const auto* player = resources.managers().playerEvents().player(0);
+    const auto& owner = *player->components->grids;
+    modellighting::State lighting;
+    modellighting::initialize(lighting, view, resources.managers().lights().lights(), useRoomLights, ambient, trig);
+    modelrenderer::VertexMatrices matrices{view, view, projection};
+    for (unsigned i = 0; i < owner.grids.size(); ++i)
+        if (owner.fields16BC[i]) sheetRenderer.draw(gamerenderer::modelContext(), *owner.grids[i], pass, matrices, lighting);
 }
 
 void gameplay::Scene::drawModelEffects() {

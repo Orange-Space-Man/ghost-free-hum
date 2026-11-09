@@ -31,6 +31,7 @@ namespace modelrenderer {
     class Geometry {
     public:
         void load(ID3D11Device* device, const doors::ModelResource& model);
+        void update(ID3D11DeviceContext* context, std::int16_t batch, const std::vector<modeldraw::Vertex>& vertices);
         void draw(ID3D11DeviceContext* context, std::int16_t batch, const VertexMatrices& matrices,
             const TextureCoordinates& coordinates, const modellighting::Inputs& lighting, bool cullAllTriangles = false) const;
 
@@ -39,6 +40,7 @@ namespace modelrenderer {
             Microsoft::WRL::ComPtr<ID3D11Buffer> vertices, indices;
             D3D11_PRIMITIVE_TOPOLOGY topology = D3D11_PRIMITIVE_TOPOLOGY_UNDEFINED;
             unsigned count = 0;
+            unsigned capacity = 0;
         };
         Microsoft::WRL::ComPtr<ID3D11Device> owner;
         Microsoft::WRL::ComPtr<ID3D11VertexShader> shader;

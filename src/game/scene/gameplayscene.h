@@ -6,6 +6,7 @@
 #include "platform/d3d11/j3dpacketrenderer.h"
 #include "game/effects/modeleffectlighting.h"
 #include "platform/d3d11/particlebillboardrenderer.h"
+#include "platform/d3d11/playersheetrenderer.h"
 
 namespace gameplay {
     class Scene {
@@ -60,6 +61,8 @@ namespace gameplay {
         unsigned visibleModelEffects = 0;
         std::unique_ptr<particles::Billboards> particleBillboards;
         particlerenderer::Renderer particleRenderer;
+        playersheets::Renderer sheetRenderer;
+        void drawSheets(unsigned pass);
         float lightProjectionDepth = 0;
         void drawPlayerLight();
         void drawModelEffects();

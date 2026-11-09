@@ -2,6 +2,7 @@
 
 #include <d3dcompiler.h>
 #include <cstddef>
+#include <cstring>
 #include <limits>
 #include <stdexcept>
 #include <utility>
@@ -204,6 +205,35 @@ void modelrenderer::Geometry::load(ID3D11Device* device, const doors::ModelResou
         }
     }
     *this = std::move(result);
+}
+
+void modelrenderer::Geometry::update(ID3D11DeviceContext* context, std::int16_t batch, const std::vector<modeldraw::Vertex>& vertices) {
+    if (!context || !owner) throw std::logic_error("Dynamic model geometry has no device.");
+    ComPtr<ID3D11Device> device;
+    context->GetDevice(device.GetAddressOf());
+    if (device.Get() != owner.Get()) throw std::logic_error("Dynamic model context belongs to another device.");
+    auto& primitives = batches[batch];
+    if (primitives.empty()) primitives.resize(1);
+    auto& primitive = primitives.front();
+    if (primitives.size() != 1 || primitive.indices) throw std::logic_error("Dynamic model batch must contain one unindexed primitive.");
+    primitive.topology = D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
+    if (vertices.size() > std::numeric_limits<UINT>::max() / sizeof(modeldraw::Vertex))
+        throw std::length_error("Dynamic model vertex count exceeds D3D capacity.");
+    primitive.count = static_cast<unsigned>(vertices.size());
+    if (!primitive.count) return;
+    if (primitive.count > primitive.capacity) {
+        D3D11_BUFFER_DESC description{};
+        description.ByteWidth = primitive.count * sizeof(modeldraw::Vertex);
+        description.Usage = D3D11_USAGE_DYNAMIC;
+        description.BindFlags = D3D11_BIND_VERTEX_BUFFER;
+        description.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
+        check(owner->CreateBuffer(&description, nullptr, primitive.vertices.ReleaseAndGetAddressOf()), "Cannot allocate dynamic model vertices.");
+        primitive.capacity = primitive.count;
+    }
+    D3D11_MAPPED_SUBRESOURCE mapped{};
+    check(context->Map(primitive.vertices.Get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped), "Cannot update dynamic model vertices.");
+    std::memcpy(mapped.pData, vertices.data(), vertices.size() * sizeof(modeldraw::Vertex));
+    context->Unmap(primitive.vertices.Get(), 0);
 }
 
 void modelrenderer::Geometry::draw(ID3D11DeviceContext* context, std::int16_t batch, const VertexMatrices& matrices,
