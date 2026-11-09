@@ -168,7 +168,7 @@ void gameapplication::Application::advanceMenu() {
 }
 
 void gameapplication::Application::advance(bool audioFinished) {
-    const bool interfaceTick = !gameplayActive || gameplayPhase != 0;
+    const bool interfaceTick = !gameplayActive || gameplayPhase != 0 || gameplayScene->gameplaySuspended();
     advanceScene(audioFinished);
     if (audioEnabled && interfaceTick) startupaudio::updateInterface([&] {
         if (gameplayActive) gameplayScene->updateAudio();
@@ -178,10 +178,11 @@ void gameapplication::Application::advance(bool audioFinished) {
 void gameapplication::Application::advanceScene(bool audioFinished) {
     if (gameplayActive) {
         gameplayPhase ^= 1;
-        if (!gameplayPhase) {
+        if (!gameplayPhase || gameplayScene->gameplaySuspended()) {
             const auto input = playerinput::pollWindowPad(applicationWindow, true);
             gameplayScene->update(input.status, input.port, startupaudio::interfaceFrame());
         }
+        gameplayScene->updatePresentation(!gameplayPhase);
         return;
     }
     if (openingActive) { advanceOpening(); return; }

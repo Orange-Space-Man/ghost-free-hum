@@ -155,8 +155,7 @@ void gameplay::Scene::update(const playerinput::PadStatus& pad, std::int16_t por
     resources.managers().sampleInput(pad, port);
     auto& managers = resources.managers();
     managers.setAudioInterfaceFrame(audioFrame);
-    presentationButtons = managers.controller().pressed;
-    presentationTick = true;
+    presentationButtons |= managers.controller().pressed;
     if (!sceneControl.gameplayEnabled) return;
     managers.lights().beginFrame();
     const bool cameraWasActive = resources.eventCameraActive();
@@ -258,14 +257,15 @@ void gameplay::Scene::drawModel(const doors::ModelResource& model,
     });
 }
 
+void gameplay::Scene::updatePresentation(bool gameplayTick) {
+    if (!gameplayTick && sceneControl.gameplayEnabled) return;
+    keyPresentation.advanceDraw(presentationButtons);
+    presentationButtons = 0;
+}
+
 void gameplay::Scene::draw(bool present) {
     const bool gameplayDrawn = sceneControl.gameplayEnabled;
     if (gameplayDrawn) drawGameplay(false);
-    if (presentationTick) {
-        keyPresentation.advanceDraw(presentationButtons);
-        presentationTick = false;
-        presentationButtons = 0;
-    }
     if (keyPresentation.state().owned && keyPresentation.state().updated) keyPresentation.draw(present);
     else {
         startupscene::Picture picture;
