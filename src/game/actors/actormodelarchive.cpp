@@ -1,6 +1,15 @@
 #include "game/actors/actormodelarchive.h"
 
+#include <algorithm>
 #include <stdexcept>
+
+actormodel::ResourceRef actormodel::Archive::path(std::string_view name) {
+    auto filename = std::string(name) + ".pth";
+    filename.resize(std::min<std::size_t>(filename.size(), 31));
+    constexpr std::uint32_t pathResourceType = 0x50544820;
+    const auto index = source.findTypeResource(pathResourceType, filename);
+    return index < 0 ? nullptr : resolve(static_cast<unsigned>(index));
+}
 
 s3dmodel::Model& actormodel::Archive::surface() const {
     if (!decodedSurface) {
@@ -17,7 +26,11 @@ actormodel::ResourceRef actormodel::Archive::resolve(std::string_view name) {
     if (index < 0) {
         throw std::runtime_error("Actor archive resource lookup failed.");
     }
-    const auto& entry = source.entry(static_cast<unsigned>(index));
+    return resolve(static_cast<unsigned>(index));
+}
+
+actormodel::ResourceRef actormodel::Archive::resolve(unsigned index) {
+    const auto& entry = source.entry(index);
     for (const auto& resource : resources) {
         if (resource->offset == entry.offset) {
             return resource;

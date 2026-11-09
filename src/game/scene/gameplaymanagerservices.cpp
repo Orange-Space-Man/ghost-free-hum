@@ -28,14 +28,16 @@
 #include "game/world/roomfurnitureresponse.h"
 #include "resources/glme01addresses.h"
 #include "game/audio/roomambientaudio.h"
+#include "game/enemies/enemyitemstrategy.h"
 
 #include <stdexcept>
 #include <cmath>
 #include <utility>
 #include <cstring>
+#include <limits>
 
 namespace {
-    class SuctionAudio final : public playerevents::SuctionSounds {
+    class SuctionAudio final : public playerevents::SuctionSounds, public enemystrategy::ItemSounds {
     public:
         explicit SuctionAudio(jaudio::PositionalPlayback& playback) : playback(playback) {}
         void actor(unsigned sound, const itemsuction::Vector& position, unsigned parameter) override {
@@ -43,6 +45,7 @@ namespace {
             playback.play(sound, position);
         }
         void weapon(unsigned sound, const itemsuction::Vector& position) override { playback.play(sound, position); }
+        void play(unsigned sound, const itemsuction::Vector& position, unsigned parameter) override { actor(sound, position, parameter); }
 
     private:
         jaudio::PositionalPlayback& playback;
@@ -230,6 +233,30 @@ struct gameplay::ManagerServices::State {
             dependencies.actors.catalog, dependencies.actors.resources, dependencies.actors.pose, dependencies.actors.parameters,
             dependencies.creation, collision, *actors, *players, *runtime, models->factory, *particles, sound});
         owners->bindUpdates(updates.get());
+        itemCollection = std::make_unique<playerevents::ItemEnvironment>(playerevents::ItemEnvironment{
+            *actors, *enemies, furnitureAdmission, &itemAward,
+            [this](unsigned id, const auto& position) { audio->playback.play(id, position); }});
+        itemForce = std::make_unique<itemsuction::Force>(player->view, particles->contexts().player.suction);
+        itemEvents = std::make_unique<playerevents::SuctionEvents>(*player, *actors, *suction, [this](actors::MoveActor& actor) {
+            auto* owner = dynamic_cast<characterowner::Owner*>(enemies->activeOwner(actor));
+            auto* item = owner ? dynamic_cast<enemystrategy::FiniteItem*>(owner->ownership().strategy.get()) : nullptr;
+            if (!item) throw std::logic_error("Item collection requires its retained strategy owner.");
+            item->collectItem();
+        });
+        itemSuction = std::make_unique<itemsuction::Environment>(itemsuction::Environment{
+            dependencies.actors.rooms, dependencies.visibility, dependencies.actors.pose, particles->contexts().player.suction,
+            *itemForce, particles->effects(), dependencies.flags, *itemEvents});
+        itemServices = std::make_unique<enemystrategy::ItemEnvironment>(enemystrategy::ItemEnvironment{
+            dependencies.common, dependencies.types, dependencies.strategies, collision, rotatingSurfaces,
+            dependencies.collisions, *itemCollection, *suction, *itemSuction, *suctionAudio, [player] {
+                if (player->view.field8A0 == 1) throw std::runtime_error("Item attraction requires the original suction scratch state.");
+                return itemsuction::Vector{};
+            }, 0, itemDuration});
+        itemServices->globalSound = [this](unsigned id) { audio->playback.playGlobal(id); };
+        itemServices->life = life.get();
+        itemServices->camera = &dependencies.camera;
+        itemServices->audioPositions = &audio->owners;
+        strategies->bindItems(itemServices.get());
         ambient = dependencies.actors.rooms.entries().at(player->room() >> 24).ambient;
         barrierServices = std::make_unique<enemystrategy::BarrierEnvironment>(enemystrategy::BarrierEnvironment{
             doors, models->factory, commonResources, *runtime, player->view});
@@ -328,6 +355,14 @@ struct gameplay::ManagerServices::State {
     std::unique_ptr<playerevents::LifeEnvironment> life;
     std::unique_ptr<actorcapture::Motion> capture;
     std::unique_ptr<characterowner::UpdateServices> updates;
+    actors::RotatingSurfaces rotatingSurfaces;
+    playerevents::ItemAward itemAward{};
+    std::uint8_t itemDuration = 0;
+    std::unique_ptr<playerevents::ItemEnvironment> itemCollection;
+    std::unique_ptr<itemsuction::Force> itemForce;
+    std::unique_ptr<playerevents::SuctionEvents> itemEvents;
+    std::unique_ptr<itemsuction::Environment> itemSuction;
+    std::unique_ptr<enemystrategy::ItemEnvironment> itemServices;
 };
 
 gameplay::ManagerServices::ManagerServices(const ManagerDependencies& dependencies) : state(std::make_unique<State>(dependencies)) {
@@ -659,6 +694,41 @@ void gameplay::ManagerServices::updateFurniture(unsigned frame) {
         state->furnitureResponse.basic(object, row, visible, false, static_cast<unsigned>(object.animations.size()), frame, services);
         return true;
     });
+}
+
+void gameplay::ManagerServices::updateDoors(unsigned frame) {
+    const auto* player = state->events->player(0);
+    if (!player) throw std::logic_error("Door update requires player zero.");
+    doors::UpdateServices services;
+    services.positionalSound = [this](unsigned id, const auto& position) { state->audio->playback.play(id, position); };
+    services.globalSound = [this](unsigned id) { state->audio->playback.playGlobal(id); };
+    services.playerInfluence = [this, player](float radius, const auto& position) {
+        const auto& view = player->view;
+        if (view.field89E != 1 || view.field8A0 != 1 || !view.field8B4) return 0;
+        std::array<float, 3> direction;
+        if (!view.field8B4->intersects(radius, direction, position)) return 0;
+        const auto& context = state->particles->contexts().player.suction;
+        if (!context.position) throw std::logic_error("Door attraction requires the retained player context.");
+        const float x = position[0] - (*context.position)[0];
+        const float y = position[1] - (*context.position)[1];
+        const float z = position[2] - (*context.position)[2];
+        constexpr float attractionDistance = 480, influenceScale = 100;
+        const float fraction = static_cast<float>(double(std::sqrt(std::fma(z, z, x * x) + y * y)) / attractionDistance);
+        const float strength = influenceScale * ((1 - (fraction > 1 ? 1 : fraction)) * context.strength);
+        if (!std::isfinite(strength) || strength < -2147483648.0 || strength >= 2147483648.0)
+            return std::numeric_limits<std::int32_t>::min();
+        return static_cast<int>(strength);
+    };
+    services.influenceSound = [this](float amount, std::uint8_t material, const auto& position) {
+        constexpr unsigned materialSounds = 0x8038eb8c;
+        std::vector<std::uint8_t> bytes;
+        std::string error;
+        if (!dolresources::read(state->dependencies.executable, materialSounds + (material > 25 ? 0 : material) * 4, 4, bytes, error))
+            throw std::runtime_error(error);
+        const auto id = (unsigned(bytes[0]) << 24) | (unsigned(bytes[1]) << 16) | (unsigned(bytes[2]) << 8) | bytes[3];
+        if (auto* sound = state->audio->playback.play(id, position)) state->audio->playback.setInteractionVolume(*sound, amount);
+    };
+    state->doors.update(state->dependencies.entry.map, frame, state->dependencies.flags, state->savedDoors, services);
 }
 
 void gameplay::ManagerServices::completePlayerFrame(const playeractor::LateFrameServices& services, bool resetLights) {

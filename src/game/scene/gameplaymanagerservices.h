@@ -111,6 +111,7 @@ namespace gameplay {
         void bindPlayerFurniture(roomfurniture::Owner& furniture);
         void updatePlayerFurniture(unsigned index);
         void updateFurniture(unsigned frame);
+        void updateDoors(unsigned frame);
         void updatePlayerLight(unsigned index);
         void updatePlayerAudio(unsigned index);
         void updatePlayerLate(unsigned index, const playeractor::LateFrameServices& services);

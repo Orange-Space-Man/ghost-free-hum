@@ -13,6 +13,18 @@ namespace {
     }
 }
 
+void actors::MoveActor::selectPath(std::string_view name) {
+    const auto& entry = construction.resources.entry(construction.catalog.type(type()).model);
+    fieldF0 = 0;
+    fieldF4 = entry.archive ? entry.archive->path(name) : nullptr;
+    field5C = position;
+}
+
+void actors::MoveActor::lookAt(const MoveActor& target) {
+    rotation[1] = static_cast<std::int16_t>(construction.pose.angle(
+        target.position[2] - position[2], target.position[0] - position[0]));
+}
+
 actors::MoveActor::MoveActor(const Construction& construction, unsigned id, unsigned type, unsigned capacity) :
     fieldE0(construction.globals.color), fieldE4(construction.globals.color), construction(construction) {
     actorId = id;

@@ -1,10 +1,23 @@
 #pragma once
 
 #include <cstdint>
+#include <array>
 #include <string>
 #include <string_view>
 
 namespace gameevent {
+    enum class ActorOperation {
+        Animation, Look, Path, Stop, Start, Sound, Position, CollisionOn, CollisionOff,
+        Alpha, ShadowOn, ShadowOff, BodyOn, BodyOff, MaskOn, MaskOff
+    };
+
+    struct ActorCommand {
+        ActorOperation operation;
+        std::string_view argument;
+        std::array<float, 3> position{};
+        unsigned value = 0;
+    };
+
     class EntranceServices {
     public:
         virtual ~EntranceServices() = default;
@@ -20,6 +33,15 @@ namespace gameevent {
         virtual void closeMessage() = 0;
         virtual bool messageClosed() const = 0;
         virtual void finish() = 0;
+        virtual bool actorExists(std::string_view actor) const;
+        virtual void actorCommand(std::string_view actor, const ActorCommand& command);
+        virtual void setFlag(unsigned index);
+        virtual void sound(unsigned index);
+        virtual void effect(std::string_view placement, std::string_view resource);
+        virtual void fullscreen(bool enabled);
+        virtual void playerEvent(unsigned event);
+        virtual void releaseActor();
+        virtual void blendCamera();
     };
 
     class EntranceScript {
@@ -36,5 +58,7 @@ namespace gameevent {
         bool completed = false;
         std::string_view token(char begin, char end);
         unsigned number();
+        std::int32_t integer();
+        void actor(EntranceServices& services);
     };
 }

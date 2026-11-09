@@ -24,6 +24,19 @@ unsigned playerevents::dispatch(playeractor::Player& player, unsigned message, c
     }
     const Payload defaults;
     const auto& values = payload ? *payload : defaults;
+    if (message == 6) {
+        const auto frames = static_cast<std::int32_t>(values.word(0x28));
+        if (frames <= 0) return 0;
+        player.state.field106C = static_cast<float>(frames);
+        return 1;
+    }
+    if (message >= 0x1b && message <= 0x1e) {
+        auto& flag = message <= 0x1c ? player.state.flags1330[3] : player.state.field1334;
+        const bool enabled = message == 0x1b || message == 0x1d;
+        if ((flag != 0) == enabled) return 0;
+        flag = enabled ? 1 : 0;
+        return 1;
+    }
     if (message == 0x34 || message == 0x35) {
         if (values.word(0xec) || values.word(0xf0))
             throw std::runtime_error("Player pull events require native references rather than encoded game addresses.");

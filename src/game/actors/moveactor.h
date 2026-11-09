@@ -58,6 +58,8 @@ namespace actors {
             const playerresources::RecordPool44& pool, const mapcollision::State& map, const actorcollision::Catalog& catalog,
             gameflags::State& flags);
         bool selectAnimation(std::string_view name);
+        void selectPath(std::string_view name);
+        void lookAt(const MoveActor& target);
         void selectTexture(std::int16_t texture, unsigned channel);
         std::uint32_t hitDamage() const;
         unsigned id() const override;

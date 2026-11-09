@@ -30,12 +30,14 @@ namespace actormodel {
         std::array<std::vector<ResourceRef>, 5> auxiliary;
         ResourceRef geb;
         s3dmodel::Model& surface() const;
+        ResourceRef path(std::string_view name);
 
     private:
         gamearchive::Archive source;
         std::vector<ResourceRef> resources;
         mutable std::unique_ptr<s3dmodel::Model> decodedSurface;
         ResourceRef resolve(std::string_view name);
+        ResourceRef resolve(unsigned index);
         std::vector<unsigned> entries(std::string_view path) const;
     };
 }

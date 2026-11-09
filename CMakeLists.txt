@@ -49,6 +49,7 @@ add_library(JLib STATIC
 )
 
 add_library(Game STATIC
+    src/game/events/eventactorcommands.cpp
     src/game/events/entrancescript.cpp
     src/game/events/entranceeventowner.cpp
     src/game/events/eventpathanimation.cpp

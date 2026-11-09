@@ -181,6 +181,7 @@ void gameplay::Scene::update(const playerinput::PadStatus& pad, std::int16_t por
     resources.updateCamera();
     publishCamera();
     rooms = resources.prepareVisibility(visibilityProjection, fullBounds);
+    managers.updateDoors(ticks);
     managers.updateFurniture(ticks);
     auto targetAmbient = resources.rooms().entries().at(player->room() >> 24).ambient;
     if (player->view.field8B8 && player->view.field8A0 != 5)
