@@ -111,6 +111,33 @@ bool gameplaymusic::Owner::requestEntrance(std::uint32_t audioFrame) {
 void gameplaymusic::Owner::updateSequenceControls() {
     std::lock_guard<std::recursive_mutex> lock(mutex);
     sequence.updateSequenceControls();
+    sequenceVolume.update();
+    if (fanfareActive) fanfare.updateSequenceControls();
+}
+
+bool gameplaymusic::Owner::requestItem(std::uint32_t audioFrame) {
+    std::lock_guard<std::recursive_mutex> lock(mutex);
+    if (lastRequestFrame == audioFrame) return false;
+    const auto* info = jaudio::soundInfo(resources, 0x8000000e);
+    if (!info || (*info)[0] != 0x40 || (*info)[1] || (*info)[2] || (*info)[3])
+        throw std::runtime_error("Unsupported original item fanfare routing metadata.");
+    std::string error;
+    if (soundState && activeSound != 0x80000007) {
+        if (!fanfare.loadItemFanfare(package, resources, true, error)) throw std::runtime_error(error);
+        fanfare.start();
+        fanfareActive = true;
+        sequenceVolume.set(0, 5);
+    } else {
+        resumeMansion = hasMansionSequence();
+        if (resumeMansion) retainSection();
+        stop();
+        if (!sequence.loadItemFanfare(package, resources, false, error)) throw std::runtime_error(error);
+        preparedSound = activeSound = 0x8000000e;
+        sequence.start();
+        soundState = 4;
+    }
+    lastRequestFrame = audioFrame;
+    return true;
 }
 
 bool gameplaymusic::Owner::requestFirstKey(std::uint32_t audioFrame) {
@@ -139,11 +166,24 @@ void gameplaymusic::Owner::retainSection() {
 
 bool gameplaymusic::Owner::mix(jaudio::DspMixer& destination, std::string& error) {
     std::lock_guard<std::recursive_mutex> lock(mutex);
+    if (fanfareActive) {
+        if (!fanfare.mix(destination, error)) return false;
+        if (fanfare.voicesFinished()) {
+            fanfareActive = false;
+            sequenceVolume.set(1, 20);
+        }
+    }
     if (!soundState) return true;
-    if (sequence.mix(destination, error)) {
+    jaudio::SpatialParameters parameters;
+    parameters.volume = sequenceVolume.value;
+    if (sequence.mix(destination, error, parameters)) {
         if (sequence.voicesFinished()) {
             soundState = 0;
             activeSound = 0;
+            if (resumeMansion) {
+                resumeMansion = false;
+                start();
+            }
         }
         return true;
     }

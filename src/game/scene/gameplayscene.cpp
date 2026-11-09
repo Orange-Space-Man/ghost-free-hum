@@ -120,6 +120,7 @@ gameplay::Scene::Scene(const std::filesystem::path& package, gameentry::State& e
 }
 
 void gameplay::Scene::prepareGraphics() {
+    gamerenderer::setInterfaceTextures(resources.hud().textures());
     textures = gamerenderer::loadPreviews(actorModels, 640, 480);
     gamerenderer::cacheScene("gameplay");
     if (models.empty()) prepareModelGraphics(gamerenderer::modelDevice());
@@ -221,6 +222,7 @@ void gameplay::Scene::update(const playerinput::PadStatus& pad, std::int16_t por
     managers.glows().update();
     managers.modelEffects().update(resources.rooms(), resources.visibility());
     managers.particles().update();
+    resources.hud().update(player->view, resources.menuEnabled(), managers.roomCleared(player->room() >> 24));
     ++ticks;
 }
 
@@ -297,7 +299,12 @@ void gameplay::Scene::draw(bool present) {
         picture.texture = gameplayDrawn ? textures[0] : 0;
         picture.width = 640;
         picture.height = 480;
-        gamerenderer::drawInterface({picture}, present);
+        std::vector<startupscene::Picture> pictures{picture};
+        if (gameplayDrawn) {
+            const auto hud = resources.hud().pictures();
+            pictures.insert(pictures.end(), hud.begin(), hud.end());
+        }
+        gamerenderer::drawInterface(pictures, present);
     }
 }
 
@@ -492,11 +499,13 @@ void gameplay::Scene::drawActors(unsigned stage, const s3denvironment::Camera& c
         if ((actor.flags & 0x6100) || !(actor.model->color & 255) || actor.room() >> 24 == 255 ||
             !resources.visibility().marked(actor.room() >> 24, visibilityBuffer, 0)) continue;
         const auto* player = dynamic_cast<const playeractor::Player*>(&actor);
-        auto world = player ? playerorientation::toMatrix(player->state.quaternion) :
-            poseTables.world({}, {actor.rotation[0], actor.rotation[1], actor.rotation[2]}, {1, 1, 1});
-        for (unsigned row = 0; row < 3; ++row) {
-            for (unsigned column = 0; column < 3; ++column) world[row * 4 + column] *= actor.scale[column];
-            world[row * 4 + 3] = actor.position[row];
+        auto world = actor.matrix;
+        if (player) {
+            world = playerorientation::toMatrix(player->state.quaternion);
+            for (unsigned row = 0; row < 3; ++row) {
+                for (unsigned column = 0; column < 3; ++column) world[row * 4 + column] *= actor.scale[column];
+                world[row * 4 + 3] = actor.position[row];
+            }
         }
         const auto& surface = actor.surface();
         actorModels[i].materials = surface.materials;

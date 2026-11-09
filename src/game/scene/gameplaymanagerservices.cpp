@@ -78,7 +78,32 @@ namespace {
     };
 }
 
-struct gameplay::ManagerServices::State {
+struct gameplay::ManagerServices::State : playerpresentation::Services {
+    void effect(unsigned id, const std::array<float, 3>& position) override {
+        particles->effects().create(id, position, furnitureDirection);
+    }
+    bool specialItem(unsigned type) const override { return furnitureAdmission.key(type); }
+    void music(unsigned sequence) override {
+        if (sequence != 0x8000000e) throw std::runtime_error("Item presentation requires its special fanfare routing.");
+        audio->music.requestItem(audioInterfaceFrame);
+    }
+    void collected(actors::MoveActor& item) override {
+        auto* owner = enemies->activeOwner(item);
+        if (!owner) throw std::runtime_error("Presented item has no retained owner.");
+        owner->event(4);
+    }
+    void setFlag(unsigned flag) override { dependencies.flags.setOn(static_cast<std::uint8_t>(flag)); }
+    bool equipmentOwned() const override {
+        return (events->player(0)->components->bits[4]->data[0x1b] & 0x20) != 0;
+    }
+    void equipmentEvent(unsigned, unsigned, unsigned) override {
+        throw std::runtime_error("Item presentation requires the equipped-player transition.");
+    }
+    void sound(unsigned id, const std::array<float, 3>& position) override { audio->playback.play(id, position); }
+    void scene(unsigned scene, std::int32_t) override {
+        if (scene == 1 && !events->player(0)->view.field861) return;
+        throw std::runtime_error("Collected key requires its original map scene admission.");
+    }
     explicit State(const ManagerDependencies& dependencies) : dependencies(dependencies),
         savedDoors(dependencies.entry.inventory.data(), dependencies.entry.inventory.size()),
         commonResources(dependencies.common), mapResources(dependencies.map), collision(dependencies.mission),
@@ -540,7 +565,7 @@ void gameplay::ManagerServices::updatePlayerMain(unsigned index, const PlayerMai
     playerinteraction::DoorFrameServices doorFrame{door, *state->actors, state->dependencies.flags, *state->life,
         services.timers.doubledDamage, globalSound};
     playeractor::MainFrameServices frame{preparePlayerEnvironment(index), doorFrame, preparePlayerLadder(index),
-        services.presentation, services.scanner, *state->events, services.timers, state->playerSpecialActive};
+        services.presentation ? services.presentation : state.get(), services.scanner, *state->events, services.timers, state->playerSpecialActive};
     frame.owner = [this, ownerSlot] { updateOwner(ownerSlot); };
     frame.input = [this, index, &services] { updatePlayerInput(index, services.inputAvailable, services.scannerTransition); };
     frame.furniture = [this, index] { updatePlayerFurniture(index); };

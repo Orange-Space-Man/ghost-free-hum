@@ -17,6 +17,7 @@ namespace gameplaymusic {
         bool requestDeath(std::uint32_t audioFrame);
         bool requestEntrance(std::uint32_t audioFrame);
         bool requestFirstKey(std::uint32_t audioFrame);
+        bool requestItem(std::uint32_t audioFrame);
         void stop();
         void setCutsceneActive(bool active);
         void updateSequenceControls();
@@ -40,6 +41,9 @@ namespace gameplaymusic {
         const gameplayaudio::Context& context;
         const std::int32_t& health;
         jaudio::Playback sequence;
+        jaudio::Playback fanfare;
+        jaudio::SequenceVolume sequenceVolume;
+        bool fanfareActive = false, resumeMansion = false;
         State state;
         RoomAudio roomAudio;
         gameplayaudio::RoomParameters roomParameters;

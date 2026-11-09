@@ -104,6 +104,10 @@ struct gameplay::ResourceOwner::State {
         owner.nearPlane = camera.nearPlane;
         owner.farPlane = camera.farPlane;
         entrance = std::make_unique<gameevent::EntranceOwner>(package, types, entry, *rooms, *managers, owner);
+        std::vector<unsigned> hudRooms;
+        for (const auto& resident : residentRooms->slots())
+            if (resident.room != 0xffffffff) hudRooms.push_back(resident.room);
+        hud = std::make_unique<Hud>(common, executable, hudRooms);
     }
 
     gameentry::State& entry;
@@ -112,6 +116,7 @@ struct gameplay::ResourceOwner::State {
     gameassets::Package package;
     std::vector<std::uint8_t> executable;
     gamearchive::Archive common, map;
+    std::unique_ptr<Hud> hud;
     mission::Resources mission;
     jaudio::Resources audio;
     enemytypes::Catalog types;
@@ -168,6 +173,8 @@ void gameplay::ResourceOwner::updateEvents(unsigned elapsedSeconds, std::uint32_
 }
 
 bool gameplay::ResourceOwner::entranceActive() const { return state->entrance->active(); }
+bool gameplay::ResourceOwner::menuEnabled() const { return state->entrance->menuEnabled(); }
+gameplay::Hud& gameplay::ResourceOwner::hud() { return *state->hud; }
 bool gameplay::ResourceOwner::eventCameraActive() const { return state->entrance->cameraActive(); }
 
 gameplaycamera::DrawState gameplay::ResourceOwner::publishCamera() {

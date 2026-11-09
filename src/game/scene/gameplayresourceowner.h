@@ -7,6 +7,7 @@
 #include "game/world/roomfurnitureowner.h"
 #include "game/world/roomvisibilitywalk.h"
 #include "game/world/roommirror.h"
+#include "game/scene/gameplayhud.h"
 
 namespace gameplay {
     class ResourceOwner {
@@ -22,6 +23,8 @@ namespace gameplay {
         void updateEvents(unsigned elapsedSeconds, std::uint32_t audioFrame);
         bool entranceActive() const;
         bool eventCameraActive() const;
+        bool menuEnabled() const;
+        Hud& hud();
         const roomlocation::Rooms& rooms() const;
         const std::vector<std::uint8_t>& executable() const;
         gameassets::Package& package();

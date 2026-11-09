@@ -13,7 +13,7 @@
 #include <stdexcept>
 
 namespace {
-    constexpr std::array<unsigned, 59> soundIds{0x839, 0x83d, 0x1809, 0x180a, 0x180b, 0x181e, 0x280f, 0x2810, 0x282b,
+    constexpr std::array<unsigned, 64> soundIds{0x80f, 0x288c, 0x84f, 0x81e, 0x1829, 0x839, 0x83d, 0x1809, 0x180a, 0x180b, 0x181e, 0x280f, 0x2810, 0x282b,
         0x186e, 0x1841, 0x810, 0x811, 0x850, 0x4808, 0x4828, 0x828, 0x3b, 0x43, 0x801, 2, 0x805, 9,
         0x288a, 0x1028, 0x837, 0x84c, 0x813, 0x2814, 0x2805, 0x281c,
         0x1842, 0x182c, 0x1820, 0x1823, 0x1877, 0x1868, 0x4820, 0x4822, 0x1815, 0x1816, 0x2828, 0x288e, 0x826, 0x2800, 0x827,
@@ -364,15 +364,15 @@ actoranimation::SoundServices jaudio::PositionalPlayback::animationServicesAt(co
         },
         [this](actoranimation::SoundHandle& sound, float value) {
             std::lock_guard<std::recursive_mutex> lock(owners.mutex);
-            owned(sound).record->parameters->controls.set(EffectControl::pitch, 0, value, 0);
+            owned(sound).record->parameters->controls.set(EffectControl::pitch, 5, value, 0);
         },
         [this](actoranimation::SoundHandle& sound, float value) {
             std::lock_guard<std::recursive_mutex> lock(owners.mutex);
-            owned(sound).record->parameters->controls.set(EffectControl::volume, 0, value, 0);
+            owned(sound).record->parameters->controls.set(EffectControl::volume, 5, value, 0);
         },
         [this](actoranimation::SoundHandle& sound, float value) {
             std::lock_guard<std::recursive_mutex> lock(owners.mutex);
-            owned(sound).record->parameters->controls.set(EffectControl::pan, 0, value, 0);
+            owned(sound).record->parameters->controls.set(EffectControl::pan, 5, value, 0);
         }
     };
 }
