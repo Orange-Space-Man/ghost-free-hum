@@ -393,6 +393,7 @@ add_library(WindowsRuntime STATIC
     src/platform/d3d11/modelrenderstate.cpp
     src/platform/d3d11/modeltexturerenderer.cpp
     src/platform/windows/gameapplication.cpp
+    src/platform/windows/gamedebugcheckpoint.cpp
     src/platform/windows/gameassetsetup.cpp
     src/platform/windows/gameframepacing.cpp
     src/platform/windows/startupaudio.cpp

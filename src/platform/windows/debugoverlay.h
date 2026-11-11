@@ -11,5 +11,7 @@ namespace debugoverlay {
     bool isVisible();
     void toggle();
     void setScene(const std::string& information);
+    void setLoading(const std::string& information);
+    bool isLoading();
     void draw();
 }

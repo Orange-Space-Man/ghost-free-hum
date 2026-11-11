@@ -168,6 +168,12 @@ void gameapplication::Application::advanceMenu() {
 }
 
 void gameapplication::Application::advance(bool audioFinished) {
+    if (debugCheckpoint) {
+        const auto checkpoint = debugCheckpoint;
+        debugCheckpoint = 0;
+        loadDebugCheckpoint(checkpoint);
+        return;
+    }
     const bool interfaceTick = !gameplayActive || gameplayPhase != 0 || gameplayScene->gameplaySuspended();
     advanceScene(audioFinished);
     if (audioEnabled && interfaceTick) startupaudio::updateInterface([&] {
@@ -235,6 +241,7 @@ void gameapplication::Application::close() {
 }
 
 void gameapplication::Application::restart() {
+    debugCheckpoint = 0;
     gameplayPreparation = {};
     startupaudio::bindPositionalPlayback({});
     gameplayScene.reset();
@@ -265,6 +272,23 @@ void gameapplication::Application::restart() {
 }
 
 LRESULT gameapplication::Application::handleMessage(HWND window, UINT message, WPARAM wParam, LPARAM lParam) {
+    if (message == WM_KILLFOCUS || (message == WM_KEYUP && wParam == VK_F3)) debugModifier = false;
+    if (debugLoading) {
+        if (message == WM_CLOSE || (message == WM_KEYDOWN && wParam == VK_ESCAPE)) {
+            debugCloseRequested = true;
+            return 0;
+        }
+        if (message == WM_KEYDOWN || message == WM_KEYUP || message == WM_SYSKEYDOWN || message == WM_SYSKEYUP) return 0;
+    }
+    if (message == WM_KILLFOCUS) debugModifier = false;
+    if ((message == WM_KEYDOWN || message == WM_KEYUP) && wParam == VK_F3) {
+        debugModifier = message == WM_KEYDOWN;
+        return 0;
+    }
+    if (message == WM_KEYDOWN && debugModifier && wParam >= '1' && wParam <= '9') {
+        if (!(lParam & (1LL << 30)) && wParam <= '2') debugCheckpoint = static_cast<unsigned>(wParam - '0');
+        return 0;
+    }
     if (debugoverlay::handleMessage(window, message, wParam, lParam)) return 0;
     if (message == WM_KEYDOWN && (wParam == VK_F1 || wParam == VK_F5)) {
         if (!(lParam & (1LL << 30))) restart();
@@ -381,6 +405,11 @@ int gameapplication::Application::run(int show) {
             while (nextFrame <= now) {
                 advance(startupaudio::finished());
                 nextFrame += period;
+                if (resetHostClock) {
+                    resetHostClock = false;
+                    nextFrame = Clock::now() + period;
+                    break;
+                }
             }
             if (presentation.ready(std::chrono::duration<double>(now - clockStart).count())) draw(true);
             if (menuActive && menuState.requestedScene != -1 && !boundaryReported) {

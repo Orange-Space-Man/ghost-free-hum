@@ -35,6 +35,7 @@ namespace gameapplication {
         void draw(bool present);
         void close();
         void restart();
+        void loadDebugCheckpoint(unsigned checkpoint);
         LRESULT handleMessage(HWND window, UINT message, WPARAM wParam, LPARAM lParam);
 
     protected:
@@ -72,6 +73,9 @@ namespace gameapplication {
         unsigned openingDestination = 1;
         unsigned preparedCutscene = 0x4c;
 
+        bool debugModifier = false;
+        bool debugLoading = false, debugCloseRequested = false, resetHostClock = false;
+        unsigned debugCheckpoint = 0;
         HWND window = nullptr;
     };
 }

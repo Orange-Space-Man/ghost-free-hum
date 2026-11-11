@@ -25,11 +25,24 @@ roomresidency::InitialRooms::InitialRooms(const std::vector<std::uint8_t>& execu
     const auto count = descriptor[0];
     if (count != rooms.entries().size()) throw std::runtime_error("Room residency descriptor does not match its room owner.");
     const auto records = read(executable, word(descriptor, 20), count * 48);
+    const auto preloads = read(executable, word(descriptor, 8), count * 4);
     const auto strings = read(executable, word(descriptor, 4), count * 4);
     std::string error;
     if (!poseTables.read(executable, error)) throw std::runtime_error(error);
     if (!doordata::read(executable, word(descriptor, 24), portals, error)) throw std::runtime_error(error);
     for (unsigned i = 0; i < count; ++i) {
+        std::vector<unsigned> neighbors;
+        auto preload = word(preloads, i * 4);
+        for (;;) {
+            const auto bytes = read(executable, preload, 2);
+            const auto room = static_cast<std::int16_t>((unsigned(bytes[0]) << 8) | bytes[1]);
+            if (room == -1) break;
+            if (room < 0 || room >= count || neighbors.size() >= count)
+                throw std::runtime_error("Invalid original room preload list.");
+            neighbors.push_back(static_cast<unsigned>(room));
+            preload += 2;
+        }
+        preloadRooms.push_back(std::move(neighbors));
         roomAttributes.push_back(word(records, i * 48 + 4));
         std::string path;
         const unsigned address = word(strings, i * 4);
@@ -77,25 +90,8 @@ void roomresidency::InitialRooms::load(gameassets::Package& package, const std::
     if (initialized) throw std::runtime_error("Initial room loading cannot replace an active room lifecycle.");
     const auto requests = required(playerRooms);
     std::array<Resident, 7> result;
-    std::string error;
     for (unsigned i = 0; i < requests.size() && i < result.size(); ++i) {
-        auto& resident = result[i];
-        resident.room = requests[i];
-        resident.path = paths.at(resident.room);
-        auto path = resident.path;
-        if (!path.empty() && path.front() == '/') path.erase(path.begin());
-        std::vector<std::uint8_t> bytes;
-        if (!package.read("files/" + path, bytes, error)) throw std::runtime_error(error);
-        const auto extension = path.substr(path.find_last_of('.'));
-        if (extension == ".arc") {
-            if (!resident.archive.read(bytes, error)) throw std::runtime_error(error);
-            const auto resource = resident.archive.findPathResource("/room.bin");
-            if (resource < 0) throw std::runtime_error("Original room archive has no room.bin resource.");
-            resident.model = resident.archive.resource(resource);
-        } else if (extension == ".bin") resident.model = std::move(bytes);
-        else throw std::runtime_error("Unsupported original room resource extension.");
-        if (!resident.drawing.read(resident.model, poseTables, error)) throw std::runtime_error(resident.path + ": " + error);
-        if (extension == ".arc") resident.furniture.load(resident.archive, furniture, resident.room, flags, poseTables);
+        result[i] = readRoom(package, requests[i], furniture, flags);
     }
     residents = std::move(result);
     initialized = true;
@@ -105,3 +101,65 @@ const std::array<roomresidency::Resident, 7>& roomresidency::InitialRooms::slots
 const doordata::Table& roomresidency::InitialRooms::descriptors() const { return portals; }
 const std::vector<std::int16_t>& roomresidency::InitialRooms::links(unsigned room) const { return connections.at(room); }
 std::uint32_t roomresidency::InitialRooms::flags(unsigned room) const { return roomAttributes.at(room); }
+
+roomresidency::Resident roomresidency::InitialRooms::readRoom(gameassets::Package& package, unsigned room,
+    const jmp::ToolData& furniture, const gameflags::State& flags) const {
+    Resident resident;
+    resident.room = room;
+    std::string error;
+    resident.path = paths.at(resident.room);
+    auto path = resident.path;
+    if (!path.empty() && path.front() == '/') path.erase(path.begin());
+    std::vector<std::uint8_t> bytes;
+    if (!package.read("files/" + path, bytes, error)) throw std::runtime_error(error);
+    const auto extension = path.substr(path.find_last_of('.'));
+    if (extension == ".arc") {
+        if (!resident.archive.read(bytes, error)) throw std::runtime_error(error);
+        const auto resource = resident.archive.findPathResource("/room.bin");
+        if (resource < 0) throw std::runtime_error("Original room archive has no room.bin resource.");
+        resident.model = resident.archive.resource(resource);
+    } else if (extension == ".bin") resident.model = std::move(bytes);
+    else throw std::runtime_error("Unsupported original room resource extension.");
+    if (!resident.drawing.read(resident.model, poseTables, error)) throw std::runtime_error(resident.path + ": " + error);
+    if (extension == ".arc") resident.furniture.load(resident.archive, furniture, resident.room, flags, poseTables);
+    return resident;
+}
+
+std::vector<unsigned> roomresidency::InitialRooms::retained(const std::vector<std::uint32_t>& playerRooms) const {
+    std::vector<unsigned> result;
+    for (const auto id : playerRooms) {
+        if (rooms.entries().at(id >> 24).id != id)
+            throw std::runtime_error("Room residency requires a resolved player room.");
+        const auto append = [&](unsigned room) {
+            if (std::find(result.begin(), result.end(), room) == result.end()) result.push_back(room);
+        };
+        append(id & 255);
+        for (auto room : preloadRooms.at(id & 255)) append(room);
+    }
+    return result;
+}
+
+bool roomresidency::InitialRooms::update(gameassets::Package& package,
+    const std::vector<std::uint32_t>& playerRooms, const jmp::ToolData& furniture, const gameflags::State& flags,
+    const std::function<void(const Resident&)>& release, const std::function<void(const Resident&)>& create) {
+    if (!initialized || !release || !create)
+        throw std::logic_error("Room updates require initialized residency and ownership callbacks.");
+    const auto requests = retained(playerRooms);
+    bool changed = false;
+    for (auto room : requests) {
+        if (std::any_of(residents.begin(), residents.end(), [&](const Resident& entry) { return entry.room == room; })) continue;
+        auto slot = std::find_if(residents.begin(), residents.end(), [](const Resident& entry) { return entry.room == 0xffffffff; });
+        if (slot == residents.end()) break;
+        auto prepared = readRoom(package, room, furniture, flags);
+        *slot = std::move(prepared);
+        create(*slot);
+        changed = true;
+    }
+    for (auto& resident : residents) {
+        if (resident.room == 0xffffffff || std::find(requests.begin(), requests.end(), resident.room) != requests.end()) continue;
+        release(resident);
+        resident = {};
+        changed = true;
+    }
+    return changed;
+}

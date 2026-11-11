@@ -6,6 +6,7 @@
 #include "game/world/roomlocation.h"
 #include "game/world/doorresources.h"
 #include "game/world/roomfurnitureresources.h"
+#include <functional>
 
 namespace roomresidency {
     struct Resident {
@@ -23,6 +24,11 @@ namespace roomresidency {
         std::vector<unsigned> required(const std::vector<std::uint32_t>& playerRooms) const;
         void load(gameassets::Package& package, const std::vector<std::uint32_t>& playerRooms,
             const jmp::ToolData& furniture, const gameflags::State& flags);
+        std::vector<unsigned> retained(const std::vector<std::uint32_t>& playerRooms) const;
+        bool update(gameassets::Package& package, const std::vector<std::uint32_t>& playerRooms,
+            const jmp::ToolData& furniture, const gameflags::State& flags,
+            const std::function<void(const Resident&)>& release,
+            const std::function<void(const Resident&)>& create);
         const std::array<Resident, 7>& slots() const;
         const doordata::Table& descriptors() const;
         const std::vector<std::int16_t>& links(unsigned room) const;
@@ -33,9 +39,12 @@ namespace roomresidency {
         doordata::Table portals;
         std::vector<std::string> paths;
         std::vector<std::vector<std::int16_t>> connections;
+        std::vector<std::vector<unsigned>> preloadRooms;
         std::vector<std::uint32_t> roomAttributes;
         std::array<Resident, 7> residents;
         dooranimation::PoseTables poseTables;
         bool initialized = false;
+        Resident readRoom(gameassets::Package& package, unsigned room,
+            const jmp::ToolData& furniture, const gameflags::State& flags) const;
     };
 }

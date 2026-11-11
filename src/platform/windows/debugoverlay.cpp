@@ -12,7 +12,7 @@ extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND window, UINT m
 namespace {
     bool visible = false;
     bool platformReady = false, rendererReady = false;
-    std::string systemInfo, sceneInfo;
+    std::string systemInfo, sceneInfo, loadingInfo;
 }
 
 void debugoverlay::open(HWND window, ID3D11Device* device, ID3D11DeviceContext* context) {
@@ -22,6 +22,7 @@ void debugoverlay::open(HWND window, ID3D11Device* device, ID3D11DeviceContext* 
     ImGui::GetIO().LogFilename = nullptr;
     ImGui::GetIO().ConfigFlags |= ImGuiConfigFlags_NoMouseCursorChange;
     visible = false;
+    loadingInfo.clear();
     systemInfo = "Windows (version unavailable)";
     using VersionFunction = LONG(WINAPI*)(OSVERSIONINFOW*);
     const auto module = GetModuleHandleW(L"ntdll.dll");
@@ -44,6 +45,7 @@ void debugoverlay::close() {
     if (platformReady) ImGui_ImplWin32_Shutdown();
     if (ImGui::GetCurrentContext()) ImGui::DestroyContext();
     platformReady = rendererReady = visible = false;
+    loadingInfo.clear();
 }
 
 bool debugoverlay::handleMessage(HWND window, UINT message, WPARAM wParam, LPARAM lParam) {
@@ -60,12 +62,20 @@ bool debugoverlay::isVisible() { return visible; }
 void debugoverlay::toggle() { visible = !visible; }
 void debugoverlay::setScene(const std::string& information) { sceneInfo = information; }
 
+void debugoverlay::setLoading(const std::string& information) { loadingInfo = information; }
+bool debugoverlay::isLoading() { return !loadingInfo.empty(); }
+
 void debugoverlay::draw() {
     if (!rendererReady) return;
     ImGui_ImplDX11_NewFrame();
     ImGui_ImplWin32_NewFrame();
     ImGui::NewFrame();
-    if (visible) {
+    if (!loadingInfo.empty()) {
+        auto* list = ImGui::GetForegroundDrawList();
+        const auto width = ImGui::GetIO().DisplaySize.x;
+        list->AddText(nullptr, 0, {17, 17}, IM_COL32(0, 0, 0, 255), loadingInfo.c_str(), nullptr, width > 32 ? width - 32 : 1);
+        list->AddText(nullptr, 0, {16, 16}, IM_COL32(255, 255, 255, 255), loadingInfo.c_str(), nullptr, width > 32 ? width - 32 : 1);
+    } else if (visible) {
         const auto& io = ImGui::GetIO();
         char timing[128];
         std::snprintf(timing, sizeof(timing), "FPS: %.1f | Frame: %.2f ms | %.0fx%.0f | D3D11",
