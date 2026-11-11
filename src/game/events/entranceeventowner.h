@@ -3,6 +3,8 @@
 #include "game/events/entrancescript.h"
 #include "game/events/eventactorcommands.h"
 #include "game/events/eventpathanimation.h"
+#include "game/events/eventmessagetext.h"
+#include "game/events/eventmessagewindows.h"
 #include "game/scene/gameplaymanagerservices.h"
 
 namespace gameevent {
@@ -10,7 +12,7 @@ namespace gameevent {
     public:
         EntranceOwner(gameassets::Package& package, const enemytypes::Catalog& types,
             gameentry::State& entry, const roomlocation::Rooms& rooms, gameplay::ManagerServices& managers,
-            gameplaycamera::CameraOwner& camera);
+            gameplaycamera::CameraOwner& camera, const std::vector<std::uint8_t>& executable, MessageWindows& messages);
         void update(unsigned elapsedSeconds, std::uint32_t audioFrame);
         bool updateCamera();
         bool menuEnabled() const;
@@ -29,6 +31,9 @@ namespace gameevent {
         void shadowOff(std::string_view actor) override;
         void endCamera() override;
         void closeMessage() override;
+        void speak(unsigned window, unsigned line) override;
+        void messageColor(unsigned window, int color) override;
+        void closeWindow(unsigned window) override;
         bool messageClosed() const override;
         void finish() override;
         actors::MoveActor* find(std::string_view name) override;
@@ -51,6 +56,9 @@ namespace gameevent {
         const roomlocation::Rooms& rooms;
         gameplay::ManagerServices& managers;
         gameplaycamera::CameraOwner& cameraOwner;
+        const std::vector<std::uint8_t>& executable;
+        MessageWindows& messages;
+        std::unique_ptr<MessageText> messageText;
         gamearchive::Archive archive;
         std::unique_ptr<EntranceScript> script;
         std::unique_ptr<CameraPath> cameraPath;

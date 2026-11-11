@@ -103,11 +103,17 @@ struct gameplay::ResourceOwner::State {
         owner.aspect = camera.aspect;
         owner.nearPlane = camera.nearPlane;
         owner.farPlane = camera.farPlane;
-        entrance = std::make_unique<gameevent::EntranceOwner>(package, types, entry, *rooms, *managers, owner);
         std::vector<unsigned> hudRooms;
         for (const auto& resident : residentRooms->slots())
             if (resident.room != 0xffffffff) hudRooms.push_back(resident.room);
         hud = std::make_unique<Hud>(common, executable, hudRooms);
+        if (!messageFont.readExecutable(executable, error)) throw std::runtime_error(error);
+        messageGraphics = std::make_unique<gameevent::MessageGraphics>(common, executable, messageFont);
+        messages = std::make_unique<gameevent::MessageWindows>(executable, gameevent::MessageWindows::Services{
+            [this](const std::string& text) { return messageGraphics->measure(text); },
+            [this](unsigned sound) { managers->playback()->playGlobal(sound); },
+            [this](bool active) { managers->music().setCutsceneActive(active); }});
+        entrance = std::make_unique<gameevent::EntranceOwner>(package, types, entry, *rooms, *managers, owner, executable, *messages);
     }
 
     gameentry::State& entry;
@@ -148,6 +154,9 @@ struct gameplay::ResourceOwner::State {
     std::unique_ptr<roomresidency::InitialRooms> residentRooms;
     std::unique_ptr<roomfurniture::Owner> furnitureOwner;
     std::unique_ptr<ManagerServices> managers;
+    gamefont::Font messageFont;
+    std::unique_ptr<gameevent::MessageGraphics> messageGraphics;
+    std::unique_ptr<gameevent::MessageWindows> messages;
     std::unique_ptr<gameevent::EntranceOwner> entrance;
 };
 
@@ -157,6 +166,22 @@ gameplay::ResourceOwner::ResourceOwner(const std::filesystem::path& path, gameen
 
 gameplay::ResourceOwner::~ResourceOwner() = default;
 gameplay::ManagerServices& gameplay::ResourceOwner::managers() { return *state->managers; }
+gameevent::MessageWindows& gameplay::ResourceOwner::messages() { return *state->messages; }
+void gameplay::ResourceOwner::updateMessages() {
+    state->messages->update(0);
+    state->managers->setMessageSpeaking(state->messages->speaking());
+}
+std::vector<roommaterials::Texture> gameplay::ResourceOwner::interfaceTextures() const {
+    auto textures = state->hud->textures();
+    const auto& messages = state->messageGraphics->textures();
+    textures.insert(textures.end(), messages.begin(), messages.end());
+    return textures;
+}
+std::vector<startupscene::Picture> gameplay::ResourceOwner::messagePictures() const {
+    auto pictures = state->messageGraphics->pictures(*state->messages);
+    for (auto& picture : pictures) picture.texture += state->hud->textures().size();
+    return pictures;
+}
 const s3denvironment::Camera& gameplay::ResourceOwner::camera() const { return state->camera; }
 
 void gameplay::ResourceOwner::updateCamera() {

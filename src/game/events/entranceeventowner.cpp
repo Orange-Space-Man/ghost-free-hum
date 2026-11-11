@@ -11,8 +11,9 @@ namespace {
 
 gameevent::EntranceOwner::EntranceOwner(gameassets::Package& package, const enemytypes::Catalog& types,
     gameentry::State& entry, const roomlocation::Rooms& rooms, gameplay::ManagerServices& managers,
-    gameplaycamera::CameraOwner& camera) : package(package), types(types), entry(entry), rooms(rooms),
-    managers(managers), cameraOwner(camera) {}
+    gameplaycamera::CameraOwner& camera, const std::vector<std::uint8_t>& executable, MessageWindows& messages) :
+    package(package), types(types), entry(entry), rooms(rooms), managers(managers), cameraOwner(camera),
+    executable(executable), messages(messages) {}
 
 bool gameevent::EntranceOwner::eligible(unsigned event, unsigned elapsedSeconds) const {
     const auto& events = managers.missionEvents();
@@ -66,9 +67,7 @@ void gameevent::EntranceOwner::update(unsigned elapsedSeconds, std::uint32_t fra
         const auto text = resource("event" + number + ".txt");
         const auto messageIndex = archive.findNameResource("message" + number + ".csv");
         if (messageIndex >= 0) {
-            const auto messages = archive.resource(messageIndex);
-            if (std::any_of(messages.begin(), messages.end(), [](auto value) { return value != '\r' && value != '\n'; }))
-                throw std::runtime_error("Event requires its original message presentation owner.");
+            messageText = std::make_unique<MessageText>(executable, archive.resource(messageIndex));
         }
         script = std::make_unique<EntranceScript>(std::string(text.begin(), text.end()));
         auto& condition = managers.missionEvents().condition(currentEvent);
@@ -89,6 +88,7 @@ void gameevent::EntranceOwner::update(unsigned elapsedSeconds, std::uint32_t fra
         managers.playerEvents().player(0)->flags &= ~0xc00u;
         managers.missionEvents().complete(currentEvent, entry.inventory.at(0x20 + currentEvent));
         script.reset();
+        messageText.reset();
         archive = {};
     }
 }
@@ -208,7 +208,12 @@ void gameevent::EntranceOwner::blendCamera() {
     cameraPath.reset();
 }
 
-// Both supported events have no window commands or message text.
-void gameevent::EntranceOwner::closeMessage() {}
-bool gameevent::EntranceOwner::messageClosed() const { return true; }
+void gameevent::EntranceOwner::closeMessage() { messages.closeAll(); }
+bool gameevent::EntranceOwner::messageClosed() const { return !messages.visible(); }
+void gameevent::EntranceOwner::speak(unsigned window, unsigned line) {
+    if (!messageText) throw std::runtime_error("Event speech requires its original message resource.");
+    messages.speak(window, messageText->line(line));
+}
+void gameevent::EntranceOwner::messageColor(unsigned window, int color) { messages.color(window, color); }
+void gameevent::EntranceOwner::closeWindow(unsigned window) { messages.close(window); }
 void gameevent::EntranceOwner::finish() { managers.playerEvents().player(0)->flags &= ~0x10u; }

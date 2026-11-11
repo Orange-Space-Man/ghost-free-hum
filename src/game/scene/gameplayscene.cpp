@@ -124,7 +124,7 @@ gameplay::Scene::Scene(const std::filesystem::path& package, gameentry::State& e
 }
 
 void gameplay::Scene::prepareGraphics() {
-    gamerenderer::setInterfaceTextures(resources.hud().textures());
+    gamerenderer::setInterfaceTextures(resources.interfaceTextures());
     textures = gamerenderer::loadPreviews(actorModels, 640, 480);
     gamerenderer::cacheScene("gameplay");
     if (models.empty()) prepareModelGraphics(gamerenderer::modelDevice());
@@ -148,42 +148,64 @@ void gameplay::Scene::prepareModelGraphics(ID3D11Device* device) {
             }
         }
     }
-    const auto load = [&](const doors::ModelResource& model) {
-        if (models.count(&model)) return;
-        auto& batches = models[&model];
-        batches.load(device, model);
-        modellighting::State lighting;
-        modellighting::initialize(lighting, view, {}, useRoomLights, ambient, trig);
-        const auto& shadow = resources.managers().shadowProjection();
-        modellighting::prepareModel(lighting, view, shadow.position, shadow.target, shadow.spotlight, trig);
-        modelrenderer::PipelineState warmPipeline;
-        modelrenderer::initializeModelState(warmPipeline);
-        warmPipeline.scissor = true;
-        std::array<modelrenderer::StageRegisters, 16> registers{};
-        modeldraw::TraversalState state;
-        state.overrideOpacity = true;
-        for (unsigned pass = 0; pass < 3; ++pass) {
-            modeldraw::traverse(model.drawing, pass, 255, state, [&](const modeldraw::DrawCommand& command) {
-                batches.prepare(command, pass, lighting, warmPipeline, registers, true);
-            });
-        }
-        for (const auto flags : {0u, 1u}) {
-            state.lightingFlags = static_cast<std::uint8_t>(flags);
-            modeldraw::traverse(model.drawing, 2, 100, state, [&](const modeldraw::DrawCommand& command) {
-                batches.prepare(command, 2, lighting, warmPipeline, registers, true);
-            });
-        }
-    };
     for (const auto& resident : resources.residentRooms().slots()) {
         if (resident.room == 0xffffffff) continue;
-        load(resident.drawing);
-        for (const auto& model : resident.furniture.models()) load(model);
+        prepareRoomGraphics(device, resident);
     }
     for (unsigned i = 0; i < resources.managers().doors().size(); ++i) {
         const auto& pose = resources.managers().doors().leaf(i).pose;
-        load(pose.model(pose.selectedModel()));
-        load(pose.model(0));
+        prepareModel(device, pose.model(pose.selectedModel()));
+        prepareModel(device, pose.model(0));
     }
+}
+
+void gameplay::Scene::prepareModel(ID3D11Device* device, const doors::ModelResource& model) {
+    if (models.count(&model)) return;
+    auto& batches = models[&model];
+    batches.load(device, model);
+    modellighting::State lighting;
+    modellighting::initialize(lighting, view, {}, useRoomLights, ambient, trig);
+    const auto& shadow = resources.managers().shadowProjection();
+    modellighting::prepareModel(lighting, view, shadow.position, shadow.target, shadow.spotlight, trig);
+    modelrenderer::PipelineState warmPipeline;
+    modelrenderer::initializeModelState(warmPipeline);
+    warmPipeline.scissor = true;
+    std::array<modelrenderer::StageRegisters, 16> registers{};
+    modeldraw::TraversalState state;
+    state.overrideOpacity = true;
+    for (unsigned pass = 0; pass < 3; ++pass) {
+        modeldraw::traverse(model.drawing, pass, 255, state, [&](const modeldraw::DrawCommand& command) {
+            batches.prepare(command, pass, lighting, warmPipeline, registers, true);
+        });
+    }
+    for (const auto flags : {0u, 1u}) {
+        state.lightingFlags = static_cast<std::uint8_t>(flags);
+        modeldraw::traverse(model.drawing, 2, 100, state, [&](const modeldraw::DrawCommand& command) {
+            batches.prepare(command, 2, lighting, warmPipeline, registers, true);
+        });
+    }
+}
+
+void gameplay::Scene::prepareRoomGraphics(ID3D11Device* device, const roomresidency::Resident& resident) {
+    prepareModel(device, resident.drawing);
+    for (const auto& model : resident.furniture.models()) prepareModel(device, model);
+}
+
+bool gameplay::Scene::updateRoomResources() {
+    auto* device = gamerenderer::modelDevice();
+    if (!device) throw std::runtime_error("Room graphics updates require an initialized renderer.");
+    const bool changed = resources.updateRooms([&](const roomresidency::Resident& resident) {
+        models.erase(&resident.drawing);
+        for (const auto& model : resident.furniture.models()) models.erase(&model);
+    }, [&](const roomresidency::Resident& resident) {
+        prepareRoomGraphics(device, resident);
+    });
+    if (changed) {
+        gamerenderer::setInterfaceTextures(resources.interfaceTextures());
+        textures = gamerenderer::loadPreviews(actorModels, 640, 480);
+        gamerenderer::cacheScene("gameplay");
+    }
+    return changed;
 }
 
 void gameplay::Scene::update(const playerinput::PadStatus& pad, std::int16_t port, std::uint32_t audioFrame) {
@@ -236,6 +258,7 @@ void gameplay::Scene::update(const playerinput::PadStatus& pad, std::int16_t por
     managers.modelEffects().update(resources.rooms(), resources.visibility());
     managers.particles().update();
     resources.hud().update(player->view, resources.fullscreen(), managers.roomCleared(player->room() >> 24));
+    resources.updateMessages();
     ++ticks;
 }
 
@@ -318,6 +341,8 @@ void gameplay::Scene::draw(bool present) {
         if (gameplayDrawn) {
             const auto hud = resources.hud().pictures();
             pictures.insert(pictures.end(), hud.begin(), hud.end());
+            const auto messages = resources.messagePictures();
+            pictures.insert(pictures.end(), messages.begin(), messages.end());
         }
         gamerenderer::drawInterface(pictures, present);
     }

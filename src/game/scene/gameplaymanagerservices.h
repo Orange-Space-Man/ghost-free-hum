@@ -117,6 +117,7 @@ namespace gameplay {
         void bindPlayerFurniture(roomfurniture::Owner& furniture);
         void updatePlayerFurniture(unsigned index);
         void updateFurniture(unsigned frame);
+        void setMessageSpeaking(bool speaking);
         void updateDoors(unsigned frame);
         void updatePlayerLight(unsigned index);
         void updatePlayerAudio(unsigned index);

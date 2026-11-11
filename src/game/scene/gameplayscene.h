@@ -15,6 +15,7 @@ namespace gameplay {
         std::string debugInfo();
         Scene(const std::filesystem::path& package, gameentry::State& entry);
         void prepareGraphics();
+        bool updateRoomResources();
         void prepareModelGraphics(ID3D11Device* device);
         void update(const playerinput::PadStatus& pad = {}, std::int16_t port = -1, std::uint32_t audioFrame = 0);
         void updatePresentation(bool gameplayTick);
@@ -66,6 +67,8 @@ namespace gameplay {
         playersheets::Renderer sheetRenderer;
         roommirror::Renderer mirrorRenderer;
         D3D11_VIEWPORT drawViewport{0, 0, 640, 480, 0, 1};
+        void prepareModel(ID3D11Device* device, const doors::ModelResource& model);
+        void prepareRoomGraphics(ID3D11Device* device, const roomresidency::Resident& resident);
         void drawSheets(unsigned pass);
         float lightProjectionDepth = 0;
         void drawPlayerLight();

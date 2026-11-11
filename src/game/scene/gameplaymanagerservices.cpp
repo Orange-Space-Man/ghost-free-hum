@@ -325,6 +325,7 @@ struct gameplay::ManagerServices::State : playerpresentation::Services {
     unsigned mapMode = 2;
     bool restored = false;
     bool placementFailed = false;
+    bool messageSpeaking = false;
     doors::State doors;
     doors::SavedFlags savedDoors;
     std::array<std::uint32_t, 256> roomIds{};
@@ -432,6 +433,7 @@ gameplaymusic::Owner& gameplay::ManagerServices::music() { return state->audio->
 gameflags::State& gameplay::ManagerServices::flags() { return state->dependencies.flags; }
 const playerinput::Pad& gameplay::ManagerServices::controller() const { return state->dependencies.pad; }
 bool gameplay::ManagerServices::roomCleared(unsigned room) const { return state->runtime->roomCleared(room); }
+void gameplay::ManagerServices::setMessageSpeaking(bool speaking) { state->messageSpeaking = speaking; }
 
 bool gameplay::ManagerServices::beginPlayerCapture(std::int32_t index, const std::array<float, 3>& position,
     std::int32_t recipient) {
@@ -776,9 +778,8 @@ void gameplay::ManagerServices::updateFurniture(unsigned frame) {
             return true;
         }
         if (object.behavior == 14) {
-            if (state->dependencies.flags.value(94))
-                throw std::runtime_error("Talking portraits require the original message-speaking state.");
-            state->furnitureResponse.portrait(object, row, visible, false, false, frame, services);
+            state->furnitureResponse.portrait(object, row, visible, false,
+                state->dependencies.flags.value(94) && state->messageSpeaking, frame, services);
             return true;
         }
         if (object.behavior == 38) {

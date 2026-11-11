@@ -8,6 +8,7 @@
 #include "game/world/roomvisibilitywalk.h"
 #include "game/world/roommirror.h"
 #include "game/scene/gameplayhud.h"
+#include "game/events/eventmessagegraphics.h"
 
 namespace gameplay {
     class ResourceOwner {
@@ -26,6 +27,10 @@ namespace gameplay {
         bool menuEnabled() const;
         bool fullscreen() const;
         Hud& hud();
+        gameevent::MessageWindows& messages();
+        void updateMessages();
+        std::vector<roommaterials::Texture> interfaceTextures() const;
+        std::vector<startupscene::Picture> messagePictures() const;
         const roomlocation::Rooms& rooms() const;
         const std::vector<std::uint8_t>& executable() const;
         gameassets::Package& package();
