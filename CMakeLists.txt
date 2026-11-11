@@ -50,6 +50,9 @@ add_library(JLib STATIC
 )
 
 add_library(Game STATIC
+    src/game/events/eventmessagegraphics.cpp
+    src/game/menu/gamefontprint.cpp
+    src/game/events/eventmessagewindows.cpp
     src/game/events/eventmessagetext.cpp
     src/game/scene/gameplayhud.cpp
     src/game/events/eventactorcommands.cpp

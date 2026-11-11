@@ -19,6 +19,9 @@ void gameevent::EntranceServices::fullscreen(bool) { unsupportedService(); }
 void gameevent::EntranceServices::playerEvent(unsigned) { unsupportedService(); }
 void gameevent::EntranceServices::releaseActor() { unsupportedService(); }
 void gameevent::EntranceServices::blendCamera() { unsupportedService(); }
+void gameevent::EntranceServices::speak(unsigned, unsigned) { unsupportedService(); }
+void gameevent::EntranceServices::messageColor(unsigned, int) { unsupportedService(); }
+void gameevent::EntranceServices::closeWindow(unsigned) { unsupportedService(); }
 
 gameevent::EntranceScript::EntranceScript(std::string source) : source(std::move(source)) {}
 
@@ -120,6 +123,13 @@ bool gameevent::EntranceScript::update(EntranceServices& services) {
             services.effect(placement, resource);
         }
         else if (command == "BGM") services.music(number() & 255);
+        else if (command == "WINDOW") messageWindow = static_cast<std::uint8_t>(number());
+        else if (command == "COLOR") services.messageColor(messageWindow, integer());
+        else if (command == "CLOSEWINDOW") services.closeWindow(number());
+        else if (command == "SPEAK") {
+            services.speak(messageWindow, number());
+            state = 2;
+        }
         else if (command == "FRAMESTART") grouped = true;
         else if (command == "FRAMEEND") grouped = false;
         else if (command == "GCAMERA") services.camera(token('"', '"'));

@@ -42,6 +42,9 @@ namespace gameevent {
         virtual void playerEvent(unsigned event);
         virtual void releaseActor();
         virtual void blendCamera();
+        virtual void speak(unsigned window, unsigned line);
+        virtual void messageColor(unsigned window, int color);
+        virtual void closeWindow(unsigned window);
     };
 
     class EntranceScript {
@@ -55,6 +58,7 @@ namespace gameevent {
         std::size_t cursor = 0;
         std::uint32_t wait = 0;
         unsigned state = 1;
+        std::uint8_t messageWindow = 0;
         bool completed = false;
         std::string_view token(char begin, char end);
         unsigned number();
