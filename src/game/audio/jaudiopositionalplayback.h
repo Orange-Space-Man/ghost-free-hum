@@ -25,6 +25,7 @@ namespace jaudio {
         void setInteractionVolume(PositionalSound& sound, float value);
         void updateFurnitureSwing(unsigned id, const std::array<float, 3>& position,
             const std::array<float, 2>& velocity, PositionalSound*& binding);
+        void playThunder();
         void playDeathEffects(const std::array<float, 3>& position);
         actoranimation::SoundServices animationServices(const std::array<float, 3>& position);
         actoranimation::SoundServices animationServices();

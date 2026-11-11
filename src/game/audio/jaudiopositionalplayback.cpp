@@ -13,7 +13,7 @@
 #include <stdexcept>
 
 namespace {
-    constexpr std::array<unsigned, 64> soundIds{0x80f, 0x288c, 0x84f, 0x81e, 0x1829, 0x839, 0x83d, 0x1809, 0x180a, 0x180b, 0x181e, 0x280f, 0x2810, 0x282b,
+    constexpr std::array<unsigned, 65> soundIds{0x1805, 0x80f, 0x288c, 0x84f, 0x81e, 0x1829, 0x839, 0x83d, 0x1809, 0x180a, 0x180b, 0x181e, 0x280f, 0x2810, 0x282b,
         0x186e, 0x1841, 0x810, 0x811, 0x850, 0x4808, 0x4828, 0x828, 0x3b, 0x43, 0x801, 2, 0x805, 9,
         0x288a, 0x1028, 0x837, 0x84c, 0x813, 0x2814, 0x2805, 0x281c,
         0x1842, 0x182c, 0x1820, 0x1823, 0x1877, 0x1868, 0x4820, 0x4822, 0x1815, 0x1816, 0x2828, 0x288e, 0x826, 0x2800, 0x827,
@@ -68,6 +68,8 @@ struct jaudio::PositionalPlayback::Runtime : EffectAdmissionServices, EffectCate
     std::array<EffectMetadata, soundIds.size()> metadata{};
     std::array<SpatialParameters, soundIds.size()> defaults{};
     std::array<float, 5> furnitureSound;
+    std::array<float, 3> thunderPosition;
+    std::array<float, 7> thunderPan;
     std::uint8_t parameterFlags;
     std::function<std::uint32_t(const std::array<float, 3>&, bool)> sourceContext;
     std::vector<EffectReleaseSequence> sequences;
@@ -202,6 +204,10 @@ jaudio::PositionalPlayback::PositionalPlayback(PositionOwners& owners, const std
     }
     runtime = std::make_unique<Runtime>(*this, executable, package, resources);
     runtime->sourceContext = std::move(sourceContext);
+    for (unsigned i = 0; i < runtime->thunderPosition.size(); ++i)
+        runtime->thunderPosition[i] = scalar(executable, 0x8038e71c + i * 4);
+    for (unsigned i = 0; i < runtime->thunderPan.size(); ++i)
+        runtime->thunderPan[i] = scalar(executable, 0x804dd0a4 + i * 4);
 }
 
 jaudio::PositionalPlayback::~PositionalPlayback() { stop(); }
@@ -287,6 +293,22 @@ void jaudio::PositionalPlayback::setPort(PositionalSound& sound, unsigned port, 
         if (record.parameters->ports[port] == value) return;
         runtime->master.publishEffectPort(record.channel, port, value);
         record.parameters->ports[port] = value;
+    }
+}
+
+void jaudio::PositionalPlayback::playThunder() {
+    std::lock_guard<std::recursive_mutex> lock(owners.mutex);
+    const auto context = runtime->sourceContext ? runtime->sourceContext(runtime->thunderPosition, false) : 0;
+    auto* sound = playGlobal(0x1805);
+    if (!sound) return;
+    auto& controls = owned(*sound).record->parameters->controls;
+    if (context & 0x200) controls.set(EffectControl::fxmix, 7, 0, 0);
+    else {
+        const auto& bounds = runtime->thunderPan;
+        const float x = std::clamp(runtime->thunderPosition[0], bounds[0], bounds[1]);
+        const float z = std::clamp(runtime->thunderPosition[2], bounds[3], bounds[4]);
+        controls.set(EffectControl::fxmix, 7, (bounds[5] + z) / bounds[6], 0);
+        controls.set(EffectControl::pan, 7, (bounds[1] + x) / bounds[2], 0);
     }
 }
 

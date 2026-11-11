@@ -29,6 +29,7 @@
 #include "game/world/roomfurnitureresponse.h"
 #include "resources/glme01addresses.h"
 #include "game/audio/roomambientaudio.h"
+#include "game/world/roomstorm.h"
 #include "game/enemies/enemyitemstrategy.h"
 
 #include <stdexcept>
@@ -117,7 +118,8 @@ struct gameplay::ManagerServices::State : playerpresentation::Services {
         playerAction(dependencies.executable, dependencies.actors.pose), playerAttached(dependencies.executable),
         playerVelocity(dependencies.executable, dependencies.actors.pose),
         ladderPaths(dependencies.mission), furnitureAdmission(dependencies.executable, dependencies.types),
-        furnitureResponse(dependencies.executable, furnitureAdmission) {
+        furnitureResponse(dependencies.executable, furnitureAdmission),
+        storm(dependencies.executable, dependencies.mission, dependencies.actors.pose) {
         std::vector<std::uint8_t> bytes;
         std::string error;
         constexpr unsigned furnitureEffectDirection = 0x8021da40;
@@ -368,6 +370,7 @@ struct gameplay::ManagerServices::State : playerpresentation::Services {
     std::unique_ptr<SuctionAudio> suctionAudio;
     std::unique_ptr<playerevents::SuctionEnvironment> suction;
     roomlighting::Pool lights;
+    roomlighting::Storm storm;
     players::Globals playerGlobals;
     playeractor::Globals actorGlobals;
     std::shared_ptr<Audio> audio;
@@ -648,6 +651,15 @@ void gameplay::ManagerServices::updateCaptures(const playermodels::VacuumPath* p
 void gameplay::ManagerServices::updateAudio(const std::array<float, 12>& listener) {
     state->audio->listener = listener;
     state->audio->playback.update(listener);
+}
+
+void gameplay::ManagerServices::updateStorm() {
+    const auto* player = state->events->player(0);
+    if (!player) throw std::runtime_error("Room storm requires the manager-owned player.");
+    const auto& dependencies = state->dependencies;
+    state->storm.update(player->room(), dependencies.actors.rooms.entries().at(player->room() >> 24),
+        dependencies.roomFlags.at(player->room() >> 24), dependencies.camera, player->position[1], state->lights,
+        [this] { return state->runtime->random(); }, [this] { state->audio->playback.playThunder(); });
 }
 
 void gameplay::ManagerServices::setAudioInterfaceFrame(std::uint32_t frame) { state->audioInterfaceFrame = frame; }

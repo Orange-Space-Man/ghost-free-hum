@@ -106,6 +106,7 @@ add_library(Game STATIC
     src/game/audio/gameplaymusicowner.cpp
     src/game/audio/gameplayaudiocontext.cpp
     src/game/audio/roomambientaudio.cpp
+    src/game/world/roomstorm.cpp
     src/game/audio/jaudiopositionalplayback.cpp
     src/game/audio/jaudiopositionowners.cpp
     src/game/effects/barriereffectpool.cpp

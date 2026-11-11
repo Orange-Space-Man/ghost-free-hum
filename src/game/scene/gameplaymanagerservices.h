@@ -92,6 +92,7 @@ namespace gameplay {
         modeleffects::Manager& modelEffects();
         mapcollision::State& collision();
         roomlighting::Pool& lights();
+        void updateStorm();
         std::shared_ptr<jaudio::PositionalPlayback> playback();
         const gameplayaudio::Context& audioContext() const;
         gameplaymusic::Owner& music();

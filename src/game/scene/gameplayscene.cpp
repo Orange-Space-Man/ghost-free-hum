@@ -216,6 +216,7 @@ void gameplay::Scene::update(const playerinput::PadStatus& pad, std::int16_t por
         ambient[channel] = static_cast<std::uint8_t>(int(ambient[channel]) + std::clamp(difference, -10, 10));
     }
     updateOpacity();
+    if (useRoomLights) managers.updateStorm();
     managers.updatePoses();
     managers.completePlayerFrame({}, false);
     managers.updatePlacement(ticks / 30, false);
