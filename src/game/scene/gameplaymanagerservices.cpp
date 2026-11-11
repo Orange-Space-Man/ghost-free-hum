@@ -231,6 +231,7 @@ struct gameplay::ManagerServices::State : playerpresentation::Services {
         enemies->initializeActors();
         particles->bind(*enemies, *actors, dependencies.actors.pose, dependencies.visibility);
         particles->initializeElements();
+        particles->initializeRunningDust(dependencies.mission, dependencies.actors.rooms);
         auto* player = dynamic_cast<playeractor::Player*>(actors->actor(enemies->appearPoint(0).actor));
         if (!player) throw std::runtime_error("Original manager services require Player zero.");
         auto sound = [this](unsigned id, const std::array<float, 3>& position, unsigned parameter) {
@@ -305,6 +306,7 @@ struct gameplay::ManagerServices::State : playerpresentation::Services {
         sender->addReceiver(enemies.get());
         sender->addReceiver(candles.get());
         sender->addReceiver(eventEffects.get());
+        sender->addReceiver(&particles->runningDust());
         sender->addReceiver(webs.get());
         sender->addReceiver(generators.get());
         roomDependencies = std::make_unique<roomdependencies::Catalog>(dependencies.executable, mapMode);

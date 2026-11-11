@@ -123,17 +123,23 @@ void particlerenderer::Renderer::prepare(const particles::EmitterPool& pool) {
     material(glow);
 }
 
+void particlerenderer::Renderer::prepare(const particles::Billboard& billboard) {
+    texture(billboard.texture);
+    material(billboard);
+}
+
 modelrenderer::MaterialShader& particlerenderer::Renderer::material(const particles::Billboard& particle) {
     const unsigned key = particle.mode | (particle.blend << 8) | (particle.depth << 16) | (particle.cull << 24);
     const auto found = materials.find(key);
     if (found != materials.end()) return found->second;
     static const std::array<unsigned, 4> colors[] = {{2, 12, 8, 15}, {15, 2, 8, 15},
-        {4, 2, 8, 15}, {15, 8, 2, 4}, {15, 8, 15, 2}};
-    if (particle.mode > 4) throw std::runtime_error("Particle color combiner mode is invalid.");
+        {4, 2, 8, 15}, {15, 8, 2, 4}, {15, 8, 15, 2}, {15, 4, 8, 15}};
+    if (particle.mode > 5) throw std::runtime_error("Particle color combiner mode is invalid.");
     modelmaterial::Stage stage;
     stage.coordinate = stage.texture = 0;
     stage.color = colors[particle.mode];
-    stage.alpha = {7, 4, 1, 7};
+    stage.alpha = particle.mode == 5 ? std::array<unsigned, 4>{1, 7, 7, 4} : std::array<unsigned, 4>{7, 4, 1, 7};
+    stage.alphaOperation = particle.mode == 5 ? 1 : 0;
     modelmaterial::StageProgram program;
     program.stageCount = program.coordinateCount = 1;
     program.stages.push_back(stage);
@@ -167,14 +173,13 @@ void particlerenderer::Renderer::draw(ID3D11DeviceContext* context, const std::v
     context->IASetVertexBuffers(0, 1, vertices.GetAddressOf(), &stride, &offset);
     context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
     constexpr unsigned corners[] = {0, 1, 2, 0, 2, 3};
-    constexpr std::array<float, 2> uv[] = {{0, 0}, {1, 0}, {1, 1}, {0, 1}};
     for (const auto& particle : particles) {
         if (particle.textureWrap[0] > 2 || particle.textureWrap[1] > 2)
             throw std::runtime_error("Invalid particle texture wrapping.");
         context->PSSetSamplers(0, 1, samplers[particle.textureWrap[0] * 3 + particle.textureWrap[1]].GetAddressOf());
         std::array<Vertex, 6> output;
         for (unsigned i = 0; i < 6; ++i) output[i] = {particle.positions[corners[i]],
-            {uv[corners[i]][0] * particle.textureScale, uv[corners[i]][1] * particle.textureScale}};
+            {particle.coordinates[corners[i]][0] * particle.textureScale, particle.coordinates[corners[i]][1] * particle.textureScale}};
         D3D11_MAPPED_SUBRESOURCE mapped{};
         check(context->Map(vertices.Get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped), "Cannot update particle vertices.");
         std::memcpy(mapped.pData, output.data(), sizeof(output));

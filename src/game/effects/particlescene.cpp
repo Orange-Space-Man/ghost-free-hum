@@ -44,7 +44,20 @@ void particles::Scene::refresh(const SecondarySource* secondary) {
     binding->refreshed = true;
 }
 
-void particles::Scene::update() { emitters.update(simulation); }
+void particles::Scene::update() {
+    emitters.update(simulation);
+    if (dust) dust->update(shared);
+}
+
+void particles::Scene::initializeRunningDust(const mission::Resources& mission, const roomlocation::Rooms& rooms) {
+    if (!binding || dust) throw std::logic_error("Running dust requires one initialized scene binding.");
+    dust = std::make_unique<runningdust::Manager>(executable, mission, rooms, binding->visibility, randomState);
+}
+
+runningdust::Manager& particles::Scene::runningDust() {
+    if (!dust) throw std::logic_error("Running dust is not initialized.");
+    return *dust;
+}
 
 std::vector<particles::Billboard> particles::Scene::prepareGlows(GlowPool& glows, const std::array<float, 12>& view) {
     return particles::prepareGlows(glows, resources.get(0x4b485f45, "ps_ball.bti"), randomState, view);

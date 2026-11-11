@@ -131,6 +131,7 @@ void gameplay::Scene::prepareModelGraphics(ID3D11Device* device) {
     sheetRenderer.load(device);
     mirrorRenderer.load(device, resources.mirror());
     particleRenderer.prepare(resources.managers().particles().pool());
+    particleRenderer.prepare(resources.managers().particles().runningDust().material());
     lightRenderer.load(device, resources.managers().players().models->model(playermodels::SharedModel::Light));
     for (auto* pool : resources.managers().modelEffects().registered()) {
         if (!dynamic_cast<modeleffects::BarrierPool*>(pool)) continue;
@@ -219,6 +220,7 @@ void gameplay::Scene::update(const playerinput::PadStatus& pad, std::int16_t por
     if (useRoomLights) managers.updateStorm();
     managers.updatePoses();
     managers.completePlayerFrame({}, false);
+    managers.particles().refresh(nullptr);
     managers.updatePlacement(ticks / 30, false);
     managers.glows().update();
     managers.modelEffects().update(resources.rooms(), resources.visibility());
@@ -407,6 +409,7 @@ void gameplay::Scene::drawWorld(bool reflection, const s3denvironment::Camera& c
     drawPlayerLight();
     particleRenderer.draw(gamerenderer::modelContext(), particleBillboards->prepare(resources.managers().particles().pool(),
         resources.rooms(), resources.visibility(), view), view, projection);
+    particleRenderer.draw(gamerenderer::modelContext(), resources.managers().particles().runningDust().prepare(view), view, projection);
 }
 
 void gameplay::Scene::drawSheets(unsigned pass) {
@@ -581,5 +584,6 @@ std::string gameplay::Scene::debugInfo() {
         " | Furniture: " + std::to_string(furniture) + " | Visible doors: " + std::to_string(visibleDoors) +
         " | Resident rooms: " + std::to_string(residentRooms) + "\nModel effects: " + std::to_string(activeEffects) +
         " | Drawing: " + std::to_string(visibleModelEffects) + " | Candles: " + std::to_string(resources.managers().candleCount()) +
-        " | Particles: " + std::to_string(particleCount) + "\nSimulation: 30 Hz | Tick: " + std::to_string(ticks);
+        " | Particles: " + std::to_string(particleCount) + " | Dust: " +
+        std::to_string(resources.managers().particles().runningDust().particleCount()) + "\nSimulation: 30 Hz | Tick: " + std::to_string(ticks);
 }

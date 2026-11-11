@@ -6,6 +6,7 @@
 #include "game/effects/particlebatch.h"
 #include "game/effects/elementparticlescene.h"
 #include "game/effects/particlebillboards.h"
+#include "game/effects/runningdustmanager.h"
 
 namespace actors { class Registry; }
 
@@ -24,6 +25,8 @@ namespace particles {
         std::vector<Billboard> prepareActorGlows(const actors::Registry& actors, const roomtraversal::State& visibility,
             const std::array<float, 12>& view, unsigned buffer) const;
         void initializeElements();
+        void initializeRunningDust(const mission::Resources& mission, const roomlocation::Rooms& rooms);
+        runningdust::Manager& runningDust();
         void initializeEffectBatches();
         void updateElements();
         elements::Scene& elemental();
@@ -44,6 +47,7 @@ namespace particles {
         const std::vector<std::uint8_t>& executable;
         ArchiveResources& resources;
         std::unique_ptr<elements::Scene> elementalScene;
+        std::unique_ptr<runningdust::Manager> dust;
         std::array<std::unique_ptr<Batch>, 3> batches;
     };
 }

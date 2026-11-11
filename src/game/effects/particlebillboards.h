@@ -10,6 +10,7 @@ namespace particles {
         std::array<std::array<float, 3>, 4> positions{};
         std::array<std::uint8_t, 4> color{}, secondary{};
         Resource texture;
+        std::array<std::array<float, 2>, 4> coordinates{{{0, 0}, {1, 0}, {1, 1}, {0, 1}}};
         unsigned mode = 0, blend = 0, depth = 0, cull = 2;
         float textureScale = 1;
         std::array<unsigned, 2> textureWrap{};
