@@ -1,6 +1,9 @@
 #pragma once
 
 #include "game/player/playersharedmodels.h"
+#include <functional>
+
+namespace actormodel { class InitialPose; }
 
 namespace playermodels {
     class VacuumVolume {
@@ -43,6 +46,14 @@ namespace playermodels {
         void reset();
     };
 
+    struct PathContact {
+        std::array<float, 3> normal{}, correction{};
+        std::uint32_t surface = 0;
+    };
+
+    using PathCollision = std::function<PathContact(const std::array<float, 3>& position,
+        const std::array<float, 3>& previous)>;
+
     class VacuumPath {
     public:
         explicit VacuumPath(unsigned count);
@@ -50,10 +61,21 @@ namespace playermodels {
         VacuumPath(const VacuumPath&) = delete;
         VacuumPath& operator=(const VacuumPath&) = delete;
         void initialize(float blend, const PathParameters& parameters, const PathParameters* target);
+        void update(float blend, const PathParameters& parameters, const PathParameters* target,
+            const PathCollision& collision);
         unsigned count;
         float interval;
         std::unique_ptr<VacuumPoint[]> points;
         std::unique_ptr<std::array<float, 3>[]> vectors;
+
+    protected:
+        virtual void integrate(const PathParameters& parameters, const PathCollision& collision);
+    };
+
+    struct VacuumFeedback {
+        std::function<int(std::uint32_t)> roomState;
+        std::function<std::uint32_t()> random;
+        std::function<void(const VacuumPoint&, float, float, int)> impact;
     };
 
     class VacuumModel : public VacuumPath, public VacuumVolume {
@@ -63,6 +85,9 @@ namespace playermodels {
         VacuumModel(const VacuumModel&) = delete;
         VacuumModel& operator=(const VacuumModel&) = delete;
         void updateSegments();
+        void publishJoints(const std::array<float, 3>& frameDirection);
+        void updateMotion(const VacuumParameters& value, const actormodel::InitialPose& pose,
+            const PathCollision& collision, const VacuumFeedback& feedback);
         bool intersects(double radius, std::array<float, 3>& direction, const std::array<float, 3>& position) const override;
         bool intersectsSegment(double radius, std::array<float, 3>& direction,
             const std::array<float, 3>& position, unsigned index) const;
@@ -74,5 +99,6 @@ namespace playermodels {
         std::uint16_t joint = 0;
         float field9C = 0, fieldA0 = 0, fieldA4 = 1, fieldA8 = 0, fieldAC = 0;
         float fieldB0 = 0, fieldB4 = 1, fieldB8 = 0, fieldBC = 0;
+        j3dmodel::Matrix trailingMatrix{};
     };
 }

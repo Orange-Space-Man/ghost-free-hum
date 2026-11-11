@@ -118,6 +118,39 @@ void j3dmodel::calculateBasic(ModelInstance& instance, const TransformTables& ta
     calculateAnimated(instance, tables);
 }
 
+void j3dmodel::calculateEnvelopes(ModelInstance& instance) {
+    const auto& geometry = instance.model->geometry;
+    if (geometry.envelopes.empty()) return;
+    if (!geometry.bytes || !geometry.inverseMatrixOffset)
+        throw std::runtime_error("J3D envelope calculation requires inverse joint matrices.");
+    const auto& bytes = *geometry.bytes;
+    for (unsigned index = 0; index < geometry.envelopes.size(); ++index) {
+        const auto& envelope = geometry.envelopes[index];
+        if (envelope.joints.size() != envelope.weights.size()) throw std::runtime_error("Invalid J3D envelope weights.");
+        auto& output = instance.envelopeMatrices[index];
+        output.fill(0);
+        instance.envelopeScaleFlags[index] = 1;
+        for (unsigned entry = 0; entry < envelope.joints.size(); ++entry) {
+            const auto joint = envelope.joints[entry];
+            const auto offset = static_cast<std::size_t>(geometry.inverseMatrixOffset) + joint * sizeof(Matrix);
+            if (joint >= geometry.joints.size() || offset > bytes.size() || sizeof(Matrix) > bytes.size() - offset)
+                throw std::runtime_error("J3D envelope references an invalid inverse joint matrix.");
+            Matrix inverse;
+            for (unsigned element = 0; element < inverse.size(); ++element) {
+                const auto position = offset + element * 4;
+                const std::uint32_t bits = (std::uint32_t(bytes[position]) << 24) | (std::uint32_t(bytes[position + 1]) << 16) |
+                    (std::uint32_t(bytes[position + 2]) << 8) | bytes[position + 3];
+                std::memcpy(&inverse[element], &bits, sizeof(float));
+            }
+            const auto transformed = concatenateMatrix(instance.jointMatrices[joint], inverse);
+            const double weight = envelope.weights[entry];
+            for (unsigned element = 0; element < output.size(); ++element)
+                output[element] += static_cast<float>(static_cast<double>(transformed[element]) * weight);
+            instance.envelopeScaleFlags[index] &= instance.jointScaleFlags[joint];
+        }
+    }
+}
+
 bool j3dmodel::inverseTranspose(const Matrix& m, NormalMatrix& output) {
     const float positiveA = (m[9] * m[2]) * m[4];
     const float positiveB = (m[10] * m[0]) * m[5];

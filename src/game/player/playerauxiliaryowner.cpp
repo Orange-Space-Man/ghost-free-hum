@@ -1,6 +1,9 @@
 #include "game/player/playerauxiliaryowner.h"
 #include "game/actors/moveactor.h"
 #include "resources/dolresources.h"
+#include "game/actors/actortimingsampler.h"
+#include "game/world/dooranimationpose.h"
+#include <cmath>
 #include <cstring>
 #include <stdexcept>
 
@@ -56,4 +59,57 @@ void playerresources::AuxiliaryOwner::stopBeam(
 playerresources::AuxiliaryOwner::~AuxiliaryOwner() {
     weapon.reset();
     vacuum.reset();
+}
+
+void playerresources::AuxiliaryOwner::update(const AuxiliaryFrameServices& services) {
+    if (!field3C) return;
+    if (!actor || !head || !body || (field3D && !target))
+        throw std::runtime_error("Cinematic equipment update requires its attached actors.");
+    weapon->update(executable, *actor, head, body, 0, 0, 0, true, 0, services.actors.pose, services.random);
+    const auto type = actor->type();
+    weapon->updatePipe(services.pipe, *head, *body, 1, true, type == 2 || type == 3 || type == 4,
+        false, services.collision);
+    if (field3D) {
+        playermodels::VacuumEffectOwner::Input input;
+        input.origin = weapon->first->position;
+        input.direction = weapon->first->field610;
+        input.angle = static_cast<std::uint16_t>(actor->rotation[1]);
+        input.room = actor->room();
+        auto matrix = target->matrix;
+        if (target->model) matrix = dooranimation::concatenate(matrix,
+            target->model->matrix(0, services.strategies.attachmentJoint(target->type())));
+        input.target = {matrix[3], matrix[7], matrix[11]};
+        input.strength = beamStrength;
+        input.mode = beamMode;
+        vacuum->start(input, services.effect);
+    }
+    vacuum->updateMotion(services.vacuum, services.actors.pose, services.collision, services.feedback);
+    if (vacuum->state) {
+        const auto direction = services.actors.pose.horizontalDirection(
+            static_cast<std::uint16_t>(vacuum->input.angle + 0x3fff));
+        vacuum->model->publishJoints({direction[2], 0, direction[0]});
+    }
+    const auto& definition = services.actors.catalog.type(type);
+    const auto timing = services.actors.resources.timing(definition.model, definition.animations.at(actor->animationState)[0]);
+    field14 = actoranimation::timingCrossing(timing.get(), "hfoot_timing",
+        static_cast<float>(double(actor->animationFrame) - double(actor->animationFrameStep)), actor->animationFrame);
+    for (unsigned i = 0; i < 3; ++i) field24[i] = actor->position[i] - field18[i];
+    const float speed = std::sqrt((field24[0] * field24[0] + field24[1] * field24[1]) + field24[2] * field24[2]);
+    if (speed < 0.0001f) {
+        const auto rotation = services.actors.pose.rotation(actor->rotation);
+        field30 = {rotation[2], rotation[6], rotation[10]};
+        const float length = std::sqrt((field30[0] * field30[0] + field30[1] * field30[1]) + field30[2] * field30[2]);
+        if (length >= 0.0001f) {
+            const float inverse = 1 / length;
+            for (auto& component : field30) component *= inverse;
+        } else field30.fill(0);
+    } else {
+        const float inverse = 1 / speed;
+        for (unsigned i = 0; i < 3; ++i) field30[i] = field24[i] * inverse;
+    }
+    if (field14 > 0) {
+        if (!services.sound) throw std::runtime_error("Cinematic equipment footstep requires its sound service.");
+        services.sound(0x828, actor->position, speed);
+    }
+    field18 = actor->position;
 }

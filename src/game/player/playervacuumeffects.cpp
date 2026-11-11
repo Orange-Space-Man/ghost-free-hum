@@ -116,3 +116,8 @@ void playermodels::VacuumEntries::reset() {
     fieldBD0.fill(0);
     fieldBE8.fill(0);
 }
+
+void playermodels::VacuumEffectOwner::updateMotion(const VacuumEffectGlobals& globals, const actormodel::InitialPose& pose,
+    const PathCollision& collision, const VacuumFeedback& feedback) {
+    if (state) model->updateMotion(parameters(globals), pose, collision, feedback);
+}

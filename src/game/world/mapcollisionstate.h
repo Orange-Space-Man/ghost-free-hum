@@ -26,6 +26,8 @@ namespace mapcollision {
         std::array<float, 2> polygonHeightRange(unsigned polygon) const;
         bool ladderContact(std::uint16_t polygon, const std::array<float, 3>& position) const;
         SphereContact sphereContact(const std::array<float, 3>& position, float radius) const;
+        SphereContact pointContact(const std::array<float, 3>& position,
+            const std::array<float, 3>& previous, bool floors = true) const;
         SphereContact sweepSphere(const std::array<float, 3>& position, float radius,
             const std::array<float, 3>& displacement) const;
 

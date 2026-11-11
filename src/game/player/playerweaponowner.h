@@ -21,6 +21,9 @@ namespace playerweapons {
             unsigned attachedAnimation, unsigned attachedState, bool alternate, double shake,
             const actormodel::InitialPose& pose, const std::function<std::uint32_t()>& random);
         void updateEndpoints(const actors::MoveActor& firstActor, const actors::MoveActor& secondActor);
+        void updatePipe(const playermodels::PipeParameters& globals, const actors::MoveActor& firstActor,
+            const actors::MoveActor& secondActor, double scale, bool collisionEnabled, bool bodyConstraint,
+            bool rigid, const playermodels::PathCollision& collision);
         std::int32_t actorType = -1, firstType = -1, secondType = -1;
         std::uint32_t fieldC;
         std::unique_ptr<Part> first, second;

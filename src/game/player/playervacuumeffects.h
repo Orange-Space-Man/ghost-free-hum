@@ -26,6 +26,8 @@ namespace playermodels {
         void start(const Input& value, const std::function<void(unsigned, const std::array<float, 3>&)>& effect);
         void stop(const std::function<void(const VacuumPoint&, unsigned, float)>& particles);
         VacuumParameters parameters(const VacuumEffectGlobals& globals) const;
+        void updateMotion(const VacuumEffectGlobals& globals, const actormodel::InitialPose& pose,
+            const PathCollision& collision, const VacuumFeedback& feedback);
         std::uint8_t state = 0;
         std::unique_ptr<VacuumModel> model;
         Input input;

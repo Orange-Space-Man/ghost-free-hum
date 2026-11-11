@@ -2,8 +2,22 @@
 
 #include "game/player/playerweaponowner.h"
 #include "game/player/playervacuumeffects.h"
+#include "game/actors/moveactor.h"
+#include "game/enemies/enemystrategycatalog.h"
 
 namespace playerresources {
+    struct AuxiliaryFrameServices {
+        const actors::Construction& actors;
+        const enemystrategy::Catalog& strategies;
+        const playermodels::PipeParameters& pipe;
+        const playermodels::VacuumEffectGlobals& vacuum;
+        playermodels::PathCollision collision;
+        playermodels::VacuumFeedback feedback;
+        std::function<std::uint32_t()> random;
+        std::function<void(unsigned, const std::array<float, 3>&)> effect;
+        std::function<void(unsigned, const std::array<float, 3>&, float)> sound;
+    };
+
     class AuxiliaryOwner {
     public:
         AuxiliaryOwner(const std::vector<std::uint8_t>& executable, const playermodels::SharedModels& shared,
@@ -12,6 +26,7 @@ namespace playerresources {
         void attach(actors::MoveActor& owner, actors::MoveActor& head, actors::MoveActor& body);
         void startBeam(int mode, actors::MoveActor& target);
         void stopBeam(const std::function<void(const playermodels::VacuumPoint&, unsigned, float)>& particles);
+        void update(const AuxiliaryFrameServices& services);
         actors::MoveActor* actor = nullptr;
         actors::MoveActor* head = nullptr;
         actors::MoveActor* body = nullptr;

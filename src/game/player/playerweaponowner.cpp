@@ -135,3 +135,38 @@ void playerweapons::Owner::updateEndpoints(const actors::MoveActor& firstActor, 
     endpoint(secondActor, *second, 10, second->position, second->field610, second->fields634.data());
     endpoint(secondActor, *second, 14, second->field61C, second->field628, second->fields634.data() + 48);
 }
+
+void playerweapons::Owner::updatePipe(const playermodels::PipeParameters& globals, const actors::MoveActor& firstActor,
+    const actors::MoveActor& secondActor, double scale, bool collisionEnabled, bool bodyConstraint,
+    bool rigid, const playermodels::PathCollision& collision) {
+    updateEndpoints(firstActor, secondActor);
+    if ((firstActor.flags & 0xc000) || (secondActor.flags & 0xc000)) return;
+    auto parameters = globals;
+    parameters.fields[0] = &second->position;
+    parameters.fields[2] = &second->field610;
+    parameters.fields[1] = &first->field61C;
+    parameters.fields[3] = &first->field628;
+    parameters.field1C = collisionEnabled;
+    auto frameDirection = second->field628;
+    for (auto& component : frameDirection) component = -component;
+    parameters.frameDirection = &frameDirection;
+    parameters.startNormal = &second->field628;
+    parameters.field4C = static_cast<float>(scale);
+    parameters.field20 = static_cast<float>(static_cast<double>(parameters.field20) * scale);
+    playermodels::PipeBoundary boundary;
+    if (bodyConstraint && secondActor.model) {
+        constexpr float angle = 0.5235987901687622f;
+        const float sine = std::sin(angle), cosine = std::cos(angle);
+        const actormodel::Matrix rotation{1, 0, 0, 0, 0, cosine, -sine, 0, 0, sine, cosine, 0};
+        boundary.matrix = dooranimation::concatenate(
+            dooranimation::concatenate(secondActor.matrix, secondActor.model->matrix(0, 1)), rotation);
+        boundary.position = {0, 19, -25};
+        boundary.signs = {-1, -1, 1};
+        boundary.plane = 1;
+        parameters.boundary = &boundary;
+    }
+    if (rigid) parameters.field24[0] = 0;
+    pipe->updateMotion(parameters, collision);
+    pipe->publishJoints(scale, frameDirection);
+    pipe->startNormal = nullptr;
+}

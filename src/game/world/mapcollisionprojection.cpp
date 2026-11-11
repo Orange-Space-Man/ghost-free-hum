@@ -202,6 +202,55 @@ mapcollision::SphereContact mapcollision::State::sphereContact(const std::array<
     return result;
 }
 
+mapcollision::SphereContact mapcollision::State::pointContact(const std::array<float, 3>& position,
+    const std::array<float, 3>& previous, bool floors) const {
+    SphereContact result;
+    auto list = polygonList(collision, position, 0);
+    for (auto index = half(collision, list); index != 0xffff; index = half(collision, list += 2)) {
+        const auto polygon = std::size_t(word(collision, 0x2c)) + std::size_t(index) * 24;
+        if (!(half(collision, polygon + 20) & enabled)) continue;
+        const auto vertex = vector(collision, 0x24, half(collision, polygon));
+        const auto normal = vector(collision, 0x28, half(collision, polygon + 6));
+        const bool floor = normal[1] > 0.7f || normal[1] < -0.7f;
+        if (floor && !floors) continue;
+        std::array<float, 3> local, oldLocal, displacement;
+        for (unsigned i = 0; i < 3; ++i) {
+            local[i] = position[i] - vertex[i];
+            oldLocal[i] = previous[i] - vertex[i];
+            displacement[i] = position[i] - previous[i];
+        }
+        if (!(dot(oldLocal, normal) >= -0.0f)) continue;
+        const float distance = (local[2] * normal[2] + local[0] * normal[0]) + local[1] * normal[1];
+        if (!(distance <= 0 && distance >= -100)) continue;
+        const float movement = dot(displacement, normal);
+        if (movement != 0) {
+            const float numerator = (normal[2] * (vertex[2] - position[2]) +
+                normal[0] * (vertex[0] - position[0])) + normal[1] * (vertex[1] - position[1]);
+            const float denominator = (normal[2] * (previous[2] - position[2]) +
+                normal[0] * (previous[0] - position[0])) + normal[1] * (previous[1] - position[1]);
+            const float fraction = numerator / denominator;
+            for (unsigned i = 0; i < 3; ++i)
+                local[i] = (position[i] + fraction * (previous[i] - position[i])) - vertex[i];
+        }
+        const auto edgeDistance = [&](unsigned offset) {
+            const auto edge = vector(collision, 0x28, half(collision, polygon + offset));
+            return (local[2] * edge[2] + local[0] * edge[0]) + local[1] * edge[1];
+        };
+        if (!(edgeDistance(8) <= 0 && edgeDistance(10) <= 0 && edgeDistance(12) <= number(collision, polygon + 16))) continue;
+        if (floor) {
+            result.floor = static_cast<int>(index);
+            result.floorNormal = normal;
+            const float correction = -distance / normal[1];
+            if (correction > 0) result.correction[1] += correction;
+        } else {
+            result.wall = static_cast<int>(index);
+            result.wallNormal = normal;
+            for (unsigned i = 0; i < 3; ++i) result.correction[i] += -distance * normal[i];
+        }
+    }
+    return result;
+}
+
 mapcollision::SphereContact mapcollision::State::sweepSphere(const std::array<float, 3>& position, float radius,
     const std::array<float, 3>& displacement) const {
     float length = std::sqrt(dot(displacement, displacement));
