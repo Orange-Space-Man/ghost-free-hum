@@ -8,6 +8,7 @@ namespace {
     constexpr unsigned maskHidden = 0x400;
     constexpr unsigned shadowHidden = 0x800;
     constexpr unsigned bodyHidden = 0x4000;
+    constexpr unsigned displayHidden = 0xc000;
 }
 
 void gameevent::applyActorCommand(actors::MoveActor& actor, const ActorCommand& command, ActorServices& services) {
@@ -48,6 +49,10 @@ void gameevent::applyActorCommand(actors::MoveActor& actor, const ActorCommand& 
     case ActorOperation::Alpha:
         actor.fieldE4 = (actor.fieldE4 & 0xffffff00) | (command.value & 255);
         break;
+    case ActorOperation::FixedAlpha:
+        actor.fieldE0 = (actor.fieldE0 & 0xffffff00) | (command.value & 255);
+        actor.fieldE4 = (actor.fieldE4 & 0xffffff00) | (command.value & 255);
+        break;
     case ActorOperation::ShadowOn:
         actor.flags &= ~shadowHidden;
         break;
@@ -65,6 +70,12 @@ void gameevent::applyActorCommand(actors::MoveActor& actor, const ActorCommand& 
         break;
     case ActorOperation::MaskOff:
         actor.flags |= maskHidden;
+        break;
+    case ActorOperation::DisplayOn:
+        actor.flags &= ~displayHidden;
+        break;
+    case ActorOperation::DisplayOff:
+        actor.flags |= displayHidden;
         break;
     }
 }

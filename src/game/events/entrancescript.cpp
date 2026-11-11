@@ -59,9 +59,10 @@ void gameevent::EntranceScript::actor(EntranceServices& services) {
     } else if (command == "POS") {
         call.operation = ActorOperation::Position;
         for (auto& coordinate : call.position) coordinate = static_cast<float>(integer());
-    } else if (command == "ALPHA" || command == "SE") {
-        call.operation = command == "ALPHA" ? ActorOperation::Alpha : ActorOperation::Sound;
-        call.value = number() & (command == "ALPHA" ? 255 : 65535);
+    } else if (command == "ALPHA" || command == "ALPHAF" || command == "SE") {
+        call.operation = command == "SE" ? ActorOperation::Sound :
+            command == "ALPHAF" ? ActorOperation::FixedAlpha : ActorOperation::Alpha;
+        call.value = number() & (command == "SE" ? 65535 : 255);
     } else if (command == "STOP") call.operation = ActorOperation::Stop;
     else if (command == "START") call.operation = ActorOperation::Start;
     else if (command == "COLON") call.operation = ActorOperation::CollisionOn;
@@ -71,6 +72,8 @@ void gameevent::EntranceScript::actor(EntranceServices& services) {
     else if (command == "BODYOFF") call.operation = ActorOperation::BodyOff;
     else if (command == "MASKON") call.operation = ActorOperation::MaskOn;
     else if (command == "MASKOFF") call.operation = ActorOperation::MaskOff;
+    else if (command == "DISPON") call.operation = ActorOperation::DisplayOn;
+    else if (command == "DISPOFF") call.operation = ActorOperation::DisplayOff;
     else throw std::runtime_error("Unsupported event actor command: " + std::string(command));
     services.actorCommand(name, call);
 }

@@ -32,6 +32,8 @@ namespace gameplay {
         roomtraversal::State& visibility();
         std::vector<std::uint32_t>& roomFlags();
         const roomresidency::InitialRooms& residentRooms() const;
+        bool updateRooms(const std::function<void(const roomresidency::Resident&)>& release,
+            const std::function<void(const roomresidency::Resident&)>& create);
         roomfurniture::Owner& furniture();
         roommirror::Owner& mirror();
         std::vector<roomtraversal::Submission> prepareVisibility(const roomportal::Matrix& projection,

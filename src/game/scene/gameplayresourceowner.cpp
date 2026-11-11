@@ -190,6 +190,25 @@ gameassets::Package& gameplay::ResourceOwner::package() { return state->package;
 roomtraversal::State& gameplay::ResourceOwner::visibility() { return state->visibility; }
 std::vector<std::uint32_t>& gameplay::ResourceOwner::roomFlags() { return state->roomFlags; }
 const roomresidency::InitialRooms& gameplay::ResourceOwner::residentRooms() const { return *state->residentRooms; }
+bool gameplay::ResourceOwner::updateRooms(const std::function<void(const roomresidency::Resident&)>& release,
+    const std::function<void(const roomresidency::Resident&)>& create) {
+    if (!release || !create) throw std::invalid_argument("Room updates require renderer ownership callbacks.");
+    std::vector<std::uint32_t> rooms;
+    for (unsigned i = 0; i < state->managers->enemies().playerCount(); ++i) {
+        const auto* player = state->managers->playerEvents().player(static_cast<std::int32_t>(i));
+        if (player) rooms.push_back(player->room());
+    }
+    const auto& table = state->furnitureOwner->placementTable();
+    return state->residentRooms->update(state->package, rooms, table, state->flags,
+        [&](const roomresidency::Resident& resident) {
+            release(resident);
+            for (const auto& placement : resident.furniture.placements()) state->furnitureOwner->release(placement.row);
+        }, [&](const roomresidency::Resident& resident) {
+            state->furnitureOwner->create(resident.furniture, table);
+            state->hud->addRoom(state->common, state->executable, resident.room);
+            create(resident);
+        });
+}
 roomfurniture::Owner& gameplay::ResourceOwner::furniture() { return *state->furnitureOwner; }
 
 std::vector<roomtraversal::Submission> gameplay::ResourceOwner::prepareVisibility(const roomportal::Matrix& projection,

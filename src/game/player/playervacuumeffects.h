@@ -1,6 +1,7 @@
 #pragma once
 
 #include "game/player/playervacuummodel.h"
+#include <functional>
 
 namespace actors { class MoveActor; }
 
@@ -12,10 +13,22 @@ namespace playermodels {
 
     class VacuumEffectOwner {
     public:
+        struct Input {
+            std::array<float, 3> origin{}, direction{};
+            std::uint16_t angle = 0;
+            std::uint32_t room = 0;
+            std::array<float, 3> target{}, targetDirection{};
+            float strength = 0;
+            std::uint8_t mode = 0, alternate = 0;
+            float distance = 0;
+        };
         VacuumEffectOwner(const SharedModels& shared, VacuumEffectGlobals& globals);
+        void start(const Input& value, const std::function<void(unsigned, const std::array<float, 3>&)>& effect);
+        void stop(const std::function<void(const VacuumPoint&, unsigned, float)>& particles);
+        VacuumParameters parameters(const VacuumEffectGlobals& globals) const;
         std::uint8_t state = 0;
         std::unique_ptr<VacuumModel> model;
-        std::array<std::uint8_t, 0x64> fields8;
+        Input input;
     };
 
     struct VacuumTracking {

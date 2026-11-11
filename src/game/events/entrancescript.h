@@ -8,7 +8,7 @@
 namespace gameevent {
     enum class ActorOperation {
         Animation, Look, Path, Stop, Start, Sound, Position, CollisionOn, CollisionOff,
-        Alpha, ShadowOn, ShadowOff, BodyOn, BodyOff, MaskOn, MaskOff
+        Alpha, FixedAlpha, ShadowOn, ShadowOff, BodyOn, BodyOff, MaskOn, MaskOff, DisplayOn, DisplayOff
     };
 
     struct ActorCommand {

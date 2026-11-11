@@ -39,12 +39,8 @@ std::size_t gameplay::Hud::load(const gamearchive::Archive& archive, const std::
 }
 
 gameplay::Hud::Hud(const gamearchive::Archive& archive, const std::vector<std::uint8_t>& executable, const std::vector<unsigned>& rooms) {
-    constexpr unsigned roomNameTable = 0x80305f20, lifeNumberTable = 0x80305020, floorNameTable = 0x803058ec;
-    for (const auto room : rooms) {
-        if (roomTextures.count(room)) continue;
-        const auto path = name(executable, roomNameTable, room);
-        if (!path.empty()) roomTextures.emplace(room, load(archive, path));
-    }
+    constexpr unsigned lifeNumberTable = 0x80305020, floorNameTable = 0x803058ec;
+    for (const auto room : rooms) addRoom(archive, executable, room);
     for (unsigned i = 0; i < digits.size(); ++i) digits[i] = load(archive, name(executable, lifeNumberTable, i));
     for (unsigned i = 0; i < floors.size(); ++i) floors[i] = load(archive, name(executable, floorNameTable, i));
     hearts = {load(archive, "/kawano/lifemeter/heartD.bti"), load(archive, "/kawano/lifemeter/heartD2.bti"),
@@ -61,6 +57,16 @@ gameplay::Hud::Hud(const gamearchive::Archive& archive, const std::vector<std::u
         const auto value = word(table, i * 4);
         std::memcpy(&sine[i], &value, 4);
     }
+}
+
+bool gameplay::Hud::addRoom(const gamearchive::Archive& archive, const std::vector<std::uint8_t>& executable, unsigned room) {
+    constexpr unsigned roomNameTable = 0x80305f20;
+    if (roomTextures.count(room)) return false;
+    const auto path = name(executable, roomNameTable, room);
+    if (path.empty()) return false;
+    const auto texture = load(archive, path);
+    roomTextures.emplace(room, texture);
+    return true;
 }
 
 void gameplay::Hud::update(const playeractor::View& player, bool fullscreen, bool roomCleared) {

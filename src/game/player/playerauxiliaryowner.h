@@ -9,12 +9,24 @@ namespace playerresources {
         AuxiliaryOwner(const std::vector<std::uint8_t>& executable, const playermodels::SharedModels& shared,
             playermodels::VacuumEffectGlobals& globals, playermodels::PipeParameters& pipeParameters);
         ~AuxiliaryOwner();
-        std::array<std::uint32_t, 3> fields{};
+        void attach(actors::MoveActor& owner, actors::MoveActor& head, actors::MoveActor& body);
+        void startBeam(int mode, actors::MoveActor& target);
+        void stopBeam(const std::function<void(const playermodels::VacuumPoint&, unsigned, float)>& particles);
+        actors::MoveActor* actor = nullptr;
+        actors::MoveActor* head = nullptr;
+        actors::MoveActor* body = nullptr;
         std::unique_ptr<playermodels::VacuumEffectOwner> vacuum;
         std::unique_ptr<playerweapons::Owner> weapon;
         float field14 = 0;
         std::array<float, 3> field18{}, field24{}, field30{0, 0, 1};
         std::uint8_t field3C = 0, field3D = 0;
+        actors::MoveActor* target = nullptr;
+        float beamStrength = 0;
+        std::uint8_t beamMode = 0;
+
+    private:
+        const std::vector<std::uint8_t>& executable;
+        std::array<float, 3> beamStrengths{};
     };
 
     struct AuxiliaryState {

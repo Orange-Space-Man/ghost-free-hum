@@ -9,6 +9,7 @@ namespace gameplay {
     class Hud {
     public:
         Hud(const gamearchive::Archive& archive, const std::vector<std::uint8_t>& executable, const std::vector<unsigned>& rooms);
+        bool addRoom(const gamearchive::Archive& archive, const std::vector<std::uint8_t>& executable, unsigned room);
         void update(const playeractor::View& player, bool fullscreen, bool roomCleared);
         std::vector<startupscene::Picture> pictures() const;
         const std::vector<roommaterials::Texture>& textures() const;
