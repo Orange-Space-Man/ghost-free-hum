@@ -95,6 +95,31 @@ playeractor::Player* playerevents::Dispatcher::player(std::int32_t index) const 
 
 unsigned playerevents::Dispatcher::send(std::int32_t index, unsigned message, const Payload* payload) const {
     auto* recipient = player(index);
+    if (recipient && message == 3) {
+        if (!damage) throw std::logic_error("Player damage dispatch requires its bound life services.");
+        const Payload defaults;
+        const auto& values = payload ? *payload : defaults;
+        const auto* position = values.damagePosition;
+        const auto source = static_cast<std::int32_t>(values.word(0x14));
+        if (source >= 0) {
+            const auto* actor = actors.actor(source);
+            if (!actor) throw std::runtime_error("Player damage source is absent from the actor registry.");
+            position = &actor->position;
+        } else if (values.word(0x10)) {
+            throw std::runtime_error("Player damage requires a native source position.");
+        }
+        if (!position) throw std::runtime_error("Player damage has no source position.");
+        float facing = 0;
+        for (unsigned axis = 0; axis < 3; ++axis)
+            facing += ((*position)[axis] - recipient->position[axis]) * recipient->state.direction[axis];
+        const bool behind = facing < 0;
+        if (!damage(*recipient, values, behind) || values.word(0x20) == 7 ||
+            (recipient->fieldA0 < 0 && recipient->fieldB2 < 0)) return 0;
+        auto attention = values;
+        attention.look(position, source);
+        send(index, behind ? 8 : 7, &attention);
+        return 1;
+    }
     if (recipient && (message == 7 || message == 8) && payload && static_cast<std::int32_t>(payload->word(0x30)) >= 0) {
         auto resolved = *payload;
         const auto* target = actors.actor(payload->word(0x30));
@@ -103,4 +128,8 @@ unsigned playerevents::Dispatcher::send(std::int32_t index, unsigned message, co
         return dispatch(*recipient, message, &resolved, collectionSound, suction);
     }
     return recipient ? dispatch(*recipient, message, payload, collectionSound, suction) : 0;
+}
+
+void playerevents::Dispatcher::bindDamage(std::function<bool(playeractor::Player&, const Payload&, bool)> handler) {
+    damage = std::move(handler);
 }

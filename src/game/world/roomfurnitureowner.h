@@ -19,7 +19,7 @@ namespace roomfurniture {
         std::uint32_t flags = 0, room = 0, behavior = 0, updates = 0;
         std::uint16_t row = 0;
         std::uint8_t animation = 0, opacity = 255;
-        std::array<float, 3> position{}, scale{1, 1, 1};
+        std::array<float, 3> position{}, restPosition{}, scale{1, 1, 1};
         std::array<std::int32_t, 3> angles{}, arguments{};
         std::uint32_t moveLevel = 0, generate = 0, sound = 0, itemTable = 0, generateCount = 0, counter = 0;
         std::int32_t itemOffset = 0;
@@ -48,6 +48,7 @@ namespace roomfurniture {
         void updateOpacity(float playerZ);
         void release(unsigned row);
         void releaseAll();
+        bool cabinetOpen = false;
         const Object* object(unsigned row) const;
         const std::array<Object, 80>& slots() const;
         const RowState& rowState(unsigned row) const;

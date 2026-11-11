@@ -73,7 +73,7 @@ roomfurniture::Object roomfurniture::Owner::construct(const Placement& placement
     result.row = placement.row;
     result.behavior = placement.behavior;
     switch (result.behavior) {
-    case 0: case 7: case 15: case 17: case 20: case 22: case 37: break;
+    case 0: case 3: case 7: case 14: case 15: case 17: case 20: case 22: case 37: case 38: break;
     default: throw std::runtime_error("Furniture owner requires its original initialization callback.");
     }
     const char* positions[]{"pos_x", "pos_y", "pos_z"};
@@ -101,7 +101,7 @@ roomfurniture::Object roomfurniture::Owner::construct(const Placement& placement
         result.model = &resources.models().at(placement.model);
         result.matrices.resize(result.model->hierarchy.visits().size());
     }
-    if (result.behavior == 15 || result.behavior == 20) {
+    if (result.behavior == 15 || result.behavior == 20 || result.behavior == 38) {
         const auto name = std::string(field<std::string_view>(table, result.row, "dmd_name"));
         for (const auto* suffix : {"_0.anm", "_1.anm"}) {
             const auto found = std::find_if(resources.animations().begin(), resources.animations().end(),
@@ -132,6 +132,7 @@ void roomfurniture::Owner::initializeObjects() {
     for (auto& object : objects) {
         if (!(object.flags & 2) || object.updates) continue;
         object.flags |= 5;
+        if (object.behavior == 14) object.restPosition = object.position;
         ++object.updates;
         refreshPose(object);
     }
@@ -182,11 +183,14 @@ void roomfurniture::Owner::update(const roomtraversal::State& visibility, unsign
         if (!(object.flags & 2)) continue;
         if (!object.updates) {
             object.flags |= 5;
+            if (object.behavior == 14) object.restPosition = object.position;
         } else {
             const bool visible = visibility.marked(object.room >> 24, buffer, buffer);
             object.flags = visible ? object.flags | 1 : object.flags & ~1u;
             auto& state = states.at(object.row);
             const bool handled = behavior && behavior(object, state, visible);
+            if (!handled && (object.behavior == 3 || object.behavior == 14 || object.behavior == 38))
+                throw std::logic_error("Parlor furniture requires its selected response services.");
             if (!handled && visible) {
                 const bool strikeResponse = object.behavior == 0 || object.behavior == 15 || object.behavior == 17 || object.behavior == 22;
                 if ((state.flags & 0x20) || (strikeResponse && ((state.flags & 1) || state.occupant != -1)))

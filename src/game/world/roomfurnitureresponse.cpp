@@ -36,6 +36,58 @@ roomfurniture::Response::Response(const std::vector<std::uint8_t>& executable, c
     rotationDecay = constant<float>(executable, 0x804da218);
     rotationMaximum = constant<float>(executable, 0x804da214);
     rotationVolume = constant<float>(executable, 0x804da198);
+    portraitAmplitude = constant<float>(executable, 0x804da210);
+    cabinetSpeed = constant<float>(executable, 0x804da168);
+    cabinetMaximum = constant<float>(executable, 0x804da21c);
+    cabinetRadius = constant<float>(executable, 0x804da1c8);
+    cabinetHeight = constant<float>(executable, 0x804da1bc);
+    cabinetOffset = constant<float>(executable, 0x804da178);
+    cabinetContactOffset = constant<float>(executable, 0x804da250);
+    cabinetDistanceSquared = constant<float>(executable, 0x804da1c0);
+}
+
+void roomfurniture::Response::chair(Object& object, RowState& row, bool visible, bool vacuumActive,
+    unsigned frame, const ResponseServices& services) const {
+    object.flags = visible ? object.flags | 1 : object.flags & ~1u;
+    if (!visible) return;
+    int strength = vacuumActive ? static_cast<int>(ceilingOffset * services.suctionStrength(suctionRadius, object.position)) : 0;
+    if (!strength && vacuumActive) {
+        auto point = object.position;
+        point[0] += suctionRadius;
+        point[1] += ceilingOffset;
+        strength = static_cast<int>(ceilingOffset * services.suctionStrength(suctionRadius, point));
+    }
+    suction(object, strength, false, frame, services);
+    strike(object, row, false, false, services);
+    collect(object, row, false, services);
+    occupant(object, row, false, services);
+    if (row.flags & 0x20) {
+        services.scanMessage(object.counter & 255);
+        row.flags &= ~0x20u;
+    }
+}
+
+void roomfurniture::Response::portrait(Object& object, RowState& row, bool visible, bool vacuumActive,
+    bool speaking, unsigned frame, const ResponseServices& services) const {
+    object.flags = visible ? object.flags | 1 : object.flags & ~1u;
+    if (!visible) return;
+    if (speaking) {
+        object.angles[2] = static_cast<int>(portraitAmplitude * trig.sineAngle(object.updates * 0x4fb0));
+        if (!(frame & 3)) services.sound(0x1878, object.position, nullptr);
+        return;
+    }
+    object.angles[2] = 0;
+    auto point = object.position;
+    point[1] += ceilingOffset;
+    strike(object, row, false, false, services);
+    const int strength = vacuumActive ? static_cast<int>(ceilingOffset * services.suctionStrength(suctionRadius, point)) : 0;
+    suction(object, strength, false, frame, services);
+    collect(object, row, false, services);
+    occupant(object, row, false, services);
+    if (row.flags & 0x20) {
+        services.scanMessage(object.counter & 255);
+        row.flags &= ~0x20u;
+    }
 }
 
 roomfurniture::Vector roomfurniture::Response::position(const Object& object, const RowState& row) const {
@@ -181,14 +233,14 @@ void roomfurniture::Response::suction(Object& object, int strength, bool animate
 
 void roomfurniture::Response::basic(Object& object, RowState& row, bool visible, bool vacuumActive,
     unsigned animationKind, unsigned frame, const ResponseServices& services) const {
-    if (object.behavior != 0 && object.behavior != 15 && object.behavior != 22)
+    if (object.behavior != 0 && object.behavior != 15 && object.behavior != 22 && object.behavior != 38)
         throw std::runtime_error("Furniture requires its selected behavior handler.");
     object.flags = visible ? object.flags | 1 : object.flags & ~1u;
     if (!visible) {
         if (object.behavior != 22) object.collectionFlags &= ~2u;
         return;
     }
-    const bool animated = object.behavior == 15;
+    const bool animated = object.behavior == 15 || object.behavior == 38;
     const bool animate = animated && animationKind == 2;
     if (!animated) strike(object, row, false, false, services);
     auto point = object.position;
@@ -231,5 +283,32 @@ void roomfurniture::Response::rotating(Object& object, RowState& row, bool visib
     if (static_cast<float>(object.angles[0]) < object.previousRotation) {
         const float volume = std::min(rotationVolume * object.rotationAmplitude, directionScale);
         services.sound(0x1868, object.position, &volume);
+    }
+}
+
+void roomfurniture::Response::cabinet(Object& object, RowState& row, bool visible, bool vacuumActive,
+    unsigned animationKind, unsigned frame, const Vector& playerPosition, const ResponseServices& services) const {
+    basic(object, row, visible, vacuumActive, animationKind, frame, services);
+    const auto kind = object.arguments[0];
+    if (object.animation != 1) {
+        if (kind == 1) services.cabinetActive(false);
+        return;
+    }
+    if (kind == 2 || kind == 3) {
+        const float radius = cabinetRadius + std::min(cabinetSpeed * object.frame, cabinetMaximum);
+        services.contact(object.position, {radius, cabinetHeight, 0, cabinetContactOffset, 0});
+    } else if (kind == 1) {
+        const auto& matrix = object.matrices.at(1);
+        const Vector point{matrix[3], matrix[7], matrix[11]};
+        if (object.frame >= cabinetSpeed) {
+            services.contact(point, {cabinetRadius, suctionRadius, 0, cabinetOffset, 0});
+        } else {
+            const float x = playerPosition[0] - point[0];
+            const float y = (ceilingOffset + playerPosition[1]) - point[1];
+            const float z = playerPosition[2] - point[2];
+            if ((z * z + x * x) + y * y < cabinetDistanceSquared) services.hurtPlayer(point, 10, 6);
+        }
+        if (object.arguments[1]) services.setFlag(static_cast<unsigned>(object.arguments[1]) & 255);
+        services.cabinetActive(true);
     }
 }

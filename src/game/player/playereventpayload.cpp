@@ -37,6 +37,7 @@ void playerevents::Payload::pull(const std::array<float, 3>* center, const void*
 
 void playerevents::Payload::reset() {
     lookPosition = nullptr;
+    damagePosition = nullptr;
     pullCenter = nullptr;
     pullOwner = nullptr;
     for (unsigned offset : {0x04u, 0x0cu, 0x10u, 0x24u, 0x2cu, 0x34u, 0x3cu, 0x40u, 0x44u, 0x50u,

@@ -14,6 +14,7 @@ namespace playerevents {
         void pull(const std::array<float, 3>* center, const void* owner, float range, float elasticity);
         void look(const std::array<float, 3>* position, std::int32_t actor = -1);
         const std::array<float, 3>* lookPosition = nullptr;
+        const std::array<float, 3>* damagePosition = nullptr;
         const std::array<float, 3>* pullCenter = nullptr;
         const void* pullOwner = nullptr;
         std::array<std::uint8_t, 0x10c> bytes;

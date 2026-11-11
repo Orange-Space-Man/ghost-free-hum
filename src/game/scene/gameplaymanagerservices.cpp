@@ -257,6 +257,9 @@ struct gameplay::ManagerServices::State : playerpresentation::Services {
             dependencies.audioLife, particles->effects(),
             [this](unsigned id, const auto& position) { audio->playback.play(id, position); },
             [this](const auto& position) { audio->playback.playDeathEffects(position); }, {}});
+        events->bindDamage([this](auto& recipient, const auto& payload, bool behind) {
+            return playerDamage.run(recipient, payload, behind, *actors, dependencies.actors.catalog, false, *life);
+        });
         capture = std::make_unique<actorcapture::Motion>(dependencies.executable, dependencies.actors.pose,
             [this] { return runtime->random(); });
         updates = std::make_unique<characterowner::UpdateServices>(characterowner::UpdateServices{
@@ -753,7 +756,36 @@ void gameplay::ManagerServices::updateFurniture(unsigned frame) {
     services.scanMessage = [](unsigned) {
         throw std::runtime_error("Furniture scanning requires its original message scene.");
     };
+    services.contact = [this](const auto& position, const auto& shape) {
+        actorcollision::Record record{};
+        for (unsigned i = 0; i < record.size(); ++i) std::memcpy(&record[i], &shape[i], sizeof(float));
+        state->players->records->append({1, record, std::nullopt}, position);
+    };
+    services.hurtPlayer = [this](const auto& position, unsigned damage, unsigned kind) {
+        playerevents::Payload payload;
+        payload.damagePosition = &position;
+        payload.word(0x18, damage);
+        payload.word(0x20, kind);
+        state->events->send(0, 3, &payload);
+    };
+    services.setFlag = [this](unsigned flag) { state->dependencies.flags.setOn(static_cast<std::uint8_t>(flag)); };
+    services.cabinetActive = [this](bool active) { state->furniture->cabinetOpen = active; };
     state->furniture->update(state->dependencies.visibility, 0, [&](auto& object, auto& row, bool visible) {
+        if (object.behavior == 3) {
+            state->furnitureResponse.chair(object, row, visible, false, frame, services);
+            return true;
+        }
+        if (object.behavior == 14) {
+            if (state->dependencies.flags.value(94))
+                throw std::runtime_error("Talking portraits require the original message-speaking state.");
+            state->furnitureResponse.portrait(object, row, visible, false, false, frame, services);
+            return true;
+        }
+        if (object.behavior == 38) {
+            state->furnitureResponse.cabinet(object, row, visible, false,
+                static_cast<unsigned>(object.animations.size()), frame, player->position, services);
+            return true;
+        }
         if (object.behavior == 17) {
             state->furnitureResponse.rotating(object, row, visible, false, services);
             return true;

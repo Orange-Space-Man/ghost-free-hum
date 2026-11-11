@@ -21,6 +21,10 @@ namespace roomfurniture {
         std::function<void(Object&, unsigned)> animation;
         std::function<float(float, const Vector&)> suctionStrength;
         std::function<void(unsigned)> scanMessage;
+        std::function<void(const Vector&, const std::array<float, 5>&)> contact;
+        std::function<void(const Vector&, unsigned, unsigned)> hurtPlayer;
+        std::function<void(unsigned)> setFlag;
+        std::function<void(bool)> cabinetActive;
     };
 
     class Response {
@@ -35,6 +39,12 @@ namespace roomfurniture {
         void basic(Object& object, RowState& row, bool visible, bool vacuumActive, unsigned animationKind,
             unsigned frame, const ResponseServices& services) const;
         void rotating(Object& object, RowState& row, bool visible, bool vacuumActive, const ResponseServices& services) const;
+        void chair(Object& object, RowState& row, bool visible, bool vacuumActive,
+            unsigned frame, const ResponseServices& services) const;
+        void portrait(Object& object, RowState& row, bool visible, bool vacuumActive, bool speaking,
+            unsigned frame, const ResponseServices& services) const;
+        void cabinet(Object& object, RowState& row, bool visible, bool vacuumActive, unsigned animationKind,
+            unsigned frame, const Vector& playerPosition, const ResponseServices& services) const;
 
     private:
         const characteritems::Admission& admission;
@@ -44,6 +54,9 @@ namespace roomfurniture {
         float ceilingOffset = 0, floorOffset = 0, directionScale = 0, floorSpeed = 0, ceilingSpeed = 0;
         float suctionRadius = 0;
         float rotationRadius = 0, rotationDecay = 0, rotationMaximum = 0, rotationVolume = 0;
+        float portraitAmplitude = 0;
+        float cabinetSpeed = 0, cabinetMaximum = 0, cabinetRadius = 0, cabinetHeight = 0;
+        float cabinetOffset = 0, cabinetContactOffset = 0, cabinetDistanceSquared = 0;
         Vector position(const Object& object, const RowState& row) const;
         Vector direction(const Object& object) const;
         void dust(const Object& object, const Vector& position, const ResponseServices& services) const;
