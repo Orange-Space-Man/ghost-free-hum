@@ -801,7 +801,10 @@ void gameplay::ManagerServices::updateDoors(unsigned frame) {
 
 void gameplay::ManagerServices::completePlayerFrame(const playeractor::LateFrameServices& services, bool resetLights) {
     if (resetLights) state->lights.beginFrame();
-    for (unsigned index = 0; index < state->dependencies.playerCount; ++index) updatePlayerLate(index, services);
+    for (unsigned index = 0; index < state->dependencies.playerCount; ++index) {
+        updatePlayerLate(index, services);
+        state->playerLight.publishShadow(*state->events->player(static_cast<std::int32_t>(index)), state->lights, state->playerFinish);
+    }
     state->players->state->update(state->lights);
     state->players->advanceClock();
 }

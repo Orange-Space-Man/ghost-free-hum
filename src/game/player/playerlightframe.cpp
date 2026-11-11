@@ -45,6 +45,13 @@ playeractor::LightFrame::LightFrame(const std::vector<std::uint8_t>& executable)
     brightness(static_cast<std::uint16_t>(constant<std::uint32_t>(executable, brightnessAddress))),
     beamAngle(constant<float>(executable, beamAngleAddress)), beamDistance(constant<float>(executable, beamDistanceAddress)),
     colors{constant<std::uint32_t>(executable, beamColorAddress), constant<std::uint32_t>(executable, alternateBeamColorAddress)} {
+    shadowHeight = constant<float>(executable, 0x804d2bdc);
+    shadowDistance = constant<float>(executable, 0x804d2be0);
+    alternateShadowScale = constant<float>(executable, 0x804db528);
+    shadowVelocityScale = constant<float>(executable, 0x804db52c);
+    shadowColor = constant<std::uint32_t>(executable, 0x80355148);
+    shadowReference = static_cast<std::uint16_t>(constant<std::uint32_t>(executable, 0x8035514c));
+    shadowBrightness = static_cast<std::uint16_t>(constant<std::uint32_t>(executable, 0x80355150));
     std::string error;
     if (!trig.read(executable, error)) throw std::runtime_error(error);
     std::vector<std::uint8_t> bytes;
@@ -137,5 +144,44 @@ void playeractor::LightFrame::run(Player& player, const LightInput& input, const
             light.instance->matrix[row * 4 + column] = axes[column * 2] == '-' ? -component : component;
         }
         light.instance->matrix[row * 4 + 3] = input.position[row];
+    }
+}
+
+void playeractor::LightFrame::publishShadow(Player& player, roomlighting::Pool& lights, const FinishFrame& finish) const {
+    auto& state = player.state;
+    if (state.flags1330[2]) return;
+    if (state.field1324 & 0x10) {
+        modellighting::RoomLight light;
+        for (unsigned i = 0; i < 4; ++i) light.color[i] = static_cast<std::uint8_t>(shadowColor >> (24 - i * 8));
+        light.referenceDistance = shadowReference;
+        light.brightnessPercent = shadowBrightness;
+        if (state.fieldF34 == 0) {
+            for (unsigned i = 0; i < 3; ++i) light.position[i] = -shadowDistance * state.direction[i];
+            light.position[1] += state.flags1330[1] ? -shadowHeight : shadowHeight;
+            for (unsigned i = 0; i < 3; ++i) light.position[i] += player.position[i];
+            state.fieldFF0 = state.direction;
+        } else {
+            const float scale = finish.bodyScale(state);
+            const float distance = alternateShadowScale * float(-double(shadowDistance) * scale);
+            for (unsigned i = 0; i < 3; ++i) {
+                light.position[i] = player.position[i] + distance * state.direction[i];
+                light.direction[i] = player.position[i] - light.position[i];
+            }
+            light.direction[1] += float(double(shadowHeight) * scale);
+            normalize(light.direction, epsilon);
+            light.cutoff = 40;
+            light.brightnessPercent = 99;
+            state.fieldFF0 = light.direction;
+        }
+        lights.add(8, light);
+        state.fieldFE4 = light.position;
+    }
+    if ((state.field1180 == 5 || state.field1180 == 1) && player.components->actions->query74968()) {
+        const auto& weapon = *player.components->weapon->first;
+        const auto& velocity = player.velocity;
+        const float speed = std::sqrt((velocity[0] * velocity[0] + velocity[1] * velocity[1]) + velocity[2] * velocity[2]);
+        const float offset = float(double(shadowVelocityScale) * speed);
+        for (unsigned i = 0; i < 3; ++i) state.fieldFE4[i] = weapon.position[i] + offset * weapon.field610[i];
+        state.fieldFF0 = weapon.field610;
     }
 }
