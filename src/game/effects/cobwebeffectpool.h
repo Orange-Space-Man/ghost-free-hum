@@ -2,6 +2,8 @@
 
 #include "game/effects/modeleffectpool.h"
 #include "game/player/playeractorview.h"
+#include "jlib/j3d/j3ddrawbuffer.h"
+#include "jlib/j3d/j3dmodelcalculation.h"
 
 namespace modeleffects {
     class CobwebOwner final : public Owner {
@@ -23,6 +25,10 @@ namespace modeleffects {
         Owner* available() override;
         void advance(Owner& owner, bool visible) override;
         void update(const roomlocation::Rooms& rooms, const roomtraversal::State& visibility) override;
+        std::vector<j3dmodel::ModelInstance*> prepare(const roomlocation::Rooms& rooms,
+            const roomtraversal::State& visibility, const j3dmodel::Matrix& view,
+            const j3dmodel::TransformTables& tables, unsigned lightMask,
+            const std::array<std::unique_ptr<j3dmodel::DrawBuffer>, 2>& buffers);
         std::shared_ptr<j3dmodel::Animation> secondaryTransform;
 
     private:

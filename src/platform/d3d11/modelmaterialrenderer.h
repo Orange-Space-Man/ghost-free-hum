@@ -20,7 +20,7 @@ namespace modelrenderer {
     class MaterialShader {
     public:
         void load(ID3D11Device* device, const modelmaterial::StageProgram& program,
-            const std::array<StageRegisters, 16>& retained, const PipelineState& state);
+            const std::array<StageRegisters, 16>& retained, const PipelineState& state, bool shadow = false);
         void bind(ID3D11DeviceContext* context, const CombinerInputs& inputs) const;
         void draw(ID3D11DeviceContext* context, const CombinerInputs& inputs, const Geometry& geometry,
             std::int16_t batch, const VertexMatrices& matrices, const TextureCoordinates& coordinates,

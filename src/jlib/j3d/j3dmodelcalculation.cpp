@@ -1,4 +1,5 @@
 #include "jlib/j3d/j3dmodelcalculation.h"
+#include "jlib/j3d/j3dkeyanimation.h"
 #include "resources/dolresources.h"
 #include "resources/glme01addresses.h"
 
@@ -43,19 +44,19 @@ j3dmodel::Matrix j3dmodel::TransformTables::transform(const Joint& joint) const 
         -sy, cy * sx, cy * cx, joint.translation[2]};
 }
 
-void j3dmodel::calculateBasic(ModelInstance& instance, const TransformTables& tables) {
+void j3dmodel::calculateAnimated(ModelInstance& instance, const TransformTables& tables) {
     const auto& data = *instance.model;
     const auto& geometry = data.geometry;
     if (!data.calculator || data.calculator->kind > 1 || data.calculator->animation || instance.deform || instance.skin)
         throw std::runtime_error("Basic J3D calculation requires its original unanimated calculator without deformation.");
-    for (const auto& calculator : data.jointCalculators)
-        if (calculator) throw std::runtime_error("Joint calculator overrides require their original runtime path.");
+
     if (!geometry.envelopes.empty()) throw std::runtime_error("Basic J3D calculation requires weighted-envelope calculation for this model.");
     if (geometry.hierarchy.joints.size() != geometry.joints.size()) throw std::runtime_error("Invalid J3D joint hierarchy storage.");
     struct Visit {
         int index;
         Matrix parent;
         std::array<float, 3> scale;
+        const MatrixCalculator* calculator;
     };
     auto base = instance.matrix;
     const bool softimage = data.calculator->kind == 1;
@@ -63,7 +64,7 @@ void j3dmodel::calculateBasic(ModelInstance& instance, const TransformTables& ta
         for (unsigned row = 0; row < 3; ++row)
             for (unsigned column = 0; column < 3; ++column) base[row * 4 + column] *= instance.scale[column];
     std::vector<Visit> pending;
-    if (geometry.hierarchy.root >= 0) pending.push_back({geometry.hierarchy.root, base, instance.scale});
+    if (geometry.hierarchy.root >= 0) pending.push_back({geometry.hierarchy.root, base, instance.scale, data.calculator.get()});
     std::vector<bool> seen(geometry.joints.size());
     while (!pending.empty()) {
         const auto visit = pending.back();
@@ -71,7 +72,23 @@ void j3dmodel::calculateBasic(ModelInstance& instance, const TransformTables& ta
         if (visit.index < 0 || static_cast<unsigned>(visit.index) >= seen.size() || seen[visit.index])
             throw std::runtime_error("Invalid J3D joint traversal.");
         seen[visit.index] = true;
-        const auto& joint = geometry.joints[visit.index];
+        auto joint = geometry.joints[visit.index];
+        const auto* calculator = data.jointCalculators[visit.index] ? data.jointCalculators[visit.index].get() : visit.calculator;
+        if (calculator->kind != data.calculator->kind) throw std::runtime_error("J3D animated calculator changes matrix convention.");
+        if (calculator->animation) {
+            const auto& animation = *calculator->animation;
+            const auto& group = animation.groups[0];
+            if (animation.kind != AnimationKind::Transform || joint.index >= group.count)
+                throw std::runtime_error("J3D transform key does not cover its joint.");
+            for (unsigned axis = 0; axis < 3; ++axis) {
+                const auto descriptor = group.table + joint.index * 54 + axis * 18;
+                joint.scale[axis] = sampleAnimationKey(animation, group, descriptor, 0, false, 1);
+                const auto rotation = static_cast<std::uint32_t>(static_cast<std::int32_t>(
+                    sampleAnimationKey(animation, group, descriptor + 6, 1, true, 0)));
+                joint.rotation[axis] = static_cast<std::int16_t>(animation.angleScale < 32 ? rotation << animation.angleScale : 0);
+                joint.translation[axis] = sampleAnimationKey(animation, group, descriptor + 12, 2, false, 0);
+            }
+        }
         const auto& links = geometry.hierarchy.joints[visit.index];
         if (joint.index >= geometry.joints.size()) throw std::runtime_error("Invalid J3D joint matrix index.");
         std::array<float, 3> scale;
@@ -90,9 +107,15 @@ void j3dmodel::calculateBasic(ModelInstance& instance, const TransformTables& ta
             for (unsigned row = 0; row < 3; ++row)
                 for (unsigned column = 0; column < 3; ++column)
                     instance.jointMatrices[joint.index][row * 4 + column] *= scale[column];
-        if (links.sibling >= 0) pending.push_back({links.sibling, visit.parent, visit.scale});
-        if (links.child >= 0) pending.push_back({links.child, matrix, scale});
+        if (links.sibling >= 0) pending.push_back({links.sibling, visit.parent, visit.scale, visit.calculator});
+        if (links.child >= 0) pending.push_back({links.child, matrix, scale, calculator});
     }
+}
+
+void j3dmodel::calculateBasic(ModelInstance& instance, const TransformTables& tables) {
+    for (const auto& calculator : instance.model->jointCalculators)
+        if (calculator) throw std::runtime_error("Basic J3D calculation requires unanimated joints.");
+    calculateAnimated(instance, tables);
 }
 
 bool j3dmodel::inverseTranspose(const Matrix& m, NormalMatrix& output) {

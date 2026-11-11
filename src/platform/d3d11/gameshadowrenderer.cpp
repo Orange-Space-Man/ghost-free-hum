@@ -4,6 +4,7 @@
 #include <d3dcompiler.h>
 #include <wrl/client.h>
 #include <algorithm>
+#include <cmath>
 #include <stdexcept>
 
 namespace {
@@ -17,7 +18,7 @@ namespace {
     ComPtr<ID3D11VertexShader> casterShader, copyVertex;
     ComPtr<ID3D11PixelShader> copyPixel;
     ComPtr<ID3D11InputLayout> layout;
-    ComPtr<ID3D11Buffer> vertices, constants;
+    ComPtr<ID3D11Buffer> vertices, constants, modelConstants;
     ComPtr<ID3D11DepthStencilState> depthState;
     ComPtr<ID3D11RasterizerState> rasterizers[3];
     ComPtr<ID3D11SamplerState> samplers[2];
@@ -112,6 +113,7 @@ void gameshadowrenderer::open(ID3D11Device* sourceDevice, ID3D11DeviceContext* s
     buffer.ByteWidth = sizeof(Constants);
     buffer.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
     check(device->CreateBuffer(&buffer, nullptr, &constants), "Could not create shadow constants.");
+    check(device->CreateBuffer(&buffer, nullptr, &modelConstants), "Could not create model shadow constants.");
     D3D11_DEPTH_STENCIL_DESC state{};
     state.DepthEnable = TRUE;
     state.DepthWriteMask = D3D11_DEPTH_WRITE_MASK_ALL;
@@ -146,13 +148,13 @@ void gameshadowrenderer::begin(const s3dshadow::Projection& projection, float as
     values.state = {};
     if (active) {
         const auto vector = [](const std::array<float, 3>& value) { return DirectX::XMVectorSet(value[0], value[1], value[2], 0); };
-        const auto view = DirectX::XMMatrixLookAtRH(vector(projection.position), vector(projection.target), DirectX::XMVectorSet(0,1,0,0));
+        const auto view = DirectX::XMMatrixLookAtRH(vector(projection.position), vector(projection.target), vector(projection.up));
         const auto perspective = DirectX::XMMatrixPerspectiveFovRH(projection.fieldOfView * DirectX::XM_PI / 180,
             aspect, projection.nearPlane, projection.farPlane);
         DirectX::XMStoreFloat4x4(&values.projection, view * perspective);
     }
-    ID3D11ShaderResourceView* empty[3]{};
-    context->PSSetShaderResources(0, 3, empty);
+    ID3D11ShaderResourceView* empty[10]{};
+    context->PSSetShaderResources(0, 10, empty);
     context->UpdateSubresource(constants.Get(), 0, nullptr, &values, 0, 0);
     context->VSSetConstantBuffers(2, 1, constants.GetAddressOf());
     context->ClearDepthStencilView(depthTarget.Get(), D3D11_CLEAR_DEPTH, 1, 0);
@@ -169,22 +171,22 @@ void gameshadowrenderer::begin(const s3dshadow::Projection& projection, float as
     context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 }
 
-void gameshadowrenderer::draw(const std::vector<s3dmodel::Batch>& batches) {
+void gameshadowrenderer::draw(const std::vector<s3dmodel::Batch>& batches, bool twoSided) {
     if (!active) return;
     std::size_t count = 0;
-    for (const auto& batch : batches) if (batch.cull == 1 || batch.cull == 2) count += batch.vertices.size();
+    for (const auto& batch : batches) if (batch.cull == 1 || batch.cull == 2 || (twoSided && batch.cull == 0)) count += batch.vertices.size();
     if (!count) return;
     reserve(count);
     D3D11_MAPPED_SUBRESOURCE mapped{};
     check(context->Map(vertices.Get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped), "Could not upload shadow vertices.");
     auto* destination = static_cast<std::array<float,3>*>(mapped.pData);
-    for (const auto& batch : batches) if (batch.cull == 1 || batch.cull == 2)
+    for (const auto& batch : batches) if (batch.cull == 1 || batch.cull == 2 || (twoSided && batch.cull == 0))
         for (const auto& vertex : batch.vertices) *destination++ = vertex.position;
     context->Unmap(vertices.Get(), 0);
     const UINT stride = sizeof(std::array<float,3>), offset = 0;
     context->IASetVertexBuffers(0, 1, vertices.GetAddressOf(), &stride, &offset);
     UINT first = 0;
-    for (const auto& batch : batches) if (batch.cull == 1 || batch.cull == 2) {
+    for (const auto& batch : batches) if (batch.cull == 1 || batch.cull == 2 || (twoSided && batch.cull == 0)) {
         context->RSSetState(rasterizers[batch.cull].Get());
         context->Draw(static_cast<UINT>(batch.vertices.size()), first);
         first += static_cast<UINT>(batch.vertices.size());
@@ -216,6 +218,34 @@ void gameshadowrenderer::bind(bool receiver, float alpha) {
     context->PSSetSamplers(1, 2, filters);
 }
 
+std::array<float, 16> gameshadowrenderer::worldProjection() {
+    std::array<float, 16> result;
+    for (unsigned row = 0; row < 4; ++row) for (unsigned column = 0; column < 4; ++column)
+        result[row * 4 + column] = values.projection.m[column][row];
+    for (unsigned column = 0; column < 4; ++column) result[8 + column] -= result[12 + column];
+    return result;
+}
+
+void gameshadowrenderer::bindModel(const s3dmodel::Matrix& view) {
+    const DirectX::XMMATRIX matrix(view[0], view[4], view[8], 0, view[1], view[5], view[9], 0,
+        view[2], view[6], view[10], 0, view[3], view[7], view[11], 1);
+    auto modelValues = values;
+    DirectX::XMStoreFloat4x4(&modelValues.projection,
+        DirectX::XMMatrixInverse(nullptr, matrix) * DirectX::XMLoadFloat4x4(&values.projection));
+    context->UpdateSubresource(modelConstants.Get(), 0, nullptr, &modelValues, 0, 0);
+    context->PSSetConstantBuffers(4, 1, modelConstants.GetAddressOf());
+    ID3D11ShaderResourceView* views[]{packedView.Get(), lookupView.Get()};
+    ID3D11SamplerState* filters[]{samplers[0].Get(), samplers[1].Get()};
+    context->PSSetShaderResources(8, 2, views);
+    context->PSSetSamplers(8, 2, filters);
+}
+
+std::array<int, 4> gameshadowrenderer::color() {
+    std::array<int, 4> result;
+    for (unsigned i = 0; i < 4; ++i) result[i] = static_cast<int>(std::round(values.color[i] * 255));
+    return result;
+}
+
 void gameshadowrenderer::close() {
     active = false;
     capacity = 0;
@@ -223,6 +253,7 @@ void gameshadowrenderer::close() {
     depthTarget.Reset(); packedTarget.Reset();
     depthView.Reset(); packedView.Reset(); lookupView.Reset();
     casterShader.Reset(); copyVertex.Reset(); copyPixel.Reset(); layout.Reset();
+    modelConstants.Reset();
     vertices.Reset(); constants.Reset(); depthState.Reset();
     for (auto& state : rasterizers) state.Reset();
     for (auto& sampler : samplers) sampler.Reset();

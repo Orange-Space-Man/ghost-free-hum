@@ -1,5 +1,7 @@
 #pragma once
 
+#include "game/world/roomshadowprojector.h"
+
 #include "game/actors/actorregistry.h"
 #include "game/actors/charactercreationruntime.h"
 #include "game/scene/gamearchiveresources.h"
@@ -92,6 +94,8 @@ namespace gameplay {
         modeleffects::Manager& modelEffects();
         mapcollision::State& collision();
         roomlighting::Pool& lights();
+        s3dshadow::Projection shadowProjection() const;
+        void updateShadow();
         void updateStorm();
         std::shared_ptr<jaudio::PositionalPlayback> playback();
         const gameplayaudio::Context& audioContext() const;

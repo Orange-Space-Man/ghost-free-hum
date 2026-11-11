@@ -5,6 +5,8 @@
 namespace s3dshadow {
     struct Projection {
         std::array<float, 3> position{0, 200, 1000}, target{0, 200, -1000};
+        std::array<float, 3> up{0, 1, 0};
+        bool spotlight = false;
         float fieldOfView = 50, nearPlane = 1, farPlane = 1;
         std::array<float, 4> color{1, 1, 1, 1};
     };

@@ -21,6 +21,7 @@ add_library(JLib STATIC
     src/jlib/j3d/j3dmodelinstance.cpp
     src/jlib/j3d/j3dmodelcalculation.cpp
     src/jlib/j3d/j3dmaterialcalculation.cpp
+    src/jlib/j3d/j3dkeyanimation.cpp
     src/jlib/j3d/j3dtextureanimation.cpp
     src/jlib/j3d/j3dpixelstate.cpp
     src/jlib/j3d/j3dtevcommands.cpp
@@ -107,6 +108,7 @@ add_library(Game STATIC
     src/game/audio/gameplayaudiocontext.cpp
     src/game/audio/roomambientaudio.cpp
     src/game/world/roomstorm.cpp
+    src/game/world/roomshadowprojector.cpp
     src/game/audio/jaudiopositionalplayback.cpp
     src/game/audio/jaudiopositionowners.cpp
     src/game/effects/barriereffectpool.cpp
@@ -207,6 +209,7 @@ add_library(Game STATIC
     src/game/models/modeldrawmatrices.cpp
     src/game/models/modeldrawresource.cpp
     src/game/models/modeldrawtraversal.cpp
+    src/game/models/modelshadowgeometry.cpp
     src/game/models/modellighting.cpp
     src/game/models/modelmaterialstate.cpp
     src/game/models/modelresourceloader.cpp

@@ -1,4 +1,5 @@
 #include "platform/d3d11/playersheetrenderer.h"
+#include "platform/d3d11/gameshadowrenderer.h"
 
 #include <stdexcept>
 
@@ -26,7 +27,13 @@ void playersheets::Renderer::load(ID3D11Device* owner) {
         }
         program.stages.push_back(stage);
         program.stageCount = 1;
-        materials[textured].load(device.Get(), program, {}, state);
+        const auto shadow = modelmaterial::buildStages({}, 0, 0, false, true);
+        for (unsigned i = 1; i < shadow.stages.size(); ++i) {
+            auto value = shadow.stages[i];
+            value.index = program.stageCount++;
+            program.stages.push_back(value);
+        }
+        materials[textured].load(device.Get(), program, {}, state, true);
         coordinates[textured] = modelrenderer::prepareCoordinates(program, {});
     }
     D3D11_SAMPLER_DESC description{};
@@ -76,6 +83,10 @@ void playersheets::Renderer::draw(ID3D11DeviceContext* context, const playermode
     }
     auto state = lighting;
     state.material.color = {255, 255, 255, 255};
-    for (unsigned channel : {0u, 2u}) state.material.channels[channel] = {1, 0, 0, lighting.loadedMask, 2, 1};
-    materials[textured].draw(context, {}, geometry, 0, matrices, coordinates[textured], modellighting::prepare(state));
+    for (unsigned channel : {0u, 2u}) state.material.channels[channel] = {1, 0, 0, lighting.material.lightMask, 2, 1};
+    state.material.secondaryColor = {255, 255, 255, 255};
+    state.material.channels[3] = {1, 0, 0, 0x80, 2, 1};
+    modelrenderer::CombinerInputs inputs;
+    inputs.constants[3] = gameshadowrenderer::color();
+    materials[textured].draw(context, inputs, geometry, 0, matrices, coordinates[textured], modellighting::prepare(state));
 }

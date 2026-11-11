@@ -119,7 +119,7 @@ struct gameplay::ManagerServices::State : playerpresentation::Services {
         playerVelocity(dependencies.executable, dependencies.actors.pose),
         ladderPaths(dependencies.mission), furnitureAdmission(dependencies.executable, dependencies.types),
         furnitureResponse(dependencies.executable, furnitureAdmission),
-        storm(dependencies.executable, dependencies.mission, dependencies.actors.pose) {
+        storm(dependencies.executable, dependencies.mission, dependencies.actors.pose), shadow(dependencies.executable) {
         std::vector<std::uint8_t> bytes;
         std::string error;
         constexpr unsigned furnitureEffectDirection = 0x8021da40;
@@ -373,6 +373,7 @@ struct gameplay::ManagerServices::State : playerpresentation::Services {
     std::unique_ptr<playerevents::SuctionEnvironment> suction;
     roomlighting::Pool lights;
     roomlighting::Storm storm;
+    roomshadow::Projector shadow;
     players::Globals playerGlobals;
     playeractor::Globals actorGlobals;
     std::shared_ptr<Audio> audio;
@@ -413,6 +414,10 @@ playerevents::LifeEnvironment& gameplay::ManagerServices::playerLife() { return 
 particles::Scene& gameplay::ManagerServices::particles() { return *state->particles; }
 modeleffects::Manager& gameplay::ManagerServices::modelEffects() { return *state->models; }
 mapcollision::State& gameplay::ManagerServices::collision() { return state->collision; }
+s3dshadow::Projection gameplay::ManagerServices::shadowProjection() const {
+    return state->shadow.projection(state->events->player(0)->view, state->dependencies.camera);
+}
+
 roomlighting::Pool& gameplay::ManagerServices::lights() { return state->lights; }
 
 std::shared_ptr<jaudio::PositionalPlayback> gameplay::ManagerServices::playback() {
@@ -655,13 +660,25 @@ void gameplay::ManagerServices::updateAudio(const std::array<float, 12>& listene
     state->audio->playback.update(listener);
 }
 
+void gameplay::ManagerServices::updateShadow() {
+    const auto* player = state->events->player(0);
+    if (!player) throw std::runtime_error("Shadow projection requires the manager-owned player.");
+    const auto& dependencies = state->dependencies;
+    state->shadow.selectPlayerLight(player->view);
+    state->shadow.update(dependencies.actors.rooms.entries().at(player->room() >> 24),
+        dependencies.roomFlags.at(player->room() >> 24), dependencies.camera, player->position[1], dependencies.actors.pose);
+}
+
 void gameplay::ManagerServices::updateStorm() {
     const auto* player = state->events->player(0);
     if (!player) throw std::runtime_error("Room storm requires the manager-owned player.");
     const auto& dependencies = state->dependencies;
+    updateShadow();
+    const auto strikes = state->storm.strikes();
     state->storm.update(player->room(), dependencies.actors.rooms.entries().at(player->room() >> 24),
         dependencies.roomFlags.at(player->room() >> 24), dependencies.camera, player->position[1], state->lights,
         [this] { return state->runtime->random(); }, [this] { state->audio->playback.playThunder(); });
+    if (state->storm.strikes() != strikes) state->shadow.strike(state->storm.setting(player->room()), dependencies.actors.pose);
 }
 
 void gameplay::ManagerServices::setAudioInterfaceFrame(std::uint32_t frame) { state->audioInterfaceFrame = frame; }

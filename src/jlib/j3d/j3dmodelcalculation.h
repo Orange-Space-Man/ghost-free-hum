@@ -13,6 +13,7 @@ namespace j3dmodel {
     };
 
     Matrix concatenateMatrix(const Matrix& parent, const Matrix& local);
+    void calculateAnimated(ModelInstance& instance, const TransformTables& tables);
     void calculateBasic(ModelInstance& instance, const TransformTables& tables);
     bool inverseTranspose(const Matrix& matrix, NormalMatrix& output);
     void calculateViewMatrices(ModelInstance& instance, const Matrix& camera);

@@ -422,3 +422,17 @@ float s3denvironment::ModelEffect::advance(float frame, float step) const {
     }
     return frame;
 }
+
+float s3denvironment::Lighting::shadowMask(const s3dmodel::Vertex& vertex) const {
+    if (!shadowSpotlight) return 1;
+    std::array<float, 3> delta{};
+    for (unsigned axis = 0; axis < 3; ++axis) delta[axis] = shadowLight.position[axis] - vertex.position[axis];
+    const float squared = dot(delta, delta), distance = std::sqrt(squared);
+    const auto direction = normalize(delta);
+    const float cosine = std::max(0.0f, dot(direction, shadowLight.direction));
+    const float angular = std::max(0.0f, shadowLight.angular[0] + shadowLight.angular[1] * cosine +
+        shadowLight.angular[2] * cosine * cosine);
+    const float attenuation = angular / (shadowLight.distance[0] + shadowLight.distance[1] * distance +
+        shadowLight.distance[2] * squared);
+    return std::clamp(std::max(0.0f, dot(direction, vertex.normal)) * attenuation, 0.0f, 1.0f);
+}

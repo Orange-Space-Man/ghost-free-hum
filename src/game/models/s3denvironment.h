@@ -37,7 +37,9 @@ namespace s3denvironment {
         std::array<float, 3> secondaryAmbient{};
         std::vector<Light> lights;
         std::array<float, 3> embossPosition{};
-        bool embossLight = false;
+        bool embossLight = false, shadowSpotlight = false;
+        Light shadowLight;
+        float shadowMask(const s3dmodel::Vertex& vertex) const;
         std::array<float, 4> shade(const s3dmodel::Vertex& vertex, const s3dmodel::Material& material, bool enabled) const;
         std::array<float, 3> shadeSecondary(const s3dmodel::Vertex& vertex, const s3dmodel::Material& material,
             bool enabled, const Camera& camera) const;

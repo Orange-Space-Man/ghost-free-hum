@@ -2,8 +2,11 @@
 #include "game/scene/gameplayscene.h"
 #include "platform/d3d11/gamerenderer.h"
 #include "game/models/modeldrawmatrices.h"
+#include "game/models/modelshadowgeometry.h"
+#include "platform/d3d11/gameshadowrenderer.h"
 #include "game/startup/startupresources.h"
 #include "game/effects/barriereffectpool.h"
+#include "game/effects/cobwebeffectpool.h"
 
 #include <algorithm>
 #include <cstring>
@@ -102,6 +105,7 @@ gameplay::Scene::Scene(const std::filesystem::path& package, gameentry::State& e
     }
     const auto* player = managers.playerEvents().player(0);
     ambient = resources.rooms().entries().at(player->room() >> 24).ambient;
+    managers.updateShadow();
     managers.updatePlacement(0);
     resources.furniture().initializeObjects();
     rooms = resources.prepareVisibility(visibilityProjection, fullBounds);
@@ -111,7 +115,7 @@ gameplay::Scene::Scene(const std::filesystem::path& package, gameentry::State& e
         const auto room = actor->parent ? actor->parent->room() : actor->room();
         if (room >> 24 == 255 || !resources.visibility().marked(room >> 24, 0, 0)) continue;
         s3dmodel::Model model;
-        if (!model.read(actor->model->model->bytes, error)) throw std::runtime_error(error);
+        if (!model.read(actor->model->model->bytes, error, true)) throw std::runtime_error(error);
         actors.push_back(actor);
         actorModels.push_back(std::move(model));
         actorModelResources.push_back(actor->model->model);
@@ -134,10 +138,14 @@ void gameplay::Scene::prepareModelGraphics(ID3D11Device* device) {
     particleRenderer.prepare(resources.managers().particles().runningDust().material());
     lightRenderer.load(device, resources.managers().players().models->model(playermodels::SharedModel::Light));
     for (auto* pool : resources.managers().modelEffects().registered()) {
-        if (!dynamic_cast<modeleffects::BarrierPool*>(pool)) continue;
+        if (!dynamic_cast<modeleffects::BarrierPool*>(pool) && !dynamic_cast<modeleffects::CobwebPool*>(pool)) continue;
         for (const auto& owner : pool->owners) {
             const auto& model = owner->model->model;
-            effectRenderers[model.get()].load(device, model);
+            if (!effectRenderers.count(model.get())) effectRenderers[model.get()].load(device, model);
+            if (auto* web = dynamic_cast<modeleffects::CobwebOwner*>(owner.get())) {
+                const auto& secondary = web->secondary->model;
+                effectRenderers[secondary.get()].load(device, secondary);
+            }
         }
     }
     const auto load = [&](const doors::ModelResource& model) {
@@ -146,7 +154,8 @@ void gameplay::Scene::prepareModelGraphics(ID3D11Device* device) {
         batches.load(device, model);
         modellighting::State lighting;
         modellighting::initialize(lighting, view, {}, useRoomLights, ambient, trig);
-        modellighting::prepareModel(lighting, view, lightOrigin, lightTarget, false, trig);
+        const auto& shadow = resources.managers().shadowProjection();
+        modellighting::prepareModel(lighting, view, shadow.position, shadow.target, shadow.spotlight, trig);
         modelrenderer::PipelineState warmPipeline;
         modelrenderer::initializeModelState(warmPipeline);
         warmPipeline.scissor = true;
@@ -155,13 +164,13 @@ void gameplay::Scene::prepareModelGraphics(ID3D11Device* device) {
         state.overrideOpacity = true;
         for (unsigned pass = 0; pass < 3; ++pass) {
             modeldraw::traverse(model.drawing, pass, 255, state, [&](const modeldraw::DrawCommand& command) {
-                batches.prepare(command, pass, lighting, warmPipeline, registers);
+                batches.prepare(command, pass, lighting, warmPipeline, registers, true);
             });
         }
         for (const auto flags : {0u, 1u}) {
             state.lightingFlags = static_cast<std::uint8_t>(flags);
             modeldraw::traverse(model.drawing, 2, 100, state, [&](const modeldraw::DrawCommand& command) {
-                batches.prepare(command, 2, lighting, warmPipeline, registers);
+                batches.prepare(command, 2, lighting, warmPipeline, registers, true);
             });
         }
     };
@@ -218,6 +227,7 @@ void gameplay::Scene::update(const playerinput::PadStatus& pad, std::int16_t por
     }
     updateOpacity();
     if (useRoomLights) managers.updateStorm();
+    else managers.updateShadow();
     managers.updatePoses();
     managers.completePlayerFrame({}, false);
     managers.particles().refresh(nullptr);
@@ -271,19 +281,21 @@ void gameplay::Scene::drawModel(const doors::ModelResource& model,
     context->RSSetScissorRects(1, &rectangle);
     modellighting::State lighting;
     modellighting::initialize(lighting, view, resources.managers().lights().lights(), useRoomLights, ambient, trig);
-    modellighting::prepareModel(lighting, view, lightOrigin, lightTarget, false, trig);
+    const auto& shadow = resources.managers().shadowProjection();
+    modellighting::prepareModel(lighting, view, shadow.position, shadow.target, shadow.spotlight, trig);
     modeldraw::TraversalState state;
     state.lightingFlags = lowOpacity ? 1 : 0;
     state.overrideOpacity = overrideRoomOpacity;
     state.nodeLightingOverride = resources.managers().roomCleared(room);
     state.flaggedOpacity = flaggedOpacity;
     state.limitedOpacity = limitedOpacity;
+    gameshadowrenderer::bindModel(view);
     modeldraw::traverse(model.drawing, pass, opacity, state, [&](const modeldraw::DrawCommand& command) {
         modelrenderer::VertexMatrices matrices;
         matrices.modelView = dooranimation::concatenate(view, matrix(command.node));
         if (!modeldraw::normalMatrix(matrices.modelView, matrices.normal)) throw std::runtime_error("Singular first-area model transform.");
         matrices.projection = projection;
-        models.at(&model).draw(context, command, pass, 0, matrices, trig, lighting, pipeline, {}, retained, false);
+        models.at(&model).draw(context, command, pass, 0, matrices, trig, lighting, pipeline, {}, retained, true);
     });
 }
 
@@ -326,6 +338,7 @@ void gameplay::Scene::drawGameplay(bool present) {
     if (textures.empty()) throw std::runtime_error("Gameplay graphics are not prepared.");
     if (!gamerenderer::useScene("gameplay")) throw std::runtime_error("Gameplay graphics ownership is unavailable.");
     refreshActorModels();
+    drawShadows();
     if (resources.mirror().visible(resources.visibility())) {
         const auto retainedView = view;
         const auto retainedProjection = projection;
@@ -355,6 +368,61 @@ void gameplay::Scene::drawGameplay(bool present) {
     picture.width = 640;
     picture.height = 480;
     gamerenderer::drawInterface({picture}, present);
+}
+
+void gameplay::Scene::drawShadows() {
+    gameshadowrenderer::begin(resources.managers().shadowProjection(), 4.0f / 3.0f);
+    const auto shadowRooms = resources.prepareVisibility(gameshadowrenderer::worldProjection(), fullBounds, 2);
+    const auto submit = [&](const doors::ModelResource& model,
+        const std::function<const dooranimation::Matrix&(unsigned)>& matrix, unsigned pass, std::uint8_t opacity) {
+        modeldraw::TraversalState state;
+        state.mode = 1;
+        state.overrideOpacity = overrideRoomOpacity;
+        state.flaggedOpacity = flaggedOpacity;
+        state.limitedOpacity = limitedOpacity;
+        std::vector<s3dmodel::Batch> batches;
+        modeldraw::traverse(model.drawing, pass, opacity, state, [&](const modeldraw::DrawCommand& command) {
+            batches.push_back(modelshadow::prepare(model, command, matrix(command.node)));
+        });
+        gameshadowrenderer::draw(batches, true);
+    };
+    for (const auto& room : shadowRooms) for (const auto& resident : resources.residentRooms().slots()) {
+        if (resident.room != (room.room & 255) || room.marker != -1) continue;
+        for (unsigned pass = 0; pass < 2; ++pass)
+            submit(resident.drawing, [&](unsigned node) -> const dooranimation::Matrix& {
+                return resident.drawing.initialMatrices.at(node);
+            }, pass, 255);
+    }
+    resources.managers().doors().submitOpaque(2, false, [&](const doors::ModelResource& model,
+        const doors::PoseOwner& pose, unsigned pass, std::uint8_t opacity, bool) {
+        submit(model, [&](unsigned node) -> const dooranimation::Matrix& { return pose.matrix(node); }, pass, opacity);
+    });
+    for (const auto& object : resources.furniture().slots()) {
+        if ((object.flags & 3) != 3 || !object.model || !resources.visibility().marked(object.room >> 24, 2, 0) ||
+            resources.visibility().rawMarker(object.room >> 24, 2) != -1 || object.opacity != 255) continue;
+        for (unsigned pass = 0; pass < 2; ++pass)
+            submit(*object.model, [&](unsigned node) -> const dooranimation::Matrix& { return object.matrices.at(node); }, pass, 255);
+    }
+    for (unsigned i = 0; i < actors.size(); ++i) {
+        const auto& actor = *actors[i];
+        if ((actor.flags & 0x400) || (!(actor.flags & 0x200) &&
+            (actor.room() >> 24 == 255 || !resources.visibility().marked(actor.room() >> 24, 2, 0)))) continue;
+        auto world = actor.matrix;
+        if (const auto* player = dynamic_cast<const playeractor::Player*>(&actor)) {
+            world = playerorientation::toMatrix(player->state.quaternion);
+            for (unsigned row = 0; row < 3; ++row) {
+                for (unsigned column = 0; column < 3; ++column) world[row * 4 + column] *= actor.scale[column];
+                world[row * 4 + 3] = actor.position[row];
+            }
+        }
+        auto batches = actorModels[i].shadowBatches;
+        for (auto& batch : batches) for (auto& vertex : batch.vertices)
+            vertex.position = transform(dooranimation::concatenate(world, actor.model->matrix(0, vertex.matrix)),
+                actor.surface().positions.at(vertex.positionIndex), true);
+        gameshadowrenderer::draw(batches);
+    }
+    gameshadowrenderer::finish();
+    resources.managers().doors().restorePresentation(0);
 }
 
 void gameplay::Scene::drawWorld(bool reflection, const s3denvironment::Camera& camera) {
@@ -418,6 +486,9 @@ void gameplay::Scene::drawSheets(unsigned pass) {
     const auto& owner = *player->components->grids;
     modellighting::State lighting;
     modellighting::initialize(lighting, view, resources.managers().lights().lights(), useRoomLights, ambient, trig);
+    const auto& shadow = resources.managers().shadowProjection();
+    modellighting::prepareModel(lighting, view, shadow.position, shadow.target, shadow.spotlight, trig);
+    gameshadowrenderer::bindModel(view);
     modelrenderer::VertexMatrices matrices{view, view, projection};
     for (unsigned i = 0; i < owner.grids.size(); ++i)
         if (owner.fields16BC[i]) sheetRenderer.draw(gamerenderer::modelContext(), *owner.grids[i], pass, matrices, lighting);
@@ -427,7 +498,7 @@ void gameplay::Scene::drawModelEffects() {
     auto& managers = resources.managers();
     auto& effects = managers.modelEffects();
     const auto mask = effectLighting->prepare(effectMaterialState, view, managers.lights().lights(), trig);
-    const auto instances = effects.prepareBarriers(resources.rooms(), resources.visibility(), view, *modelTransforms, mask);
+    const auto instances = effects.prepare(resources.rooms(), resources.visibility(), view, *modelTransforms, mask);
     visibleModelEffects = static_cast<unsigned>(instances.size());
     std::map<const j3dmodel::MaterialPacket*, j3dmodel::ModelInstance*> owners;
     for (auto* instance : instances)
@@ -485,7 +556,7 @@ void gameplay::Scene::refreshActorModels() {
         else {
             s3dmodel::Model model;
             std::string error;
-            if (!model.read(resource->bytes, error)) throw std::runtime_error("Actor " + std::to_string(actor->type()) + ": " + error);
+            if (!model.read(resource->bytes, error, true)) throw std::runtime_error("Actor " + std::to_string(actor->type()) + ": " + error);
             updatedModels.push_back(std::move(model));
         }
         retained.push_back(resource);
@@ -561,7 +632,22 @@ void gameplay::Scene::drawActors(unsigned stage, const s3denvironment::Camera& c
             lighting.embossLight = true;
             lighting.embossPosition = roomLights.front().position;
         }
-        gamerenderer::drawPreview(i, actorModels[i], batches, lighting, &camera, false, 1U << stage, false,
+        const auto shadow = resources.managers().shadowProjection();
+        if (lightMode == 2 && useRoomLights && shadow.spotlight) {
+            modellighting::State shadowLighting;
+            const dooranimation::Matrix identity{1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0};
+            modellighting::prepareModel(shadowLighting, identity, shadow.position, shadow.target, true, trig);
+            const auto& source = shadowLighting.lights[7];
+            lighting.shadowSpotlight = true;
+            for (unsigned axis = 0; axis < 3; ++axis) {
+                lighting.shadowLight.position[axis] = source.position[axis];
+                lighting.shadowLight.direction[axis] = source.direction[axis];
+                lighting.shadowLight.angular[axis] = source.angular[axis];
+                lighting.shadowLight.distance[axis] = source.distance[axis];
+                lighting.shadowLight.color[axis] = 1;
+            }
+        }
+        gamerenderer::drawPreview(i, actorModels[i], batches, lighting, &camera, false, 1U << stage, !(actor.flags & 0x800),
             textureTrigonometry, nullptr, &drawViewport);
     }
 }

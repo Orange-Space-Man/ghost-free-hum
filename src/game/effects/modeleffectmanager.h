@@ -30,6 +30,9 @@ namespace modeleffects {
         void clear();
         void update(const roomlocation::Rooms& rooms, const roomtraversal::State& visibility);
         void setPaused(bool paused);
+        std::vector<j3dmodel::ModelInstance*> prepare(const roomlocation::Rooms& rooms,
+            const roomtraversal::State& visibility, const j3dmodel::Matrix& view,
+            const j3dmodel::TransformTables& tables, unsigned lightMask);
         std::vector<j3dmodel::ModelInstance*> prepareBarriers(const roomlocation::Rooms& rooms,
             const roomtraversal::State& visibility, const j3dmodel::Matrix& view,
             const j3dmodel::TransformTables& tables, unsigned lightMask);

@@ -1,7 +1,14 @@
 #include "game/effects/cobwebeffectpool.h"
+#include "jlib/j3d/j3dkeyanimation.h"
+#include "jlib/j3d/j3dmaterialcalculation.h"
+#include "jlib/j3d/j3dmaterialdisplaylist.h"
+#include "jlib/j3d/j3dtextureanimation.h"
+
+#include <algorithm>
 
 #include <cmath>
 #include <stdexcept>
+#include <type_traits>
 
 namespace {
     using Vector = std::array<float, 3>;
@@ -186,4 +193,82 @@ void modeleffects::CobwebPool::advance(Owner& object, bool visible) {
         particles.create(0, *player.field8A4, *player.field8A8);
         particles.create(1, *player.field8A4, *player.field8A8);
     }
+}
+
+std::vector<j3dmodel::ModelInstance*> modeleffects::CobwebPool::prepare(const roomlocation::Rooms& rooms,
+    const roomtraversal::State& visibility, const j3dmodel::Matrix& view,
+    const j3dmodel::TransformTables& tables, unsigned lightMask,
+    const std::array<std::unique_ptr<j3dmodel::DrawBuffer>, 2>& buffers) {
+    std::vector<j3dmodel::ModelInstance*> result;
+    const auto submit = [&](j3dmodel::ModelInstance& instance) {
+        j3dmodel::calculateAnimated(instance, tables);
+        for (auto& entry : instance.model->materials.entries) {
+            auto& material = *entry;
+            if (!(material.identityFlags & 0xc0000000) && material.original) {
+                material.identityFlags |= 0x80000000;
+                material.mode = material.original->mode;
+                material.fieldE = material.original->fieldE;
+                material.animation.reset();
+            }
+            auto& channel = material.color->channels[0];
+            channel = static_cast<std::uint16_t>((channel & 0xffc3) | ((lightMask << 2) & 0x3c));
+            channel = static_cast<std::uint16_t>((channel & 0x87ff) | ((lightMask << 7) & 0x1800));
+            if (material.animation) {
+                const auto animate = [&](const auto& bindings, auto& colors, unsigned section, int minimum, int maximum) {
+                    for (unsigned slot = 0; slot < bindings.size(); ++slot) {
+                        if (!bindings[slot]) continue;
+                        const auto& binding = *bindings[slot];
+                        const auto& animation = *binding.animation;
+                        const auto& group = animation.groups[section];
+                        for (unsigned component = 0; component < 4; ++component) {
+                            const auto value = j3dmodel::sampleAnimationKey(animation, group,
+                                group.table + binding.index * 28 + component * 6, component, true, 0);
+                            using Color = typename std::decay_t<decltype(colors[slot])>::value_type;
+                            colors[slot][component] = static_cast<Color>(std::clamp<int>(int(value), minimum, maximum));
+                        }
+                    }
+                };
+                animate(material.animation->tevColors, material.tev->colors, 0, -1024, 1023);
+                animate(material.animation->tevConstants, material.tev->constants, 1, 0, 255);
+            }
+        }
+        const auto& geometry = instance.model->geometry;
+        std::vector<int> pending;
+        if (geometry.hierarchy.root >= 0) pending.push_back(geometry.hierarchy.root);
+        while (!pending.empty()) {
+            const int joint = pending.back();
+            pending.pop_back();
+            const auto& links = geometry.hierarchy.joints[joint];
+            if (links.sibling >= 0) pending.push_back(links.sibling);
+            if (links.child >= 0) pending.push_back(links.child);
+            for (int index = links.material; index >= 0; index = geometry.hierarchy.materials[index].next) {
+                auto& packet = instance.materials.at(index);
+                auto& material = *packet.material;
+                j3dmodel::animateTextureMatrices(material);
+                j3dmodel::calculateMaterial(material, instance.jointMatrices[geometry.joints[joint].index], view,
+                    instance.field8 & 12, tables);
+                auto& buffer = *buffers[(material.mode & 3) ? 0 : 1];
+                if (buffer.sortType != 0) throw std::runtime_error("Original cobweb requires material-sort drawing.");
+                packet.materialIdentity = material.identity;
+                packet.identityFlags = material.identityFlags;
+                if (buffer.entryMaterial(packet, geometry.textureOffset)) j3dmodel::updateMaterialPacket(packet);
+            }
+        }
+        j3dmodel::calculateViewMatrices(instance, view);
+        result.push_back(&instance);
+    };
+    for (auto& entry : owners) {
+        auto& owner = static_cast<CobwebOwner&>(*entry);
+        if ((owner.flags & 5) != 5) continue;
+        const auto& matrix = owner.model->matrix;
+        const auto room = rooms.resolve({matrix[3], matrix[7], matrix[11]}, 0xffffffff);
+        if ((visibility.record(room, 0).flags & 3) != 1) continue;
+        if (!(owner.flags & 0x80)) {
+            transform->frame = float(owner.frame);
+            submit(*owner.model);
+        }
+        secondaryTransform->frame = owner.color->frame = float(owner.frame);
+        submit(*owner.secondary);
+    }
+    return result;
 }

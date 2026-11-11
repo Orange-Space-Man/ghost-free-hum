@@ -73,7 +73,7 @@ namespace {
 }
 
 void modelrenderer::MaterialShader::load(ID3D11Device* device, const modelmaterial::StageProgram& program,
-    const std::array<StageRegisters, 16>& retained, const PipelineState& state) {
+    const std::array<StageRegisters, 16>& retained, const PipelineState& state, bool shadow) {
     if (!device || !program.stageCount || program.stageCount > 16 || program.stages.size() != program.stageCount)
         throw std::runtime_error("Material shader requires a complete original stage program.");
     MaterialShader result;
@@ -103,8 +103,22 @@ int combine(int a, int b, int c, int d, int subtract, int bias, int scale) {
 )";
     for (unsigned slot = 0; slot < 8; ++slot)
         source << "Texture2D image" << slot << " : register(t" << slot << "); SamplerState sampler" << slot << " : register(s" << slot << ");\n";
+    if (shadow) source << R"(
+cbuffer Shadow : register(b4) { row_major float4x4 shadowProjection; float4 shadowColor; float4 shadowState; };
+Texture2D shadowImage : register(t8);
+Texture2D shadowLookup : register(t9);
+SamplerState shadowFiltering : register(s8);
+SamplerState lookupFiltering : register(s9);
+)";
     if (state.earlyDepth) source << "[earlydepthstencil]\n";
     source << "float4 main(Input input) : SV_TARGET { int4 r[4]; for(int i=0;i<4;++i) r[i]=initial[i];\n";
+    if (shadow) source << R"(
+    float4 shadowPosition = mul(float4(input.viewPosition, 1), shadowProjection);
+    float3 projected = shadowPosition.xyz / shadowPosition.w;
+    int2 reference = int2(round(shadowLookup.Sample(lookupFiltering, float2(projected.z, projected.z * 256)).rg * 255));
+    int2 stored = int2(round(shadowImage.Sample(shadowFiltering, projected.xy * float2(0.5, -0.5) + 0.5).rg * 255));
+    r[1].a = reference.x + reference.y * 256 > stored.x + stored.y * 256 ? konst[3].a : 0;
+)";
     unsigned expected = 0;
     for (const auto& stage : program.stages) {
         if (stage.index != expected++ || !supportedOperation(stage.colorOperation) || !supportedOperation(stage.alphaOperation) || stage.colorOutput > 3 || stage.alphaOutput > 3)

@@ -73,6 +73,7 @@ namespace gameplay {
         void updateOpacity();
         void publishCamera();
         void drawGameplay(bool present);
+        void drawShadows();
         void drawWorld(bool reflection, const s3denvironment::Camera& camera);
         void refreshActorModels();
         void drawActors(unsigned stage, const s3denvironment::Camera& camera, unsigned visibilityBuffer);

@@ -136,3 +136,22 @@ std::vector<j3dmodel::ModelInstance*> modeleffects::Manager::prepareBarriers(con
 void modeleffects::Manager::setPaused(bool paused) {
     for (auto* pool : registry) pool->setPaused(paused);
 }
+
+std::vector<j3dmodel::ModelInstance*> modeleffects::Manager::prepare(const roomlocation::Rooms& rooms,
+    const roomtraversal::State& visibility, const j3dmodel::Matrix& view,
+    const j3dmodel::TransformTables& tables, unsigned lightMask) {
+    if (!initialized) throw std::logic_error("Original model-effect manager is not initialized.");
+    for (auto& buffer : drawBuffers) buffer->clear();
+    std::vector<j3dmodel::ModelInstance*> result;
+    for (auto* pool : registry) {
+        if (auto* barrier = dynamic_cast<BarrierPool*>(pool)) {
+            if (barrier->prepare(rooms, visibility, view, tables, lightMask, drawBuffers))
+                result.push_back(barrier->owners[0]->model.get());
+        }
+        if (auto* webs = dynamic_cast<CobwebPool*>(pool)) {
+            auto instances = webs->prepare(rooms, visibility, view, tables, lightMask, drawBuffers);
+            result.insert(result.end(), instances.begin(), instances.end());
+        }
+    }
+    return result;
+}

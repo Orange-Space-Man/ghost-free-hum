@@ -1,5 +1,6 @@
 #include "platform/d3d11/modelbatchrenderer.h"
 #include "game/models/modeldrawmatrices.h"
+#include "platform/d3d11/gameshadowrenderer.h"
 
 #include <stdexcept>
 #include <utility>
@@ -19,7 +20,6 @@ void modelrenderer::Batches::draw(ID3D11DeviceContext* context, const modeldraw:
     std::uint8_t mode, const VertexMatrices& matrices, const originalmath::FloatTrig& trig, modellighting::State& lighting,
     PipelineState& pipeline, const CombinerInputs& combiner, std::array<StageRegisters, 16>& retained, bool shadow) {
     if (!owner || !context) throw std::runtime_error("Model batches are not ready.");
-    if (shadow) throw std::runtime_error("Projected model shadows require the original shadow texture-stage prefix.");
     Microsoft::WRL::ComPtr<ID3D11Device> device;
     context->GetDevice(device.GetAddressOf());
     if (device.Get() != owner.Get()) throw std::runtime_error("Model batch context belongs to another device.");
@@ -50,7 +50,9 @@ void modelrenderer::Batches::draw(ID3D11DeviceContext* context, const modeldraw:
     selectBatchCull(rasterState, batch.cull, mode);
     auto& materialShader = shader(command, program, specular, shadow, rasterState, retained);
     textures.bind(context, command.material, program);
-    materialShader.draw(context, combiner, geometry, command.batch, matrices, coordinates, inputs);
+    auto values = combiner;
+    if (shadow) values.constants[3] = gameshadowrenderer::color();
+    materialShader.draw(context, values, geometry, command.batch, matrices, coordinates, inputs);
     lighting = lightState;
     pipeline = rasterState;
     for (const auto& stage : program.stages) {
@@ -84,22 +86,22 @@ modelrenderer::MaterialShader& modelrenderer::Batches::shader(const modeldraw::D
     auto found = shaders.find(key);
     if (found == shaders.end()) {
         MaterialShader shader;
-        shader.load(owner.Get(), program, retained, rasterState);
+        shader.load(owner.Get(), program, retained, rasterState, shadow);
         found = shaders.emplace(std::move(key), std::move(shader)).first;
     }
     return found->second;
 }
 
 void modelrenderer::Batches::prepare(const modeldraw::DrawCommand& command, unsigned pass,
-    modellighting::State& lighting, PipelineState& pipeline, std::array<StageRegisters, 16>& retained) {
+    modellighting::State& lighting, PipelineState& pipeline, std::array<StageRegisters, 16>& retained, bool shadow) {
     const auto& batch = drawing.batch(command.batch);
     const auto& material = materials.at(command.material);
     lighting.material.lightingFlags = command.lightingFlags;
     const bool specular = modellighting::configureMaterial(lighting, material, command.opacity, batch.lighting, command.lightingFlags);
-    const auto program = modelmaterial::buildStages(material, batch.textureCount, batch.normalMode, specular, false);
+    const auto program = modelmaterial::buildStages(material, batch.textureCount, batch.normalMode, specular, shadow);
     selectModelPass(pipeline, pass);
     selectBatchCull(pipeline, batch.cull, 0);
-    shader(command, program, specular, false, pipeline, retained);
+    shader(command, program, specular, shadow, pipeline, retained);
     for (const auto& stage : program.stages) {
         auto& registers = retained[stage.index];
         if (stage.resetSwap) registers.textureSwap = registers.rasterSwap = {0, 1, 2, 3};
