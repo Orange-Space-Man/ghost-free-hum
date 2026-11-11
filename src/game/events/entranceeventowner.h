@@ -14,6 +14,7 @@ namespace gameevent {
         void update(unsigned elapsedSeconds, std::uint32_t audioFrame);
         bool updateCamera();
         bool menuEnabled() const;
+        bool fullscreen() const;
         bool active() const;
         bool cameraActive() const;
 

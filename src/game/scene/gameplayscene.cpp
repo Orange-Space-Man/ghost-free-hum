@@ -189,7 +189,6 @@ void gameplay::Scene::update(const playerinput::PadStatus& pad, std::int16_t por
         flaggedOpacity = 0;
         limitedOpacity = 255;
     }
-    managers.updatePlacement(ticks / 30);
     managers.updateGenerators();
     const std::array<playermotion::PlatformMotion, 2> platforms{};
     PlayerMainServices playerServices{nullptr, nullptr,
@@ -219,10 +218,11 @@ void gameplay::Scene::update(const playerinput::PadStatus& pad, std::int16_t por
     updateOpacity();
     managers.updatePoses();
     managers.completePlayerFrame({}, false);
+    managers.updatePlacement(ticks / 30, false);
     managers.glows().update();
     managers.modelEffects().update(resources.rooms(), resources.visibility());
     managers.particles().update();
-    resources.hud().update(player->view, resources.menuEnabled(), managers.roomCleared(player->room() >> 24));
+    resources.hud().update(player->view, resources.fullscreen(), managers.roomCleared(player->room() >> 24));
     ++ticks;
 }
 

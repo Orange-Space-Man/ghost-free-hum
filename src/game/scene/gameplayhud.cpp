@@ -39,13 +39,14 @@ std::size_t gameplay::Hud::load(const gamearchive::Archive& archive, const std::
 }
 
 gameplay::Hud::Hud(const gamearchive::Archive& archive, const std::vector<std::uint8_t>& executable, const std::vector<unsigned>& rooms) {
-    constexpr unsigned roomNameTable = 0x80305f20, lifeNumberTable = 0x80305020;
+    constexpr unsigned roomNameTable = 0x80305f20, lifeNumberTable = 0x80305020, floorNameTable = 0x803058ec;
     for (const auto room : rooms) {
         if (roomTextures.count(room)) continue;
         const auto path = name(executable, roomNameTable, room);
         if (!path.empty()) roomTextures.emplace(room, load(archive, path));
     }
     for (unsigned i = 0; i < digits.size(); ++i) digits[i] = load(archive, name(executable, lifeNumberTable, i));
+    for (unsigned i = 0; i < floors.size(); ++i) floors[i] = load(archive, name(executable, floorNameTable, i));
     hearts = {load(archive, "/kawano/lifemeter/heartD.bti"), load(archive, "/kawano/lifemeter/heartD2.bti"),
         load(archive, "/kawano/lifemeter/heartD_KAGE.bti")};
     const auto constants = read(executable, 0x804d052e, 14);
@@ -62,8 +63,7 @@ gameplay::Hud::Hud(const gamearchive::Archive& archive, const std::vector<std::u
     }
 }
 
-void gameplay::Hud::update(const playeractor::View& player, bool enabled, bool roomCleared) {
-    visible = enabled;
+void gameplay::Hud::update(const playeractor::View& player, bool fullscreen, bool roomCleared) {
     cleared = roomCleared;
     life += life < player.life ? 1 : life > player.life ? -1 : 0;
     maximumLife += maximumLife < player.maximumLife ? 1 : maximumLife > player.maximumLife ? -1 : 0;
@@ -71,15 +71,24 @@ void gameplay::Hud::update(const playeractor::View& player, bool enabled, bool r
     const unsigned period = reaction == 0 ? 60 : reaction == 1 ? 40 : reaction == 2 ? 30 : 20;
     pulsePeriod += pulsePeriod < period ? 1 : pulsePeriod > period ? -1 : 0;
     pulseAngle += 65536 / pulsePeriod;
-    slide = enabled ? std::max(0, slide - int(slideStep)) : std::min(100, slide + int(slideStep));
-    if (!enabled) {
-        if (previousRoom != player.room) {
-            selectedRoom = player.room & 255;
-            roomPhase = roomTextures.count(selectedRoom) ? 1 : 0;
-            roomCounter = roomDelay = 0;
-            previousRoom = player.room;
-        }
-        return;
+    slide = fullscreen ? std::min(100, slide + int(slideStep)) : std::max(0, slide - int(slideStep));
+    constexpr int floorHeight = 550;
+    const int height = static_cast<int>((*player.position)[1]);
+    const unsigned floor = height < 0 ? (height / floorHeight == 0 ? 0 : 4) :
+        static_cast<unsigned>(std::min(height / floorHeight, 3));
+    if (floor != selectedFloor && height == (height / floorHeight) * floorHeight) {
+        selectedFloor = floor;
+        floorPhase = 2;
+        floorCounter = 0;
+    }
+    if (floorPhase == 2) {
+        floorCounter += 5;
+        if (floorCounter >= 255) { floorPhase = 3; floorCounter = 0; }
+    } else if (floorPhase == 3) {
+        if (++floorCounter > 60) { floorPhase = 4; floorCounter = 255; }
+    } else if (floorPhase == 4) {
+        floorCounter = floorCounter > 5 ? floorCounter - 5 : 0;
+        if (!floorCounter) floorPhase = 0;
     }
     roomDelay = std::min(255u, roomDelay + 255u / (cleared ? 30 : 120));
     if (previousRoom != player.room) {
@@ -151,10 +160,16 @@ std::vector<startupscene::Picture> gameplay::Hud::pictures() const {
         if (life >= 10) result.push_back(picture(digits.at((life / 10) % 10), int(x + 22 * digitScale), y, digitScale, false, color));
         result.push_back(picture(digits.at(life % 10), int(x + 44 * digitScale), y, digitScale, false, color));
     }
-    if (visible && roomPhase >= 2 && roomPhase <= 5) {
+    if (roomPhase >= 2 && roomPhase <= 5) {
         const unsigned fade = roomPhase == 3 ? 255 : roomCounter;
         const float brightness = cleared ? 1 : 220 / 255.0f;
         result.push_back(picture(roomTextures.at(selectedRoom), 43, 44, 1, false,
+            {brightness, brightness, brightness, float(160 * fade / 255) / 255}));
+    }
+    if (floorPhase >= 2 && floorPhase <= 4) {
+        const unsigned fade = floorPhase == 3 ? 255 : floorCounter;
+        const float brightness = cleared ? 1 : 220 / 255.0f;
+        result.push_back(picture(floors.at(selectedFloor), 537, 44, 1, false,
             {brightness, brightness, brightness, float(160 * fade / 255) / 255}));
     }
     return result;

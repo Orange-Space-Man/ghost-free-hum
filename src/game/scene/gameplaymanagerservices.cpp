@@ -548,6 +548,7 @@ void gameplay::ManagerServices::updatePlayerMain(unsigned index, const PlayerMai
     if (index >= state->dependencies.playerCount) throw std::out_of_range("Player main index exceeds the bound player count.");
     auto* player = state->events->player(static_cast<std::int32_t>(index));
     if (!player || !state->playerFurniture) throw std::logic_error("Player main requires its registered actor and furniture services.");
+    if ((player->flags & 0x70) || player->fieldF4) return;
     if (&services.timers.life != state->life.get()) throw std::invalid_argument("Player main requires the scene-owned health environment.");
     unsigned ownerSlot = 0, ownerCount = 0;
     const auto& slots = state->enemies->slots();
@@ -617,9 +618,13 @@ charactergenerator::Manager& gameplay::ManagerServices::generators() { return *s
 particles::GlowPool& gameplay::ManagerServices::glows() { return state->glows; }
 unsigned gameplay::ManagerServices::candleCount() const { return state->candles->count(); }
 
-void gameplay::ManagerServices::updatePlacement(std::int32_t elapsedSeconds) {
+void gameplay::ManagerServices::updatePlacement(std::int32_t elapsedSeconds, bool force) {
     if (state->placementFailed) throw std::runtime_error("Original placement activation failed; reload the scene before retrying.");
     state->missionEvents->updateAppearance(elapsedSeconds);
+    bool roomChanged = false;
+    for (unsigned i = 0; i < state->dependencies.playerCount; ++i)
+        roomChanged |= state->events->player(i)->view.fieldF2C != 0;
+    if (!force && !roomChanged) return;
     try {
         state->placement->update();
         if (state->dependencies.updateActorResources)

@@ -96,6 +96,7 @@ void gameevent::EntranceOwner::update(unsigned elapsedSeconds, std::uint32_t fra
 bool gameevent::EntranceOwner::flag(unsigned index) const { return managers.flags().value(static_cast<std::uint8_t>(index)); }
 void gameevent::EntranceOwner::menu(bool enabled) { menuAvailable = enabled; }
 bool gameevent::EntranceOwner::menuEnabled() const { return menuAvailable; }
+bool gameevent::EntranceOwner::fullscreen() const { return fullscreenEnabled; }
 bool gameevent::EntranceOwner::active() const { return script != nullptr; }
 bool gameevent::EntranceOwner::cameraActive() const { return cameraPath != nullptr; }
 

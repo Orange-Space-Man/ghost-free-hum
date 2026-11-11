@@ -174,6 +174,7 @@ void gameplay::ResourceOwner::updateEvents(unsigned elapsedSeconds, std::uint32_
 
 bool gameplay::ResourceOwner::entranceActive() const { return state->entrance->active(); }
 bool gameplay::ResourceOwner::menuEnabled() const { return state->entrance->menuEnabled(); }
+bool gameplay::ResourceOwner::fullscreen() const { return state->entrance->fullscreen(); }
 gameplay::Hud& gameplay::ResourceOwner::hud() { return *state->hud; }
 bool gameplay::ResourceOwner::eventCameraActive() const { return state->entrance->cameraActive(); }
 

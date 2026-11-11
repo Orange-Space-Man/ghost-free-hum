@@ -24,6 +24,7 @@ namespace gameplay {
         bool entranceActive() const;
         bool eventCameraActive() const;
         bool menuEnabled() const;
+        bool fullscreen() const;
         Hud& hud();
         const roomlocation::Rooms& rooms() const;
         const std::vector<std::uint8_t>& executable() const;
