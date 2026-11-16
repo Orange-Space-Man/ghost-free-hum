@@ -42,6 +42,15 @@ namespace {
     }
 }
 
+std::optional<unsigned> openingscene::findCutscene(const std::vector<std::uint8_t>& executable, std::string_view requested) {
+    const auto definitions = range(executable, 0x80373aa4, 78 * 24);
+    for (unsigned index = 0; index < 78; ++index) {
+        const auto address = word(definitions, index * 24);
+        if (address && name(executable, address) == requested) return index;
+    }
+    return std::nullopt;
+}
+
 unsigned openingscene::doorCutscene(bool missingKey, bool front, unsigned type) {
     const std::uint32_t index = (type - 1) * 4 + unsigned(front) * 2 + unsigned(missingKey) + 3;
     return index < 3 || index > 58 ? 3 : index;

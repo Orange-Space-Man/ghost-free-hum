@@ -56,6 +56,7 @@ namespace gameevent {
         virtual void warp(std::int32_t destination);
         virtual bool acknowledgeMessage();
         virtual void controllerInstructions();
+        virtual void playerLight(bool enabled);
         virtual void cameraTarget(std::string_view actor, std::int32_t height);
     };
 

@@ -107,6 +107,7 @@ namespace gameplay {
         gameflags::State& flags();
         const playerinput::Pad& controller() const;
         bool roomCleared(unsigned room) const;
+        void setRoomLight(unsigned room, bool enabled);
         void updateOwner(unsigned slot);
         void updatePlacement(std::int32_t elapsedSeconds, bool force = true);
         void updateGenerators();

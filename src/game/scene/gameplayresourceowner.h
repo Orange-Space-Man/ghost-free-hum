@@ -22,6 +22,7 @@ namespace gameplay {
         const s3denvironment::Camera& camera() const;
         gameplaycamera::DrawState publishCamera();
         void updateCamera();
+        void setCurrentRoomLight(bool enabled);
         void bindControllerInstructions(std::function<void()> request);
         void updateEvents(unsigned elapsedSeconds, std::uint32_t audioFrame);
         bool entranceActive() const;

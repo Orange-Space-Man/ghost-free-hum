@@ -121,6 +121,7 @@ struct gameplay::ResourceOwner::State {
         if (entry.map == 1) managers->music().requestLab(1);
         if (entry.map == 3) managers->music().requestTraining(1);
         entrance = std::make_unique<gameevent::EntranceOwner>(package, types, entry, *rooms, *managers, owner, executable, *messages, *cameraFollow);
+        entrance->bindRoomLight([this](bool enabled) { managers->setRoomLight(cameraRoom >> 24, enabled); });
     }
 
     gameentry::State& entry;
@@ -198,6 +199,10 @@ void gameplay::ResourceOwner::updateCamera() {
     state->roomTransition.update(state->cameraRoom);
     if (state->entrance->updateCamera()) return;
     state->cameraFollow->update(*state->cameras.cameras[0], player->view, state->cameraRoom);
+}
+
+void gameplay::ResourceOwner::setCurrentRoomLight(bool enabled) {
+    state->managers->setRoomLight(state->cameraRoom >> 24, enabled);
 }
 
 void gameplay::ResourceOwner::bindControllerInstructions(std::function<void()> request) {

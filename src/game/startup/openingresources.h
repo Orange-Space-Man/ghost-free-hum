@@ -2,6 +2,8 @@
 
 #include "resources/gameassetpackage.h"
 #include <array>
+#include <optional>
+#include <string_view>
 
 namespace openingscene {
     struct Resource {
@@ -33,5 +35,6 @@ namespace openingscene {
     };
 
     bool read(gameassets::Package& package, unsigned cutscene, Resources& resources, std::string& error);
+    std::optional<unsigned> findCutscene(const std::vector<std::uint8_t>& executable, std::string_view requested);
     unsigned doorCutscene(bool missingKey, bool front, unsigned type);
 }

@@ -17,6 +17,7 @@ namespace gameevent {
         EntranceOwner(gameassets::Package& package, const enemytypes::Catalog& types,
             gameentry::State& entry, const roomlocation::Rooms& rooms, gameplay::ManagerServices& managers,
             gameplaycamera::CameraOwner& camera, const std::vector<std::uint8_t>& executable, MessageWindows& messages, gameplaycamera::Follow& follow);
+        void bindRoomLight(std::function<void(bool)> change);
         void bindControllerInstructions(std::function<void()> request);
         void update(unsigned elapsedSeconds, std::uint32_t audioFrame);
         bool updateCamera();
@@ -27,6 +28,8 @@ namespace gameevent {
         const scenetransition::Request& transition() const;
 
     private:
+        std::function<void(bool)> changeRoomLight;
+        void playerLight(bool enabled) override;
         std::function<void()> requestInstructions;
         void controllerInstructions() override;
         void wipeKind(std::int32_t kind) override;

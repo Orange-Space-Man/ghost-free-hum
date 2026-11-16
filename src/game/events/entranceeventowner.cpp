@@ -17,6 +17,15 @@ gameevent::EntranceOwner::EntranceOwner(gameassets::Package& package, const enem
     package(package), types(types), entry(entry), rooms(rooms), managers(managers), cameraOwner(camera),
     executable(executable), messages(messages), follow(follow) {}
 
+void gameevent::EntranceOwner::bindRoomLight(std::function<void(bool)> change) {
+    changeRoomLight = std::move(change);
+}
+
+void gameevent::EntranceOwner::playerLight(bool enabled) {
+    if (!changeRoomLight) throw std::runtime_error("Room lighting requires the current room owner.");
+    changeRoomLight(enabled);
+}
+
 void gameevent::EntranceOwner::bindControllerInstructions(std::function<void()> request) {
     requestInstructions = std::move(request);
 }

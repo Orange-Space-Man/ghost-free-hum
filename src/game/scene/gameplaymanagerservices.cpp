@@ -763,6 +763,29 @@ void gameplay::ManagerServices::updateStorm() {
     if (state->storm.strikes() != strikes) state->shadow.strike(state->storm.setting(player->room()), dependencies.actors.pose);
 }
 
+void gameplay::ManagerServices::setRoomLight(unsigned room, bool enabled) {
+    auto& dependencies = state->dependencies;
+    if (enabled && dependencies.entry.map == 2 && dependencies.flags.value(0x3d)) return;
+    auto& flags = dependencies.roomFlags.at(room);
+    if (enabled) flags |= 0x8008;
+    else flags &= ~0x8000u;
+    if (dependencies.entry.map != 2) return;
+    const auto number = dependencies.actors.rooms.entries().at(room).id & 255;
+    const auto offset = 0xa0 + number * 2;
+    auto& inventory = dependencies.entry.inventory;
+    unsigned saved = (unsigned(inventory.at(offset)) << 8) | inventory.at(offset + 1);
+    if (enabled) saved |= 2;
+    else saved &= ~2u;
+    inventory.at(offset) = static_cast<std::uint8_t>(saved >> 8);
+    inventory.at(offset + 1) = static_cast<std::uint8_t>(saved);
+    if (number == 2) {
+        unsigned secondary = 255;
+        for (const auto& candidate : dependencies.actors.rooms.entries())
+            if ((candidate.id & 255) == 0x1e) secondary = candidate.id >> 24;
+        setRoomLight(secondary, enabled);
+    }
+}
+
 void gameplay::ManagerServices::updateRoomLights() {
     const auto& dependencies = state->dependencies;
     if (dependencies.entry.map != 1 && dependencies.entry.map != 3) return;
