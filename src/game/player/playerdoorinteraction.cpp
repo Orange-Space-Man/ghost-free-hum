@@ -133,7 +133,7 @@ void playerinteraction::DoorInteraction::open(playercomponents::DoorState& state
         actions.request(0x16);
         output.blocked = state.blocked != 0;
     } else {
-        services.doors.action(state.door, state.side, state.command, false);
+        services.doors.action(state.door, state.side, state.command, true);
         if (state.pairedDoor == -1) services.doors.destinationRoom(state.door, input.room, services.roomIds, output.room);
         actions.request(0x15);
     }
@@ -195,10 +195,10 @@ bool playerinteraction::DoorInteraction::run(playercomponents::DoorState& state,
             break;
         case 5:
             if (input.close) {
-                services.doors.action(state.door, state.side, 4, false);
+                services.doors.action(state.door, state.side, 4, true);
                 actions.request(0x17);
             } else if (input.reverse) {
-                services.doors.action(state.door, state.side, 2, false);
+                services.doors.action(state.door, state.side, 2, true);
                 if (state.pairedDoor == -1) services.doors.destinationRoom(state.door, input.room, services.roomIds, next.room);
                 actions.request(0x18);
             }
