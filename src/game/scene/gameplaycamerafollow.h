@@ -10,6 +10,9 @@ namespace gameplaycamera {
         explicit Follow(const std::vector<std::uint8_t>& executable, unsigned map = 2);
         void update(CameraOwner& camera, const playeractor::View& player, unsigned room, unsigned playerIndex = 0);
         unsigned preset() const;
+        void beginTarget(CameraOwner& camera) const;
+        void updateTarget(CameraOwner& camera, const std::array<float, 3>& player,
+            const std::array<float, 3>& target, unsigned room) const;
 
     private:
         struct Room {
@@ -29,6 +32,7 @@ namespace gameplaycamera {
         float nearThreshold, farThreshold, reactionHeight, reactionDepth;
         float quantization, inverseQuantization, smoothingScale, fieldOfView, coincidentOffset;
         float nearPlane, farPlane;
+        float targetHeight, targetMinimumDepth, targetRate;
         std::array<float, 3> up;
     };
 }

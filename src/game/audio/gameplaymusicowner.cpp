@@ -198,6 +198,7 @@ void gameplaymusic::Owner::updateRequests(std::uint32_t audioFrame, bool enabled
     switch (pending) {
     case 0x80000012: requestDeath(audioFrame); break;
     case 0x8000000c: requestLab(audioFrame); break;
+    case 0x80000025: requestTraining(audioFrame); break;
     case 0x80000019: requestEntrance(audioFrame); break;
     case 0x8000001a: requestParlor(audioFrame); break;
     case 0x8000001b: requestFirstKey(audioFrame); break;
@@ -266,6 +267,26 @@ bool gameplaymusic::Owner::requestLab(std::uint32_t audioFrame) {
         throw std::runtime_error(error);
     }
     preparedSound = activeSound = 0x8000000c;
+    sequence.start();
+    soundState = 4;
+    lastRequestFrame = audioFrame;
+    return true;
+}
+
+bool gameplaymusic::Owner::requestTraining(std::uint32_t audioFrame) {
+    std::lock_guard<std::recursive_mutex> lock(mutex);
+    if (deferRequest(0x80000025)) return true;
+    if (lastRequestFrame == audioFrame) return false;
+    const auto* info = jaudio::soundInfo(resources, 0x80000025);
+    if (!info || (*info)[0] || (*info)[1] || (*info)[2] || (*info)[3])
+        throw std::runtime_error("Unsupported original training sequence routing metadata.");
+    stop();
+    std::string error;
+    if (!sequence.loadTraining(package, resources, error)) {
+        preparedSound = 0;
+        throw std::runtime_error(error);
+    }
+    preparedSound = activeSound = 0x80000025;
     sequence.start();
     soundState = 4;
     lastRequestFrame = audioFrame;

@@ -27,6 +27,8 @@ void gameevent::EntranceServices::closeWindow(unsigned) { unsupportedService(); 
 void gameevent::EntranceServices::wipeKind(std::int32_t) { unsupportedService(); }
 void gameevent::EntranceServices::wipeTime(std::int32_t) { unsupportedService(); }
 void gameevent::EntranceServices::warp(std::int32_t) { unsupportedService(); }
+bool gameevent::EntranceServices::acknowledgeMessage() { unsupportedService(); return false; }
+void gameevent::EntranceServices::cameraTarget(std::string_view, std::int32_t) { unsupportedService(); }
 
 gameevent::EntranceScript::EntranceScript(std::string source) : source(std::move(source)) {}
 
@@ -103,6 +105,7 @@ bool gameevent::EntranceScript::update(EntranceServices& services) {
         state = 0;
         return false;
     }
+    if (state == 3 && !services.acknowledgeMessage()) return false;
     if (state == 4 && --wait != 0) return false;
     state = 1;
     bool grouped = false;
@@ -130,6 +133,14 @@ bool gameevent::EntranceScript::update(EntranceServices& services) {
         else if (command == "HLIGHTOFF") services.playerEvent(0x1e);
         else if (command == "HLIGHTON") services.playerEvent(0x1d);
         else if (command == "LUIGELTON") services.playerEvent(0x19);
+        else if (command == "NECKOFF") services.playerEvent(0x36);
+        else if (command == "NECKON") services.playerEvent(0x37);
+        else if (command == "ANYKEY") state = 3;
+        else if (command == "CAMTARGET") {
+            const auto actor = token('"', '"');
+            const auto height = integer();
+            services.cameraTarget(actor, height);
+        }
         else if (command == "NOWEAPON") services.playerEvent(0x20);
         else if (command == "LLIGHTOFF") services.playerEvent(0x1b);
         else if (command == "LLIGHTON") services.playerEvent(0x1c);

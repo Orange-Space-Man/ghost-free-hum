@@ -41,7 +41,7 @@ namespace {
 }
 
 gameplaycamera::Follow::Follow(const std::vector<std::uint8_t>& executable, unsigned map) {
-    if (map != 1 && map != 2) throw std::runtime_error("Unsupported camera follow map.");
+    if (map != 1 && map != 2 && map != 3) throw std::runtime_error("Unsupported camera follow map.");
     const auto descriptor = word(executable, mapDescriptors + map * 4);
     const auto count = word(executable, descriptor) >> 24;
     const auto records = word(executable, descriptor + 20);
@@ -56,6 +56,9 @@ gameplaycamera::Follow::Follow(const std::vector<std::uint8_t>& executable, unsi
         }
         rooms.push_back(room);
     }
+    targetHeight = scalar(executable, 0x804d9d48);
+    targetMinimumDepth = scalar(executable, 0x804d9d58);
+    targetRate = scalar(executable, 0x804d9d14);
     roomId = 0xffffffff;
     roomFlags = 0;
     for (unsigned mode = 0; mode < presets.size(); ++mode)
@@ -159,4 +162,34 @@ void gameplaycamera::Follow::update(CameraOwner& camera, const playeractor::View
         approach(camera.position, eye, followRate);
     }
     if (camera.target == camera.position) camera.target[2] = camera.position[2] + coincidentOffset;
+}
+
+void gameplaycamera::Follow::beginTarget(CameraOwner& camera) const {
+    camera.flags |= 1;
+    camera.callback = 0x80024620;
+    camera.fieldE0 = 0;
+    camera.fieldOfView = fieldOfView;
+    camera.visibilityMode = 0;
+}
+
+void gameplaycamera::Follow::updateTarget(CameraOwner& camera, const std::array<float, 3>& player,
+    const std::array<float, 3>& target, unsigned room) const {
+    const auto& bounds = rooms.at(room >> 24);
+    if (bounds.id != room) throw std::runtime_error("Target camera requires a resolved room descriptor.");
+    const std::array<float, 3> difference{target[0] - player[0], target[1] - player[1], target[2] - player[2]};
+    const float distance = std::sqrt(difference[2] * difference[2] + (difference[0] * difference[0] + difference[1] * difference[1]));
+    const float vertical = difference[1] / distance;
+    std::array<float, 3> aim{(player[0] + target[0]) * followRate,
+        (heightThreshold + player[1] + target[1]) * followRate, (player[2] + target[2]) * followRate};
+    std::array<float, 3> eye{aim[0], float(double(aim[1]) + double(targetHeight)), heightThreshold + aim[2]};
+    const std::array<float, 3> offset{eye[0] - aim[0], eye[1] - aim[1], eye[2] - aim[2]};
+    const float inverseLength = 1 / std::sqrt(offset[0] * offset[0] + offset[1] * offset[1] + offset[2] * offset[2]);
+    const float scale = float(double(distance) * double(absentRoomRate + absentRoomRate * std::abs(vertical)));
+    for (unsigned axis = 0; axis < 3; ++axis) eye[axis] = aim[axis] + (offset[axis] * inverseLength) * scale;
+    if (eye[2] < targetMinimumDepth + aim[2]) eye[2] = targetMinimumDepth + aim[2];
+    const float rear = float(double(bounds.minimum[2] + bounds.extent[2]) + double(parameters[0]));
+    if (rear < eye[2]) eye[2] = rear;
+    if (eye[1] < player[1]) eye[1] = player[1];
+    approach(camera.target, aim, targetRate);
+    approach(camera.position, eye, targetRate);
 }

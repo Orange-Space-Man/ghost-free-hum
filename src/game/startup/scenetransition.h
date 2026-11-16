@@ -6,13 +6,13 @@
 namespace scenetransition {
     struct Request {
         std::int32_t destination = -1;
-        std::int32_t kind = 0;
-        std::int32_t duration = 0;
+        std::int32_t kind = 2;
+        std::int32_t duration = 30;
     };
 
     class ParlorWipe {
     public:
-        void beginOutgoing(const std::array<std::uint8_t, 3>& retainedColor = {0, 0, 0});
+        void beginOutgoing(const std::array<std::uint8_t, 3>& retainedColor = {0, 0, 0}, unsigned duration = 126);
         void beginIncoming();
         bool update(unsigned viTicks);
         unsigned alpha() const;
@@ -25,6 +25,7 @@ namespace scenetransition {
         Phase phase = Phase::Idle;
         std::array<std::uint8_t, 3> color{};
         unsigned ticks = 0;
+        unsigned duration = 126;
         unsigned delay = 0;
     };
 

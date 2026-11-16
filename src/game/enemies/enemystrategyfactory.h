@@ -14,7 +14,7 @@ namespace enemystrategy {
     class Catalog;
     class Factory {
     public:
-        Factory(enemies::Runtime& runtime, const gameflags::State& flags, const mission::Resources& resources);
+        Factory(enemies::Runtime& runtime, gameflags::State& flags, const mission::Resources& resources);
         std::unique_ptr<Strategy> construct(std::uint32_t constructor) const;
         void bindItems(ItemEnvironment* environment);
         void bindPose(const actormodel::InitialPose& pose);
@@ -24,7 +24,7 @@ namespace enemystrategy {
 
     private:
         enemies::Runtime& runtime;
-        const gameflags::State& flags;
+        gameflags::State& flags;
         const mission::Resources& resources;
         ItemEnvironment* items = nullptr;
         const Catalog* catalog = nullptr;

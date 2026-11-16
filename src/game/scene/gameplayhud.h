@@ -8,7 +8,7 @@
 namespace gameplay {
     class Hud {
     public:
-        Hud(const gamearchive::Archive& archive, const std::vector<std::uint8_t>& executable, const std::vector<unsigned>& rooms);
+        Hud(const gamearchive::Archive& archive, const std::vector<std::uint8_t>& executable, const std::vector<unsigned>& rooms, unsigned map = 2);
         bool addRoom(const gamearchive::Archive& archive, const std::vector<std::uint8_t>& executable, unsigned room);
         void update(const playeractor::View& player, bool fullscreen, bool roomCleared);
         std::vector<startupscene::Picture> pictures() const;
@@ -28,6 +28,7 @@ namespace gameplay {
         int life = 100, maximumLife = 100, slide = 0;
         unsigned reaction = 0;
         bool cleared = false;
+        bool locationEnabled = true;
         float digitScale = 0;
         unsigned healthAlpha = 0, slideStep = 0;
         std::size_t load(const gamearchive::Archive& archive, const std::string& path);

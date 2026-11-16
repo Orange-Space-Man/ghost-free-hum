@@ -2,6 +2,7 @@
 #include "game/enemies/enemystrategyfactory.h"
 #include "game/enemies/enemynomovestrategy.h"
 #include "game/enemies/enemylabprofessorstrategy.h"
+#include "game/enemies/enemytraininggeneratorstrategy.h"
 #include "game/enemies/enemypathcondition.h"
 #include "game/enemies/enemygeneratordoorstrategy.h"
 #include "game/enemies/enemyitemstrategy.h"
@@ -32,11 +33,12 @@ namespace {
     class Spear final : public enemystrategy::Strategy {};
 }
 
-enemystrategy::Factory::Factory(enemies::Runtime& runtime, const gameflags::State& flags,
+enemystrategy::Factory::Factory(enemies::Runtime& runtime, gameflags::State& flags,
     const mission::Resources& resources) : runtime(runtime), flags(flags), resources(resources) {}
 
 std::unique_ptr<enemystrategy::Strategy> enemystrategy::Factory::construct(std::uint32_t constructor) const {
     switch (constructor) {
+    case glme01::trainingGeneratorFactory: return std::make_unique<TrainingGenerator>(flags);
     case glme01::barrierFactory:
         if (!barriers) throw std::runtime_error("Original door-barrier services are not bound.");
         return std::make_unique<Barrier>(*barriers);

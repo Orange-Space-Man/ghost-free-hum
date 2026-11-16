@@ -52,6 +52,8 @@ namespace gameevent {
         virtual void wipeKind(std::int32_t kind);
         virtual void wipeTime(std::int32_t ticks);
         virtual void warp(std::int32_t destination);
+        virtual bool acknowledgeMessage();
+        virtual void cameraTarget(std::string_view actor, std::int32_t height);
     };
 
     class EntranceScript {

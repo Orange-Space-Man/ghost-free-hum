@@ -57,6 +57,12 @@ unsigned playerevents::dispatch(playeractor::Player& player, unsigned message, c
         flag = enabled ? 1 : 0;
         return 1;
     }
+    if (message == 0x36 || message == 0x37) {
+        const bool disabled = message == 0x36;
+        if ((player.state.field10D0 != 0) == disabled) return 0;
+        player.state.field10D0 = disabled ? 1 : 0;
+        return 1;
+    }
     if (message == 0x34 || message == 0x35) {
         if (values.word(0xec) || values.word(0xf0))
             throw std::runtime_error("Player pull events require native references rather than encoded game addresses.");

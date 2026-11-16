@@ -150,6 +150,13 @@ bool gameevent::MessageWindows::acknowledge() {
     return false;
 }
 
+bool gameevent::MessageWindows::acknowledgeInput(std::uint32_t pressed) {
+    if (!(pressed & 0x300)) return false;
+    if (acknowledge()) return true;
+    for (unsigned i = 0; i < windows.size(); ++i) advance(i);
+    return false;
+}
+
 void gameevent::MessageWindows::update(int eventMode) {
     for (auto& entry : windows) {
         switch (entry.phase) {

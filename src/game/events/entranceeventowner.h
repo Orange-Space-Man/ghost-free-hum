@@ -1,6 +1,7 @@
 #pragma once
 
 #include "game/events/entrancescript.h"
+#include "game/scene/gameplaycamerafollow.h"
 #include "game/startup/scenetransition.h"
 #include "game/events/eventactorcommands.h"
 #include "game/events/eventpathanimation.h"
@@ -13,7 +14,7 @@ namespace gameevent {
     public:
         EntranceOwner(gameassets::Package& package, const enemytypes::Catalog& types,
             gameentry::State& entry, const roomlocation::Rooms& rooms, gameplay::ManagerServices& managers,
-            gameplaycamera::CameraOwner& camera, const std::vector<std::uint8_t>& executable, MessageWindows& messages);
+            gameplaycamera::CameraOwner& camera, const std::vector<std::uint8_t>& executable, MessageWindows& messages, gameplaycamera::Follow& follow);
         void update(unsigned elapsedSeconds, std::uint32_t audioFrame);
         bool updateCamera();
         bool menuEnabled() const;
@@ -26,6 +27,8 @@ namespace gameevent {
         void wipeKind(std::int32_t kind) override;
         void wipeTime(std::int32_t duration) override;
         void warp(std::int32_t destination) override;
+        bool acknowledgeMessage() override;
+        void cameraTarget(std::string_view actor, std::int32_t height) override;
         scenetransition::Request requestedTransition;
         bool flag(unsigned index) const override;
         void menu(bool enabled) override;
@@ -69,6 +72,9 @@ namespace gameevent {
         gameplaycamera::CameraOwner& cameraOwner;
         const std::vector<std::uint8_t>& executable;
         MessageWindows& messages;
+        gameplaycamera::Follow& follow;
+        bool targetCameraActive = false;
+        std::array<float, 3> cameraSubject{};
         std::unique_ptr<MessageText> messageText;
         gamearchive::Archive archive;
         std::unique_ptr<EntranceScript> script;

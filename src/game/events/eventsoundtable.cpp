@@ -6,7 +6,7 @@
 #include <stdexcept>
 
 unsigned gameevent::soundId(const std::vector<std::uint8_t>& executable, unsigned index) {
-    constexpr std::array<unsigned, 17> supported{0, 1, 2, 3, 4, 5, 6, 7, 8, 101, 102, 111, 150, 153, 176, 191, 218};
+    constexpr std::array<unsigned, 28> supported{0, 1, 2, 3, 4, 5, 6, 7, 8, 101, 102, 111, 150, 153, 176, 191, 218, 212, 136, 195, 196, 219, 202, 200, 137, 141, 189, 215};
     if (std::find(supported.begin(), supported.end(), index) == supported.end())
         throw std::runtime_error("Event sound index is outside the recovered event scope.");
     std::vector<std::uint8_t> bytes;

@@ -125,7 +125,7 @@ struct gameplay::ManagerServices::State : playerpresentation::Services {
         storm(dependencies.executable, dependencies.mission, dependencies.actors.pose), shadow(dependencies.executable) {
         std::vector<std::uint8_t> bytes;
         std::string error;
-        if (dependencies.entry.map == 1) {
+        if (dependencies.entry.map == 1 || dependencies.entry.map == 3) {
             const auto& rooms = dependencies.actors.rooms.entries();
             roomLights.resize(rooms.size());
             roomBrightness.assign(rooms.size(), 2);
@@ -202,7 +202,7 @@ struct gameplay::ManagerServices::State : playerpresentation::Services {
 
     void initialize() {
         mapMode = dependencies.entry.map;
-        if (!dependencies.entry.initialized || (mapMode != 1 && mapMode != 2)) {
+        if (!dependencies.entry.initialized || (mapMode != 1 && mapMode != 2 && mapMode != 3)) {
             throw std::invalid_argument("Manager services require a supported selected save entry.");
         }
         if (!dependencies.playerCount || dependencies.playerCount > dependencies.records.size()) {
@@ -765,7 +765,7 @@ void gameplay::ManagerServices::updateStorm() {
 
 void gameplay::ManagerServices::updateRoomLights() {
     const auto& dependencies = state->dependencies;
-    if (dependencies.entry.map != 1) return;
+    if (dependencies.entry.map != 1 && dependencies.entry.map != 3) return;
     const auto* player = state->events->player(0);
     for (unsigned i = 0; i < state->roomLights.size(); ++i) {
         if (!dependencies.visibility.marked(i, 0, 0) || (dependencies.roomFlags.at(i) & 0x380)) continue;

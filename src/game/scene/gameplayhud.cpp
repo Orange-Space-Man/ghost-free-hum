@@ -38,7 +38,7 @@ std::size_t gameplay::Hud::load(const gamearchive::Archive& archive, const std::
     return images.size() - 1;
 }
 
-gameplay::Hud::Hud(const gamearchive::Archive& archive, const std::vector<std::uint8_t>& executable, const std::vector<unsigned>& rooms) {
+gameplay::Hud::Hud(const gamearchive::Archive& archive, const std::vector<std::uint8_t>& executable, const std::vector<unsigned>& rooms, unsigned map) : locationEnabled(map == 2) {
     constexpr unsigned lifeNumberTable = 0x80305020, floorNameTable = 0x803058ec;
     for (const auto room : rooms) addRoom(archive, executable, room);
     for (unsigned i = 0; i < digits.size(); ++i) digits[i] = load(archive, name(executable, lifeNumberTable, i));
@@ -60,6 +60,7 @@ gameplay::Hud::Hud(const gamearchive::Archive& archive, const std::vector<std::u
 }
 
 bool gameplay::Hud::addRoom(const gamearchive::Archive& archive, const std::vector<std::uint8_t>& executable, unsigned room) {
+    if (!locationEnabled) return false;
     constexpr unsigned roomNameTable = 0x80305f20;
     if (roomTextures.count(room)) return false;
     const auto path = name(executable, roomNameTable, room);
@@ -172,7 +173,7 @@ std::vector<startupscene::Picture> gameplay::Hud::pictures() const {
         result.push_back(picture(roomTextures.at(selectedRoom), 43, 44, 1, false,
             {brightness, brightness, brightness, float(160 * fade / 255) / 255}));
     }
-    if (floorPhase >= 2 && floorPhase <= 4) {
+    if (locationEnabled && floorPhase >= 2 && floorPhase <= 4) {
         const unsigned fade = floorPhase == 3 ? 255 : floorCounter;
         const float brightness = cleared ? 1 : 220 / 255.0f;
         result.push_back(picture(floors.at(selectedFloor), 537, 44, 1, false,

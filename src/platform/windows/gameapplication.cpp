@@ -222,12 +222,14 @@ void gameapplication::Application::advanceGameplay() {
 
 void gameapplication::Application::beginTransition() {
     const auto request = gameplayScene->transition();
-    if (request.destination != 1 || request.kind != 1 || request.duration != 126)
+    const bool parlor = gameEntry.map == 2 && request.destination == 1 && request.kind == 1 && request.duration == 126;
+    const bool training = gameEntry.map == 1 && request.destination == 3 && request.kind == 2 && request.duration == 30;
+    if (!parlor && !training)
         throw std::runtime_error("Unsupported gameplay scene transition.");
     transitionDestination = request.destination;
     transitionFrame.load(gamerenderer::modelDevice());
     gamerenderer::captureTransition(transitionFrame, [this] { gameplayScene->draw(false); });
-    transitionWipe.beginOutgoing();
+    transitionWipe.beginOutgoing({0, 0, 0}, static_cast<unsigned>(request.duration));
     transitionPhase = TransitionPhase::Outgoing;
 }
 

@@ -27,7 +27,7 @@ bool gameplaycamera::initialize(const std::vector<std::uint8_t>& executable, con
     s3denvironment::Camera& camera, std::string& error, unsigned map) {
     error.clear();
     try {
-        if (map != 1 && map != 2) throw std::runtime_error("Unsupported initial gameplay camera map.");
+        if (map != 1 && map != 2 && map != 3) throw std::runtime_error("Unsupported initial gameplay camera map.");
         const auto descriptor = word(executable, 0x802ff218 + map * 4);
         const auto index = spawn.roomId >> 24;
         if ((word(executable, descriptor) >> 24) <= index) throw std::runtime_error("Missing initial camera room.");

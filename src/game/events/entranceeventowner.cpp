@@ -12,9 +12,9 @@ namespace {
 
 gameevent::EntranceOwner::EntranceOwner(gameassets::Package& package, const enemytypes::Catalog& types,
     gameentry::State& entry, const roomlocation::Rooms& rooms, gameplay::ManagerServices& managers,
-    gameplaycamera::CameraOwner& camera, const std::vector<std::uint8_t>& executable, MessageWindows& messages) :
+    gameplaycamera::CameraOwner& camera, const std::vector<std::uint8_t>& executable, MessageWindows& messages, gameplaycamera::Follow& follow) :
     package(package), types(types), entry(entry), rooms(rooms), managers(managers), cameraOwner(camera),
-    executable(executable), messages(messages) {}
+    executable(executable), messages(messages), follow(follow) {}
 
 bool gameevent::EntranceOwner::eligible(unsigned event, unsigned elapsedSeconds) const {
     const auto& events = managers.missionEvents();
@@ -27,6 +27,7 @@ bool gameevent::EntranceOwner::eligible(unsigned event, unsigned elapsedSeconds)
         checkTime(condition, static_cast<std::int32_t>(elapsedSeconds), 0) != 1) return false;
     const auto* player = managers.playerEvents().player(0);
     if (!player || !player->view.life) return false;
+    if (definition->trigger == 0) return true;
     const auto eventRoom = rooms.resolve(definition->position, 0xffffffff);
     if (definition->trigger == 4) {
         if (eventRoom != player->room() || managers.doors().activeDoor() != -1) return false;
@@ -56,7 +57,8 @@ void gameevent::EntranceOwner::update(unsigned elapsedSeconds, std::uint32_t fra
         currentEvent = 0;
         for (const auto& condition : managers.missionEvents().conditions()) {
             const auto event = static_cast<unsigned>(condition.eventNumber);
-            if ((event == entranceEvent || event == firstKeyEvent || (entry.map == 2 && event == 1)) && eligible(event, elapsedSeconds)) {
+            if ((event == entranceEvent || event == firstKeyEvent || (entry.map == 2 && event == 1) ||
+                (entry.map == 1 && event == 8 && !flag(7) && !flag(73))) && eligible(event, elapsedSeconds)) {
                 currentEvent = event;
                 break;
             }
@@ -69,7 +71,8 @@ void gameevent::EntranceOwner::update(unsigned elapsedSeconds, std::uint32_t fra
             !roomarchive::decompress(compressed, bytes, error) || !archive.read(bytes, error))
             throw std::runtime_error(error);
         const auto text = resource("event" + number + ".txt");
-        const auto messageIndex = archive.findNameResource("message" + number + ".csv");
+        auto messageIndex = archive.findNameResource("message" + number + ".csv");
+        if (messageIndex < 0) messageIndex = archive.findNameResource("message" + std::to_string(currentEvent) + ".csv");
         if (messageIndex >= 0) {
             messageText = std::make_unique<MessageText>(executable, archive.resource(messageIndex));
         }
@@ -102,7 +105,7 @@ void gameevent::EntranceOwner::menu(bool enabled) { menuAvailable = enabled; }
 bool gameevent::EntranceOwner::menuEnabled() const { return menuAvailable; }
 bool gameevent::EntranceOwner::fullscreen() const { return fullscreenEnabled; }
 bool gameevent::EntranceOwner::active() const { return script != nullptr; }
-bool gameevent::EntranceOwner::cameraActive() const { return cameraPath != nullptr; }
+bool gameevent::EntranceOwner::cameraActive() const { return cameraPath != nullptr || targetCameraActive; }
 
 void gameevent::EntranceOwner::stopPlayer() {
     managers.playerEvents().send(0, 4);
@@ -119,7 +122,7 @@ void gameevent::EntranceOwner::music(unsigned index) {
 }
 
 void gameevent::EntranceOwner::camera(std::string_view name) {
-    if (cameraPath) endCamera();
+    if (cameraActive()) endCamera();
     savedUp = cameraOwner.up;
     savedTarget = cameraOwner.target;
     savedPosition = cameraOwner.position;
@@ -134,6 +137,11 @@ void gameevent::EntranceOwner::camera(std::string_view name) {
 }
 
 bool gameevent::EntranceOwner::updateCamera() {
+    if (targetCameraActive) {
+        const auto* player = managers.playerEvents().player(0);
+        follow.updateTarget(cameraOwner, player->position, cameraSubject, player->room());
+        return true;
+    }
     if (!cameraPath) return false;
     cameraPath->sample(static_cast<float>(cameraFrame), cameraOwner);
     if (cameraFrame < cameraPath->duration()) ++cameraFrame;
@@ -141,7 +149,7 @@ bool gameevent::EntranceOwner::updateCamera() {
 }
 
 void gameevent::EntranceOwner::endCamera() {
-    if (!cameraPath) return;
+    if (!cameraActive()) return;
     cameraOwner.up = savedUp;
     cameraOwner.target = savedTarget;
     cameraOwner.position = savedPosition;
@@ -150,6 +158,8 @@ void gameevent::EntranceOwner::endCamera() {
     cameraOwner.fieldCE = savedCE;
     cameraOwner.flags &= ~9u;
     cameraPath.reset();
+    targetCameraActive = false;
+    cameraOwner.callback = 0;
 }
 
 void gameevent::EntranceOwner::lighting(std::string_view name) {
@@ -230,10 +240,11 @@ void gameevent::EntranceOwner::stopActor() {
 }
 
 void gameevent::EntranceOwner::blendCamera() {
-    if (!cameraPath) return;
+    if (!cameraActive()) return;
     cameraOwner.flags &= ~9u;
     cameraOwner.callback = 0;
     cameraPath.reset();
+    targetCameraActive = false;
 }
 
 void gameevent::EntranceOwner::closeMessage() { messages.closeAll(); }
@@ -250,7 +261,31 @@ const scenetransition::Request& gameevent::EntranceOwner::transition() const { r
 void gameevent::EntranceOwner::wipeKind(std::int32_t kind) { requestedTransition.kind = kind; }
 void gameevent::EntranceOwner::wipeTime(std::int32_t duration) { requestedTransition.duration = duration; }
 void gameevent::EntranceOwner::warp(std::int32_t destination) {
-    if (destination != 1 || requestedTransition.kind != 1 || requestedTransition.duration != 126)
+    const bool parlor = entry.map == 2 && destination == 1 && requestedTransition.kind == 1 && requestedTransition.duration == 126;
+    const bool training = entry.map == 1 && destination == 3 && requestedTransition.kind == 2 && requestedTransition.duration == 30;
+    if (!parlor && !training)
         throw std::runtime_error("Scene transition requires its original destination and wipe lifecycle.");
     requestedTransition.destination = destination;
+}
+
+bool gameevent::EntranceOwner::acknowledgeMessage() {
+    return messages.acknowledgeInput(managers.controller().pressed);
+}
+
+void gameevent::EntranceOwner::cameraTarget(std::string_view name, std::int32_t height) {
+    auto* actor = find(name);
+    if (!actor) throw std::runtime_error("Target camera requires its named actor.");
+    const auto* player = managers.playerEvents().player(0);
+    if (player->type() != 0) throw std::runtime_error("Target camera requires the alternate-player height adjustment.");
+    if (cameraActive()) endCamera();
+    savedUp = cameraOwner.up;
+    savedTarget = cameraOwner.target;
+    savedPosition = cameraOwner.position;
+    savedFieldOfView = cameraOwner.fieldOfView;
+    savedCC = cameraOwner.fieldCC;
+    savedCE = cameraOwner.fieldCE;
+    cameraSubject = actor->position;
+    cameraSubject[1] += static_cast<float>(height);
+    follow.beginTarget(cameraOwner);
+    targetCameraActive = true;
 }

@@ -14,7 +14,7 @@ struct gameplay::ResourceOwner::State {
     explicit State(gameentry::State& entry) : entry(entry), motors(motorOutput) {}
 
     void initialize(const std::filesystem::path& path) {
-        if (!entry.initialized || (entry.map != 1 && entry.map != 2)) throw std::invalid_argument("Gameplay resources require a supported selected map entry.");
+        if (!entry.initialized || (entry.map != 1 && entry.map != 2 && entry.map != 3)) throw std::invalid_argument("Gameplay resources require a supported selected map entry.");
         std::string error;
         std::vector<std::uint8_t> compressed, commonBytes, mapBytes;
         if (!package.open(path, error) || !package.read("sys/main.dol", executable, error) ||
@@ -41,7 +41,7 @@ struct gameplay::ResourceOwner::State {
         visibility.initialize(static_cast<unsigned>(rooms->entries().size()));
         roomFlags.resize(rooms->entries().size());
         for (unsigned i = 0; i < rooms->entries().size(); ++i) {
-            if (entry.map == 1) {
+            if (entry.map == 1 || entry.map == 3) {
                 roomFlags[i] = 0x8008;
                 continue;
             }
@@ -110,7 +110,7 @@ struct gameplay::ResourceOwner::State {
         std::vector<unsigned> hudRooms;
         for (const auto& resident : residentRooms->slots())
             if (resident.room != 0xffffffff) hudRooms.push_back(resident.room);
-        hud = std::make_unique<Hud>(common, executable, hudRooms);
+        hud = std::make_unique<Hud>(common, executable, hudRooms, entry.map);
         if (!messageFont.readExecutable(executable, error)) throw std::runtime_error(error);
         messageGraphics = std::make_unique<gameevent::MessageGraphics>(common, executable, messageFont);
         messages = std::make_unique<gameevent::MessageWindows>(executable, gameevent::MessageWindows::Services{
@@ -118,7 +118,8 @@ struct gameplay::ResourceOwner::State {
             [this](unsigned sound) { managers->playback()->playGlobal(sound); },
             [this](bool active) { managers->music().setCutsceneActive(active); }});
         if (entry.map == 1) managers->music().requestLab(1);
-        entrance = std::make_unique<gameevent::EntranceOwner>(package, types, entry, *rooms, *managers, owner, executable, *messages);
+        if (entry.map == 3) managers->music().requestTraining(1);
+        entrance = std::make_unique<gameevent::EntranceOwner>(package, types, entry, *rooms, *managers, owner, executable, *messages, *cameraFollow);
     }
 
     gameentry::State& entry;

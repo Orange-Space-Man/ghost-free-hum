@@ -29,6 +29,7 @@ namespace gameevent {
         void closeAll();
         void advance(unsigned index);
         bool acknowledge();
+        bool acknowledgeInput(std::uint32_t pressed);
         void update(int eventMode);
         const Window& window(unsigned index) const;
         bool speaking() const;
