@@ -20,6 +20,8 @@ void gameevent::EntranceServices::fullscreen(bool) { unsupportedService(); }
 void gameevent::EntranceServices::playerEvent(unsigned) { unsupportedService(); }
 void gameevent::EntranceServices::releaseActor() { unsupportedService(); }
 void gameevent::EntranceServices::stopActor() { unsupportedService(); }
+void gameevent::EntranceServices::stopPlayerMotion() { unsupportedService(); }
+std::uint32_t gameevent::EntranceServices::ghostTotal() const { unsupportedService(); return 0; }
 void gameevent::EntranceServices::blendCamera() { unsupportedService(); }
 void gameevent::EntranceServices::speak(unsigned, unsigned) { unsupportedService(); }
 void gameevent::EntranceServices::messageColor(unsigned, int) { unsupportedService(); }
@@ -111,7 +113,16 @@ bool gameevent::EntranceScript::update(EntranceServices& services) {
     bool grouped = false;
     do {
         const auto command = token('<', '>');
-        if (command == "CHECKFLAG") {
+        if (command == "GHOSTTOTAL") {
+            const auto count = services.ghostTotal();
+            const auto threshold = number();
+            const auto enough = token('"', '"');
+            const auto below = token('"', '"');
+            const auto selected = count >= threshold ? enough : below;
+            for (;;) {
+                if (token('<', '>') == "CASE" && token('"', '"') == selected) break;
+            }
+        } else if (command == "CHECKFLAG") {
             const auto index = number();
             const auto on = token('"', '"');
             const auto off = token('"', '"');
@@ -121,6 +132,7 @@ bool gameevent::EntranceScript::update(EntranceServices& services) {
             }
         } else if (command == "MENUOFF") services.menu(false);
         else if (command == "MENUON") services.menu(true);
+        else if (command == "LUIGISTOP2") services.stopPlayerMotion();
         else if (command == "LUIGISTOP3") services.stopPlayer();
         else if (command == "LUIGISTOP") services.stopActor();
         else if (command == "LUIGIFREE2") services.releasePlayer();
@@ -141,6 +153,7 @@ bool gameevent::EntranceScript::update(EntranceServices& services) {
             const auto height = integer();
             services.cameraTarget(actor, height);
         }
+        else if (command == "GHOSTRESET") services.playerEvent(0x14);
         else if (command == "WEAPON") services.playerEvent(0x1f);
         else if (command == "NOWEAPON") services.playerEvent(0x20);
         else if (command == "LLIGHTOFF") services.playerEvent(0x1b);

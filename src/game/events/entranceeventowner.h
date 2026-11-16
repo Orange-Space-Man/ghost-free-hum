@@ -61,6 +61,8 @@ namespace gameevent {
         void playerEvent(unsigned event) override;
         void releaseActor() override;
         void stopActor() override;
+        void stopPlayerMotion() override;
+        std::uint32_t ghostTotal() const override;
         void blendCamera() override;
         std::vector<std::uint8_t> resource(std::string_view name) const;
         bool eligible(unsigned event, unsigned elapsedSeconds) const;

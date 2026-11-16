@@ -233,6 +233,7 @@ add_library(Game STATIC
     src/game/menu/fileselectpanes.cpp
     src/game/menu/fileselectstate.cpp
     src/game/menu/gamefont.cpp
+    src/game/menu/controllerinstructions.cpp
     src/game/menu/menulayout.cpp
     src/game/menu/menulayoutgraphics.cpp
     src/game/models/modeldrawmatrices.cpp
