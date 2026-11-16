@@ -63,7 +63,7 @@ namespace gameplay {
         const enemycreation::Catalog& creation;
         const enemystrategy::Catalog& strategies;
         gameplaycamera::CameraOwner& camera;
-        const std::vector<std::uint32_t>& roomFlags;
+        std::vector<std::uint32_t>& roomFlags;
         const roomtraversal::State& visibility;
         gameentry::State& entry;
         gameflags::State& flags;
@@ -120,6 +120,8 @@ namespace gameplay {
         void bindPlayerFurniture(roomfurniture::Owner& furniture);
         void updatePlayerFurniture(unsigned index);
         void updateFurniture(unsigned frame);
+        void updateMoney(const std::array<float, 3>& cameraPosition, const std::array<float, 3>& cameraDirection);
+        std::vector<j3dmodel::ModelInstance*> moneyModels();
         void setMessageSpeaking(bool speaking);
         void updateDoors(unsigned frame);
         void updatePlayerLight(unsigned index);

@@ -13,6 +13,7 @@ playerinteraction::FurnitureOwner::FurnitureOwner(playeractor::Player& player, p
 void playerinteraction::FurnitureOwner::update(const roomlocation::Rooms& rooms, enemies::Manager& enemies,
     const actormodel::Catalog& catalog, const actorcollision::Manager& collision, const mapcollision::State& map,
     unsigned mapMode, const std::function<std::uint32_t()>& random) {
+    if (cache.roomId() != player.fieldB4) sheets.clear();
     FurnitureServices services{cache, furniture, rooms, enemies, catalog, collision, map, mapMode,
         [this](const playerscanner::SheetInput& input) { sheets.initialize(input, false); }, random};
     frame.run(player, services);

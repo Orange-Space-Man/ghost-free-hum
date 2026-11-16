@@ -42,6 +42,7 @@ namespace playerscanner {
         bool mirror(unsigned target) const;
         bool occupied(unsigned target) const;
         unsigned row(unsigned target) const;
+        unsigned roomId() const { return room; }
         const std::vector<FurnitureTarget>& targets() const;
         const std::vector<FurnitureContact>& contacts() const;
         FurnitureInteraction press(const FurnitureInput& input, const std::array<std::uint8_t, 4>& activeSheets,

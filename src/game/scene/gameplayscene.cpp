@@ -8,6 +8,9 @@
 #include "game/effects/barriereffectpool.h"
 #include "game/effects/cobwebeffectpool.h"
 
+#include "jlib/j3d/j3dmodelcalculation.h"
+#include "jlib/j3d/j3dmaterialcalculation.h"
+#include "jlib/j3d/j3dmaterialdisplaylist.h"
 #include <algorithm>
 #include <cstring>
 #include <stdexcept>
@@ -137,6 +140,11 @@ void gameplay::Scene::prepareModelGraphics(ID3D11Device* device) {
     mirrorRenderer.load(device, resources.mirror());
     particleRenderer.prepare(resources.managers().particles().pool());
     particleRenderer.prepare(resources.managers().particles().runningDust().material());
+    for (auto kind : {playermodels::SharedModel::Coin, playermodels::SharedModel::Bill,
+        playermodels::SharedModel::Bill2, playermodels::SharedModel::Bill3}) {
+        const auto& model = resources.managers().players().models->model(kind);
+        effectRenderers[model.get()].load(device, model);
+    }
     lightRenderer.load(device, resources.managers().players().models->model(playermodels::SharedModel::Light));
     for (auto* pool : resources.managers().modelEffects().registered()) {
         if (!dynamic_cast<modeleffects::BarrierPool*>(pool) && !dynamic_cast<modeleffects::CobwebPool*>(pool)) continue;
@@ -257,6 +265,9 @@ void gameplay::Scene::update(const playerinput::PadStatus& pad, std::int16_t por
     managers.updatePlacement(ticks / 30, false);
     managers.glows().update();
     managers.modelEffects().update(resources.rooms(), resources.visibility());
+    const auto& moneyCamera = resources.camera();
+    managers.updateMoney(moneyCamera.position, {moneyCamera.target[0] - moneyCamera.position[0],
+        moneyCamera.target[1] - moneyCamera.position[1], moneyCamera.target[2] - moneyCamera.position[2]});
     managers.particles().update();
     resources.hud().update(player->view, resources.fullscreen(), managers.roomCleared(player->room() >> 24));
     resources.updateMessages();
@@ -503,6 +514,7 @@ void gameplay::Scene::drawWorld(bool reflection, const s3denvironment::Camera& c
     const auto& players = resources.managers().players();
     pointRenderer.draw(gamerenderer::modelContext(), *players.points, players.pointSettings, view, projection, {640, 480});
     drawModelEffects();
+    drawMoney();
     particleRenderer.draw(gamerenderer::modelContext(), resources.managers().particles().prepareGlows(
         resources.managers().glows(), view), view, projection);
     drawPlayerLight();
@@ -707,3 +719,25 @@ std::string gameplay::Scene::debugInfo() {
         " | Particles: " + std::to_string(particleCount) + " | Dust: " +
         std::to_string(resources.managers().particles().runningDust().particleCount()) + "\nSimulation: 30 Hz | Tick: " + std::to_string(ticks);
 }
+
+void gameplay::Scene::drawMoney() {
+    auto& managers = resources.managers();
+    effectLighting->prepare(effectMaterialState, view, managers.lights().lights(), trig);
+    const auto instances = managers.moneyModels();
+    gamerenderer::bindSceneTarget(false);
+    for (auto* instance : instances) {
+        j3dmodel::calculateBasic(*instance, *modelTransforms);
+        for (auto& material : instance->model->materials.entries)
+            j3dmodel::calculateMaterial(*material, instance->jointMatrices[0], view, instance->field8 & 12, *modelTransforms);
+        for (auto& packet : instance->materials) j3dmodel::updateMaterialPacket(packet);
+        j3dmodel::calculateViewMatrices(*instance, view);
+    }
+    for (unsigned pass = 0; pass < 2; ++pass)
+        for (auto* instance : instances)
+            for (auto& packet : instance->materials) {
+                if (((packet.material->mode & 3) ? 0u : 1u) != pass) continue;
+                effectRenderers.at(instance->model.get()).draw(gamerenderer::modelContext(), *instance, packet,
+                    effectMaterialState, projection, instance->field8 & 12, pass + 3);
+            }
+}
+

@@ -43,6 +43,11 @@ namespace {
 }
 
 particles::Billboards::Billboards(const std::vector<std::uint8_t>& executable) {
+    std::vector<std::uint8_t> scale;
+    std::string error;
+    if (!dolresources::read(executable, 0x804dcac8, 4, scale, error)) throw std::runtime_error(error);
+    childScale = floating((unsigned(scale[0]) << 24) | (unsigned(scale[1]) << 16) |
+        (unsigned(scale[2]) << 8) | scale[3]);
     for (unsigned table = 0; table < 2; ++table) {
         std::vector<std::uint8_t> bytes;
         std::string error;
@@ -68,11 +73,38 @@ std::vector<particles::Billboard> particles::Billboards::prepare(EmitterPool& po
             if (!visible && !(emitter->flags & 0x80)) continue;
         }
         if (!emitter->nodes.count && !emitter->shortNodes.count) continue;
-        if (emitter->draw != &emitter->ordinaryDraw || emitter->shortNodes.count)
-            throw std::runtime_error("Particle draw requires the extended or child geometry path.");
+        if (emitter->draw != &emitter->ordinaryDraw)
+            throw std::runtime_error("Particle draw requires the extended geometry path.");
+        if (emitter->parameters.flags & 0x2000) appendChildren(*emitter, view, result);
         append(*emitter, view, result);
     }
     return result;
+}
+
+void particles::Billboards::appendChildren(Emitter& emitter, const std::array<float, 12>& view,
+    std::vector<Billboard>& result) const {
+    for (auto* node = emitter.shortNodes.sentinel.next; node != &emitter.shortNodes.sentinel; node = node->next) {
+        Billboard item;
+        item.color = node->fields20;
+        item.color[3] = static_cast<std::uint8_t>(int(float(item.color[3]) *
+            (float(int(node->fields18[0]) - int(node->fields18[1])) / float(node->fields18[0]))));
+        item.texture = emitter.draw->alternateTexture;
+        item.mode = 6;
+        item.blend = emitter.parameters.fields206[1];
+        item.depth = emitter.parameters.fields206[2];
+        const float size = floating((unsigned(node->fields1A[2]) << 24) | (unsigned(node->fields1A[3]) << 16) |
+            (unsigned(node->fields1A[4]) << 8) | node->fields1A[5]);
+        const float radius = float(double(childScale) * double(size));
+        for (unsigned corner = 0; corner < 4; ++corner) {
+            const auto angle = static_cast<std::uint16_t>(0xe000 + corner * 0x4000) >> 4;
+            for (unsigned axis = 0; axis < 3; ++axis) {
+                const float basis = sine[angle] * view[axis] + cosine[angle] * view[4 + axis];
+                item.positions[corner][axis] = float(double(node->fields0[axis] + node->fields0[axis + 3]) +
+                    double(float(double(basis) * double(radius))));
+            }
+        }
+        result.push_back(std::move(item));
+    }
 }
 
 void particles::Billboards::append(Emitter& emitter, const std::array<float, 12>& view,
@@ -126,3 +158,4 @@ std::vector<particles::Billboard> particles::prepareGlows(GlowPool& pool, Resour
     }
     return result;
 }
+

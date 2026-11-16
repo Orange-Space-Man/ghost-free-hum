@@ -133,8 +133,8 @@ modelrenderer::MaterialShader& particlerenderer::Renderer::material(const partic
     const auto found = materials.find(key);
     if (found != materials.end()) return found->second;
     static const std::array<unsigned, 4> colors[] = {{2, 12, 8, 15}, {15, 2, 8, 15},
-        {4, 2, 8, 15}, {15, 8, 2, 4}, {15, 8, 15, 2}, {15, 4, 8, 15}};
-    if (particle.mode > 5) throw std::runtime_error("Particle color combiner mode is invalid.");
+        {4, 2, 8, 15}, {15, 8, 2, 4}, {15, 8, 15, 2}, {15, 4, 8, 15}, {15, 15, 15, 2}};
+    if (particle.mode > 6) throw std::runtime_error("Particle color combiner mode is invalid.");
     modelmaterial::Stage stage;
     stage.coordinate = stage.texture = 0;
     stage.color = colors[particle.mode];

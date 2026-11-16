@@ -75,6 +75,7 @@ namespace gameplay {
         float lightProjectionDepth = 0;
         void drawPlayerLight();
         void drawModelEffects();
+        void drawMoney();
         void updateOpacity();
         void publishCamera();
         void drawGameplay(bool present);

@@ -6,6 +6,7 @@ namespace gameentry {
     struct State {
         unsigned slot = 0;
         unsigned map = 2;
+        std::uint32_t mansionMode = 0;
         unsigned cutscene = 0x4c;
         bool initialized = false;
         std::array<std::uint8_t, 11> flags{};
@@ -16,3 +17,4 @@ namespace gameentry {
 
     bool selectNewFile(const gamesave::State& saves, unsigned slot, State& state, std::string& error);
 }
+

@@ -31,6 +31,9 @@
 #include "game/audio/roomambientaudio.h"
 #include "game/world/roomstorm.h"
 #include "game/enemies/enemyitemstrategy.h"
+#include "game/effects/moneyscatterowner.h"
+#include "game/effects/billscatterscene.h"
+#include "game/effects/scatterattraction.h"
 
 #include <stdexcept>
 #include <cmath>
@@ -152,6 +155,9 @@ struct gameplay::ManagerServices::State : playerpresentation::Services {
         }
         updates.reset();
         playerFurniture.reset();
+        coins.reset();
+        bills.reset();
+        itemCreation.reset();
         events.reset();
         enemies.reset();
         strategies.reset();
@@ -249,6 +255,9 @@ struct gameplay::ManagerServices::State : playerpresentation::Services {
         particles->refresh(nullptr);
         elementDuration = static_cast<std::int32_t>(word(glme01::playerElementDuration));
         suctionAudio = std::make_unique<SuctionAudio>(audio->playback);
+        itemCreation = std::make_unique<characteritems::Creation>(dependencies.mission, dependencies.actors.parameters,
+            furnitureAdmission, *enemies, *runtime, *actors, dependencies.actors.rooms, *suctionAudio);
+        owners->bindItemCreation(itemCreation.get());
         suction = std::make_unique<playerevents::SuctionEnvironment>(playerevents::SuctionEnvironment{
             dependencies.actors.catalog, *properties, dependencies.flags, *suctionAudio, elementDuration});
         events = std::make_unique<playerevents::Dispatcher>(*enemies, *actors, nullptr,
@@ -260,6 +269,30 @@ struct gameplay::ManagerServices::State : playerpresentation::Services {
         events->bindDamage([this](auto& recipient, const auto& payload, bool behind) {
             return playerDamage.run(recipient, payload, behind, *actors, dependencies.actors.catalog, false, *life);
         });
+        const auto dispatchMoney = [this](unsigned event, const playerevents::Payload& payload) { events->send(0, event, &payload); };
+        coins = std::make_unique<moneyscatter::Owner>(moneyscatter::Timing{30, 5, 2},
+            players->models->model(playermodels::SharedModel::Coin), dependencies.actors.pose,
+            moneyscatter::SceneDependencies{dependencies.actors.rooms, dependencies.visibility, dependencies.roomFlags,
+                moneySavedRooms, mapMode, collision, player->position, particles->contexts().player, moneyMinimumScale,
+                dependencies.randomState, particles->effects(), particles->batch(0), dispatchMoney,
+                [player](float, moneyscatter::Particle&) {
+                    if (player->view.field8B4) throw std::runtime_error("Coin suction requires the original attraction binding.");
+                    return 0;
+                }, sound}, moneyRetained);
+        const auto& shared = *players->models;
+        bills = std::make_unique<billscatter::Scene>(std::array<std::shared_ptr<j3dmodel::ModelData>, 3>{
+            shared.model(playermodels::SharedModel::Bill), shared.model(playermodels::SharedModel::Bill2),
+            shared.model(playermodels::SharedModel::Bill3)}, dependencies.actors.pose,
+            billscatter::SceneDependencies{dependencies.actors.rooms, dependencies.visibility, collision, player->position,
+                particles->contexts().player, dependencies.randomState, particles->effectRandomState(), billFlutter,
+                moneyPaused, moneyBlink, dispatchMoney, [player](billscatter::Particle&) {
+                    if (player->view.field8A0 == 1)
+                        throw std::runtime_error("Bill suction requires the original attraction range binding.");
+                    return 0;
+                }});
+        life->scatterMoney = [this](const auto& position, const auto& direction, auto count, auto lifetime, double speed, auto mode) {
+            coins->scatter(position, direction, count, lifetime, speed, mode);
+        };
         capture = std::make_unique<actorcapture::Motion>(dependencies.executable, dependencies.actors.pose,
             [this] { return runtime->random(); });
         updates = std::make_unique<characterowner::UpdateServices>(characterowner::UpdateServices{
@@ -286,6 +319,7 @@ struct gameplay::ManagerServices::State : playerpresentation::Services {
                 return itemsuction::Vector{};
             }, 0, itemDuration});
         itemServices->globalSound = [this](unsigned id) { audio->playback.playGlobal(id); };
+        itemServices->mansionMode = &dependencies.entry.mansionMode;
         itemServices->life = life.get();
         itemServices->camera = &dependencies.camera;
         itemServices->audioPositions = &audio->owners;
@@ -374,6 +408,14 @@ struct gameplay::ManagerServices::State : playerpresentation::Services {
     std::array<float, 3> furnitureDirection{};
     std::int32_t elementDuration = 0;
     std::unique_ptr<SuctionAudio> suctionAudio;
+    std::unique_ptr<characteritems::Creation> itemCreation;
+    moneyscatter::RetainedState moneyRetained;
+    std::unique_ptr<moneyscatter::Owner> coins;
+    std::unique_ptr<billscatter::Scene> bills;
+    std::array<std::uint16_t, 256> moneySavedRooms{};
+    float moneyMinimumScale = 0.3f, billFlutter = 0;
+    bool moneyPaused = false;
+    std::uint8_t moneyBlink = 2;
     std::unique_ptr<playerevents::SuctionEnvironment> suction;
     roomlighting::Pool lights;
     roomlighting::Storm storm;
@@ -606,6 +648,8 @@ playeractor::FinishServices gameplay::ManagerServices::preparePlayerFinish(unsig
         [this](bool active) {
             state->generators->enabled = !active;
             state->particles->pool().setPaused(active);
+            state->coins->storage().paused = active;
+            state->moneyPaused = active;
             state->models->setPaused(active);
             state->actors->setInteractionPaused(active);
         },
@@ -739,9 +783,13 @@ void gameplay::ManagerServices::updateFurniture(unsigned frame) {
     services.selectItem = [this, player](unsigned table) {
         auto item = characteritems::select(state->dependencies.mission, static_cast<std::int32_t>(table),
             static_cast<std::int16_t>(player->life), *state->runtime);
-        if (!state->furnitureAdmission.nothing(item))
-            throw std::runtime_error("Furniture contents require their original creation and scatter services.");
         return item;
+    };
+    services.createItem = [this](const auto& item, const auto& position) { return state->itemCreation->create(item, position); };
+    services.createType = [this](unsigned type, const auto& position) { state->itemCreation->create(type, position); };
+    services.scatter = [this](bool bill, float speed, const auto& position, const auto& direction, unsigned count) {
+        if (bill) state->bills->scatter(position, direction, speed, 30, static_cast<std::uint8_t>(count), 480);
+        else state->coins->scatter(position, direction, static_cast<std::uint8_t>(count), 480, speed, 0);
     };
     services.effect = [this](unsigned type, const auto& position) {
         state->particles->effects().create(type, position, state->furnitureDirection);
@@ -774,6 +822,10 @@ void gameplay::ManagerServices::updateFurniture(unsigned frame) {
     services.setFlag = [this](unsigned flag) { state->dependencies.flags.setOn(static_cast<std::uint8_t>(flag)); };
     services.cabinetActive = [this](bool active) { state->furniture->cabinetOpen = active; };
     state->furniture->update(state->dependencies.visibility, 0, [&](auto& object, auto& row, bool visible) {
+        services.persistCollected = [this, rowIndex = object.row] {
+            if (state->mapMode == 2)
+                state->dependencies.entry.inventory.at(0x1a0 + rowIndex / 8) |= static_cast<std::uint8_t>(0x80 >> (rowIndex & 7));
+        };
         if (object.behavior == 3) {
             state->furnitureResponse.chair(object, row, visible, false, frame, services);
             return true;
@@ -929,3 +981,32 @@ bool gameplay::ManagerServices::eventEffect(std::string_view placement, std::str
     }
     return false;
 }
+
+void gameplay::ManagerServices::updateMoney(const std::array<float, 3>& position, const std::array<float, 3>& direction) {
+    for (const auto& room : state->dependencies.actors.rooms.entries()) {
+        const unsigned id = room.id & 255, offset = 0xa0 + id * 2;
+        state->moneySavedRooms[id] = (unsigned(state->dependencies.entry.inventory.at(offset)) << 8) |
+            state->dependencies.entry.inventory.at(offset + 1);
+    }
+    state->coins->updateCoins(position, direction);
+    if (state->mapMode == 2) for (const auto& room : state->dependencies.actors.rooms.entries()) {
+        const unsigned id = room.id & 255, offset = 0xa0 + id * 2;
+        state->dependencies.entry.inventory.at(offset) = static_cast<std::uint8_t>(state->moneySavedRooms[id] >> 8);
+        state->dependencies.entry.inventory.at(offset + 1) = static_cast<std::uint8_t>(state->moneySavedRooms[id]);
+    }
+    state->bills->update();
+}
+
+std::vector<j3dmodel::ModelInstance*> gameplay::ManagerServices::moneyModels() {
+    std::vector<j3dmodel::ModelInstance*> result;
+    auto append = [&](auto& pool) {
+        for (auto* request = pool.active.sentinel.next; request != &pool.active.sentinel; request = request->next)
+            for (auto* particle = request->particles.sentinel.next; particle != &request->particles.sentinel; particle = particle->next)
+                if (particle->visible) result.push_back(particle->model.get());
+    };
+    append(state->coins->storage());
+    result.push_back(state->coins->modelStorage().auxiliary.model.get());
+    for (auto& pool : state->bills->storage().pools) append(*pool);
+    return result;
+}
+

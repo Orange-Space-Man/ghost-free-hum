@@ -53,6 +53,23 @@ add_library(JLib STATIC
 )
 
 add_library(Game STATIC
+    src/game/effects/moneyscatterpool.cpp
+    src/game/effects/moneyscatterinitializer.cpp
+    src/game/effects/moneyscattercontact.cpp
+    src/game/effects/moneyscatterupdate.cpp
+    src/game/effects/moneyscattermodels.cpp
+    src/game/effects/moneyscatterscenebindings.cpp
+    src/game/effects/moneyscatterowner.cpp
+    src/game/effects/billscatterpool.cpp
+    src/game/effects/billscatterinitializer.cpp
+    src/game/effects/billscattermodels.cpp
+    src/game/effects/billscattermotion.cpp
+    src/game/effects/billscattercontact.cpp
+    src/game/effects/billscattercollection.cpp
+    src/game/effects/billscatterupdate.cpp
+    src/game/effects/billscatterscene.cpp
+    src/game/effects/scatterattraction.cpp
+
     src/game/events/eventmessagegraphics.cpp
     src/game/menu/gamefontprint.cpp
     src/game/events/eventmessagewindows.cpp

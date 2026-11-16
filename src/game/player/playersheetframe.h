@@ -33,6 +33,7 @@ namespace playersheets {
     public:
         Owner(playermodels::GridOwner& models, const playermodels::SharedModels& shared,
             roomfurniture::Owner& furniture, const std::vector<std::uint8_t>& executable);
+        void clear();
         void initialize(const playerscanner::SheetInput& input, bool reversePlanes);
         void update(FrameServices& services);
         Frame& sheet(unsigned slot);

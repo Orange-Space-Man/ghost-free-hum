@@ -131,6 +131,11 @@ playersheets::Owner::Owner(playermodels::GridOwner& models, const playermodels::
     roomfurniture::Owner& furniture, const std::vector<std::uint8_t>& executable) :
     models(models), shared(shared), furniture(furniture), executable(executable), builder(executable) {}
 
+void playersheets::Owner::clear() {
+    models.fields16BC.fill(0);
+    for (auto& sheet : sheets) sheet.reset();
+}
+
 void playersheets::Owner::initialize(const playerscanner::SheetInput& input, bool reversePlanes) {
     auto& model = *models.grids.at(input.slot);
     const auto layout = builder.build(input, model.count, input.texture, 13, reversePlanes);
