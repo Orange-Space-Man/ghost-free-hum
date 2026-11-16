@@ -1,5 +1,6 @@
 #include "resources/dolresources.h"
 #include "game/scene/gameplaymanagerservices.h"
+#include "game/enemies/enemytrainingservices.h"
 #include "game/actors/charactereffectresources.h"
 #include "game/enemies/enemymanagerruntime.h"
 #include "game/actors/characterplacementruntime.h"
@@ -361,6 +362,9 @@ struct gameplay::ManagerServices::State : playerpresentation::Services {
             commonResources, particles->pool(), glows, player->view, dependencies.actors.rooms, *runtime});
         strategies->bindPlacement(dependencies.strategies, *barrierServices, *fireServices, ambient);
         strategies->bindPose(dependencies.actors.pose);
+        trainingServices = std::make_unique<enemystrategy::TrainingEnvironment>(enemystrategy::TrainingEnvironment{
+            *runtime, *enemies, dependencies.types, dependencies.actors.pose, models->factory, particles->effects()});
+        strategies->bindTraining(*trainingServices);
         generators = std::make_unique<charactergenerator::Manager>(dependencies.types, dependencies.creation,
             dependencies.strategies, *strategies, *enemies, *runtime, dependencies.mission);
         webs = std::make_unique<modeleffects::CobwebPlacements>(models->factory, dependencies.actors.pose);
@@ -397,6 +401,7 @@ struct gameplay::ManagerServices::State : playerpresentation::Services {
     std::array<std::uint8_t, 4> ambient{};
     std::unique_ptr<enemystrategy::BarrierEnvironment> barrierServices;
     std::unique_ptr<enemystrategy::FireGeneratorEnvironment> fireServices;
+    std::unique_ptr<enemystrategy::TrainingEnvironment> trainingServices;
     std::unique_ptr<gameevent::MissionActivation> missionEvents;
     std::unique_ptr<roomdependencies::Catalog> roomDependencies;
     std::unique_ptr<characterplacement::Runtime> placementRuntime;

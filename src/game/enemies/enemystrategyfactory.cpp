@@ -3,6 +3,7 @@
 #include "game/enemies/enemynomovestrategy.h"
 #include "game/enemies/enemylabprofessorstrategy.h"
 #include "game/enemies/enemytraininggeneratorstrategy.h"
+#include "game/enemies/enemytrainingservices.h"
 #include "game/enemies/enemypathcondition.h"
 #include "game/enemies/enemygeneratordoorstrategy.h"
 #include "game/enemies/enemyitemstrategy.h"
@@ -38,7 +39,11 @@ enemystrategy::Factory::Factory(enemies::Runtime& runtime, gameflags::State& fla
 
 std::unique_ptr<enemystrategy::Strategy> enemystrategy::Factory::construct(std::uint32_t constructor) const {
     switch (constructor) {
-    case glme01::trainingGeneratorFactory: return std::make_unique<TrainingGenerator>(flags);
+    case glme01::trainingGeneratorFactory: {
+        auto strategy = std::make_unique<TrainingGenerator>(flags);
+        if (training) strategy->bindServices(training->bind(*strategy));
+        return strategy;
+    }
     case glme01::barrierFactory:
         if (!barriers) throw std::runtime_error("Original door-barrier services are not bound.");
         return std::make_unique<Barrier>(*barriers);
@@ -117,6 +122,8 @@ std::unique_ptr<enemystrategy::Strategy> enemystrategy::Factory::construct(std::
     }
     }
 }
+
+void enemystrategy::Factory::bindTraining(TrainingEnvironment& environment) { training = &environment; }
 
 void enemystrategy::Factory::bindItems(ItemEnvironment* environment) { items = environment; }
 void enemystrategy::Factory::bindPose(const actormodel::InitialPose& value) { pose = &value; }

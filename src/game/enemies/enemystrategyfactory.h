@@ -9,6 +9,7 @@ namespace actormodel { class InitialPose; }
 
 namespace enemystrategy {
     struct ItemEnvironment;
+    struct TrainingEnvironment;
     struct BarrierEnvironment;
     struct FireGeneratorEnvironment;
     class Catalog;
@@ -17,6 +18,7 @@ namespace enemystrategy {
         Factory(enemies::Runtime& runtime, gameflags::State& flags, const mission::Resources& resources);
         std::unique_ptr<Strategy> construct(std::uint32_t constructor) const;
         void bindItems(ItemEnvironment* environment);
+        void bindTraining(TrainingEnvironment& environment);
         void bindPose(const actormodel::InitialPose& pose);
         void bindPlacement(const Catalog& catalog, BarrierEnvironment& barriers, FireGeneratorEnvironment& fire,
             const std::array<std::uint8_t, 4>& ambient);
@@ -27,6 +29,7 @@ namespace enemystrategy {
         gameflags::State& flags;
         const mission::Resources& resources;
         ItemEnvironment* items = nullptr;
+        TrainingEnvironment* training = nullptr;
         const Catalog* catalog = nullptr;
         BarrierEnvironment* barriers = nullptr;
         FireGeneratorEnvironment* fire = nullptr;
