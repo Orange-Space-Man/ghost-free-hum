@@ -6,7 +6,7 @@
 #include <stdexcept>
 
 void gameapplication::Application::loadDebugCheckpoint(unsigned checkpoint) {
-    if (checkpoint < 1 || checkpoint > 2) return;
+    if (checkpoint < 1 || checkpoint > 3) return;
     debugLoading = true;
     debugCloseRequested = false;
     struct LoadingScope {
@@ -99,7 +99,7 @@ void gameapplication::Application::loadDebugCheckpoint(unsigned checkpoint) {
     };
     progress("Advancing foyer entrance cutscene");
     until([&] { return gameEntry.inventory[0x20 + 48] == 1; }, 600, "Debug checkpoint: entrance event did not finish.");
-    if (checkpoint == 2) {
+    if (checkpoint >= 2) {
         const auto walk = [&](float targetX, float targetZ) {
             for (unsigned i = 0; i < 500; ++i) {
                 const auto& position = *gameplayScene->playerView().position;
@@ -143,6 +143,44 @@ void gameapplication::Application::loadDebugCheckpoint(unsigned checkpoint) {
         for (unsigned i = 0; i < 45; ++i) step(pad);
         progress("Advancing ghost and key cutscene");
         until([&] { return gameEntry.inventory[0x20 + 7] == 1; }, 850, "Debug checkpoint: ghost/key event did not finish.");
+        if (checkpoint == 3) {
+            progress("Collecting the Parlor key");
+            walk(-2.0035901f, -61.82265f);
+            for (unsigned i = 0; i < 180; ++i) step({});
+            progress("Entering Parlor");
+            walk(800, 100); walk(800, -600); walk(0, -600); walk(0, -950); walk(100, -1150);
+            pad = {}; pad.stickY = 87;
+            for (unsigned i = 0; i < 6; ++i) step(pad);
+            step({}); pad = {}; pad.buttons = 0x100; step(pad);
+            const auto dialogue = [&](unsigned destination, unsigned limit) {
+                for (unsigned i = 0; i < limit && gameplayScene->transition().destination < 0; ++i) {
+                    playerinput::PadStatus input;
+                    if (i % 30 == 0) input.buttons = 0x100;
+                    step(input);
+                }
+                if (gameplayScene->transition().destination != static_cast<int>(destination))
+                    throw std::runtime_error("Debug checkpoint: dialogue did not reach its destination.");
+            };
+            const auto handoff = [&] {
+                beginTransition();
+                for (unsigned vi = 0; transitionPhase != TransitionPhase::Idle; ++vi) {
+                    if (vi > 10000) throw std::runtime_error("Debug checkpoint: scene handoff did not finish.");
+                    progress();
+                    advanceTransition();
+                    if (transitionPhase == TransitionPhase::Loading) Sleep(1);
+                }
+                playback = gameplayScene->playback();
+                mixer.reset();
+                audioRemainder = 0;
+            };
+            progress("Advancing Parlor rescue");
+            dialogue(1, 4000);
+            handoff();
+            progress("Advancing E. Gadd's introduction");
+            dialogue(3, 3000);
+            handoff();
+        }
+
     }
     progress("Finishing checkpoint");
     step({});

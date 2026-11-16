@@ -141,6 +141,7 @@ bool gameevent::EntranceScript::update(EntranceServices& services) {
             const auto height = integer();
             services.cameraTarget(actor, height);
         }
+        else if (command == "WEAPON") services.playerEvent(0x1f);
         else if (command == "NOWEAPON") services.playerEvent(0x20);
         else if (command == "LLIGHTOFF") services.playerEvent(0x1b);
         else if (command == "LLIGHTON") services.playerEvent(0x1c);

@@ -22,7 +22,7 @@ namespace {
     }
 }
 
-roommirror::Owner::Owner(const std::vector<std::uint8_t>& executable, const roomlocation::Rooms& rooms) :
+roommirror::Owner::Owner(const std::vector<std::uint8_t>& executable, const roomlocation::Rooms& rooms, unsigned map) :
     pose(executable), projection(executable), distance(scalar(executable, mirrorDistance)) {
     for (unsigned i = 0; i < 3; ++i) position[i] = scalar(executable, foyerPosition + i * 4);
     world = pose.rotation({0, -3640, 0});
@@ -30,7 +30,7 @@ roommirror::Owner::Owner(const std::vector<std::uint8_t>& executable, const room
         world[i * 4 + 3] = position[i];
         normal[i] = world[i * 4 + 2];
     }
-    roomId = rooms.resolve(position, 0);
+    roomId = map == 2 ? rooms.resolve(position, 0) : 0xffffffff;
     retained.fieldOfView = scalar(executable, foyerFieldOfView);
     retained.nearPlane = distance;
     retained.visibilityMode = 2;

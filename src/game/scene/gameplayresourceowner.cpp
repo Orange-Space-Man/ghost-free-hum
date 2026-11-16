@@ -34,7 +34,7 @@ struct gameplay::ResourceOwner::State {
         cameraProjection = std::make_unique<gameplaycamera::Projection>(executable);
         cameraFollow = std::make_unique<gameplaycamera::Follow>(executable, entry.map);
         rooms = std::make_unique<roomlocation::Rooms>(executable, entry.map);
-        mirror = std::make_unique<roommirror::Owner>(executable, *rooms);
+        mirror = std::make_unique<roommirror::Owner>(executable, *rooms, entry.map);
         collisions = std::make_unique<actorcollision::Catalog>(executable, modelCatalog);
         construction = std::make_unique<actors::Construction>(actors::Construction{
             modelCatalog, *models, parameters, *pose, actorGlobals, *rooms});

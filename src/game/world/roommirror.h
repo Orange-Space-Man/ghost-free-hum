@@ -7,7 +7,7 @@
 namespace roommirror {
     class Owner {
     public:
-        Owner(const std::vector<std::uint8_t>& executable, const roomlocation::Rooms& rooms);
+        Owner(const std::vector<std::uint8_t>& executable, const roomlocation::Rooms& rooms, unsigned map = 2);
         bool visible(const roomtraversal::State& visibility) const;
         gameplaycamera::DrawState camera(const s3denvironment::Camera& main);
         const actormodel::Matrix& matrix() const;

@@ -44,6 +44,12 @@ unsigned playerevents::dispatch(playeractor::Player& player, unsigned message, c
         flag = enabled ? 1 : 0;
         return 1;
     }
+    if (message == 0x1f) {
+        constexpr unsigned equipment = 8 | 4;
+        if ((player.state.flags792 & equipment) == equipment) return 0;
+        player.state.flags792 |= equipment;
+        return 1;
+    }
     if (message == 0x20) {
         constexpr unsigned equipment = 8 | 4;
         if (!(player.state.flags792 & equipment)) return 0;

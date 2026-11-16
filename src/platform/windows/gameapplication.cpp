@@ -354,7 +354,7 @@ LRESULT gameapplication::Application::handleMessage(HWND window, UINT message, W
         return 0;
     }
     if (message == WM_KEYDOWN && debugModifier && wParam >= '1' && wParam <= '9') {
-        if (!(lParam & (1LL << 30)) && wParam <= '2') debugCheckpoint = static_cast<unsigned>(wParam - '0');
+        if (!(lParam & (1LL << 30)) && wParam <= '3') debugCheckpoint = static_cast<unsigned>(wParam - '0');
         return 0;
     }
     if (debugoverlay::handleMessage(window, message, wParam, lParam)) return 0;
