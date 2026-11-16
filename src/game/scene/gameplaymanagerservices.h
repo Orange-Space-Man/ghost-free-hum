@@ -90,6 +90,7 @@ namespace gameplay {
         players::Manager& players();
         void stopAuxiliaryBeam();
         void updateAuxiliaryEquipment();
+        void refreshParticles();
         playerevents::Dispatcher& playerEvents();
         playerevents::LifeEnvironment& playerLife();
         particles::Scene& particles();

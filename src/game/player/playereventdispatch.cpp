@@ -79,7 +79,7 @@ unsigned playerevents::dispatch(playeractor::Player& player, unsigned message, c
     if (message == 0x26 || message == 0x27 ||
         (message == 0x13 && (values.word(0x60) == 5 || values.word(0x60) == 6)))
         return collectMoney(player, message, values, collectionSound);
-    if (message == 0x13 && (values.word(0x60) == 3 || values.word(0x60) == 7)) {
+    if (message == 0x13 && (values.word(0x60) <= 1 || values.word(0x60) == 3 || values.word(0x60) == 7)) {
         if (!suction) throw std::runtime_error("Player suction completion services are not bound.");
         return completeSuction(player, {values.word(0x60), values.word(0x64), values.word(0x68),
             static_cast<std::int32_t>(values.word(0x6c)), values.word(0x70), values.word(0x74)}, *suction);

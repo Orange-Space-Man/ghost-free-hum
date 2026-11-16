@@ -48,8 +48,10 @@ namespace {
         float width, depth, rotationSpeed, pulseAmplitude, pulseStep, collisionVelocity, movementVelocity;
         float drift, driftStep, growthIncrement, forwardOffset, heightOffset, horizontalOffset;
         float upwardScale, upwardBase, radialScale, growthFraction, logarithmScale, logarithmBase;
+        float accelerationScale, velocityScale;
+        std::int16_t releasedLifetime;
         std::uint16_t lifetime;
-        std::uint8_t alphaBase, alphaLimit, ageStep;
+        std::uint8_t alphaBase, alphaLimit, ageStep, captureDelay;
 
         explicit Parameters(const std::vector<std::uint8_t>& bytes) :
             radialSpread(read<float>(bytes, 0)), upwardSpread(read<float>(bytes, 4)), maximumSize(read<float>(bytes, 12)),
@@ -63,16 +65,15 @@ namespace {
             horizontalOffset(read<float>(bytes, 132)), upwardScale(read<float>(bytes, 136)),
             upwardBase(read<float>(bytes, 140)), radialScale(read<float>(bytes, 144)), growthFraction(read<float>(bytes, 148)),
             logarithmScale(read<float>(bytes, 152)), logarithmBase(read<float>(bytes, 156)),
-            lifetime(read<std::uint16_t>(bytes, 16)), alphaBase(bytes[92]), alphaLimit(bytes[93]), ageStep(bytes[120]) {}
+            accelerationScale(read<float>(bytes, 104)), velocityScale(read<float>(bytes, 108)),
+            releasedLifetime(read<std::int16_t>(bytes, 42)), lifetime(read<std::uint16_t>(bytes, 16)),
+            alphaBase(bytes[92]), alphaLimit(bytes[93]), ageStep(bytes[120]), captureDelay(bytes[113]) {}
     };
 
-    struct Particle {
+    struct Particle : runningdust::InteractionParticle {
         Particle* next = this;
         Particle* previous = this;
-        Vector position{}, velocity{};
-        std::int16_t lifetime = 0;
-        std::uint16_t pulse = 0;
-        float rotationSpeed = 0, rotation = 0, driftAngle = 0, driftSign = 1, size = 0, baseSize = 1;
+        float driftAngle = 0, driftSign = 1;
         unsigned growthPhase = 0;
     };
 
@@ -84,7 +85,7 @@ namespace {
         const Parameters* parameters = nullptr;
         Vector origin{};
         float floor = 0, logarithmInput = 0, growthThreshold = 0, collisionRadius = 0;
-        unsigned room = 0;
+        unsigned room = 0, level = 0;
         bool visible = true;
     };
 
@@ -110,6 +111,8 @@ struct runningdust::Manager::State {
         if (!trig.read(executable, error)) throw std::runtime_error(error);
         radiansPerDegree = read<float>(range(executable, degreesToRadiansAddress, 4), 0);
         impactSpeedScale = read<float>(range(executable, impactSpeedScaleAddress, 4), 0);
+        releasedDecay = read<float>(range(executable, 0x804dc2e8, 4), 0);
+        releasedMinimum = read<float>(range(executable, 0x804dc2ec, 4), 0);
         const auto impact = range(executable, impactRadiusAddress, 8);
         impactRadius = read<float>(impact, 0);
         impactDensity = read<float>(impact, 4);
@@ -199,6 +202,7 @@ struct runningdust::Manager::State {
         const auto& p = parameters[level];
         emitter->context = &context;
         emitter->parameters = &p;
+        emitter->level = level;
         emitter->room = context.room;
         emitter->visible = true;
         emitter->floor = float(rooms.entries().at(context.room >> 24).bounds[1]);
@@ -241,7 +245,10 @@ struct runningdust::Manager::State {
 
     void update(Emitter& emitter, Particle& particle, const particles::SceneContext& player) {
         const auto& p = *emitter.parameters;
-        if (particle.growthPhase != 2) {
+        if (particle.influenced) {
+            particle.baseSize *= releasedDecay;
+            if (particle.baseSize < releasedMinimum) particle.baseSize = releasedMinimum;
+        } else if (particle.growthPhase != 2) {
             if (!particle.growthPhase) particle.baseSize = p.logarithmScale * logarithm(emitter.logarithmInput);
             else particle.baseSize += p.growthStep;
             if (particle.baseSize >= p.maximumSize) particle.growthPhase = 2;
@@ -293,6 +300,7 @@ struct runningdust::Manager::State {
     std::array<float, 129> logarithms{}, reciprocals{};
     float logQuadratic = 0, logCubic = 0, logTwo = 0, radiansPerDegree = 0;
     float impactSpeedScale = 0, impactRadius = 0, impactDensity = 0;
+    float releasedDecay = 0, releasedMinimum = 0;
     originalmath::FloatTrig trig;
     std::array<Vector, 4> corners{};
     std::array<std::array<float, 2>, 4> coordinates{};
@@ -320,6 +328,7 @@ bool runningdust::Manager::impact(float speed, float radius, const Vector& posit
     const auto& p = state->parameters[level];
     emitter->context = &player;
     emitter->parameters = &p;
+    emitter->level = level;
     emitter->visible = true;
     emitter->origin = position;
     emitter->logarithmInput = 1;
@@ -389,7 +398,7 @@ bool runningdust::Manager::remove(jmp::ToolDataRef& entry) {
     return true;
 }
 
-void runningdust::Manager::update(particles::SceneContexts& contexts) {
+void runningdust::Manager::update(particles::SceneContexts& contexts, const ParticleInteraction& interaction) {
     if (!contexts.player.actorPosition) throw std::logic_error("Running dust requires the refreshed player context.");
     const auto modifier = state->regionLevel(*contexts.player.actorPosition);
     state->emit(contexts.player, modifier);
@@ -406,7 +415,17 @@ void runningdust::Manager::update(particles::SceneContexts& contexts) {
             emitter->collisionRadius = std::min(50.0f, emitter->collisionRadius + 1);
             for (auto* particle = emitter->particles.sentinel.next; particle != &emitter->particles.sentinel;) {
                 auto* following = particle->next;
-                state->update(*emitter, *particle, contexts.player);
+                const auto& p = *emitter->parameters;
+                const EmitterInteraction parameters{emitter->level,
+                    static_cast<std::int16_t>(p.lifetime - p.captureDelay), p.releasedLifetime,
+                    {p.pulseAmplitude, p.pulseStep, p.accelerationScale, p.velocityScale}};
+                if (!interaction && (particle->forced || particle->influenced))
+                    throw std::logic_error("Influenced dust requires its retained interaction service.");
+                const auto result = interaction ? interaction(*particle, parameters) : ForceResult::Ordinary;
+                if (result == ForceResult::Removed) {
+                    emitter->particles.remove(*particle);
+                    state->particles.free.append(*particle);
+                } else if (!particle->forced) state->update(*emitter, *particle, contexts.player);
                 // The original clamps the next list entry before advancing to it.
                 if (following != &emitter->particles.sentinel && following->position[1] <= emitter->floor) {
                     following->position[1] = emitter->floor;

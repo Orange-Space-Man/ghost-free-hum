@@ -1,12 +1,19 @@
 #pragma once
 
 #include "game/effects/particlebillboards.h"
+#include "game/effects/dustinteraction.h"
 #include "game/effects/particlescenecontext.h"
 #include "game/events/jmpmessagesender.h"
 #include "game/events/missionresources.h"
 #include <functional>
 
 namespace runningdust {
+    struct EmitterInteraction {
+        unsigned level;
+        std::int16_t captureLifetime, releasedLifetime;
+        SuctionParameters motion;
+    };
+    using ParticleInteraction = std::function<ForceResult(InteractionParticle&, const EmitterInteraction&)>;
     class Manager final : public jmp::MessageReceiver {
     public:
         Manager(const std::vector<std::uint8_t>& executable, const mission::Resources& mission,
@@ -14,7 +21,7 @@ namespace runningdust {
         ~Manager();
         bool create(jmp::ToolDataRef& entry) override;
         bool remove(jmp::ToolDataRef& entry) override;
-        void update(particles::SceneContexts& contexts);
+        void update(particles::SceneContexts& contexts, const ParticleInteraction& interaction = {});
         bool impact(float speed, float radius, const std::array<float, 3>& position,
             const std::array<float, 3>& velocity, const std::array<float, 3>& normal, unsigned level,
             particles::SceneContext& player, const std::function<std::array<float, 3>()>& direction);

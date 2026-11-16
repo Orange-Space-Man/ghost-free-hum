@@ -65,8 +65,7 @@ runningdust::ForceResult runningdust::Interaction::advance(const ForceFrame& fra
     for (unsigned i = 0; i < 3; ++i) delta[i] = particle.position[i] - frame.origin[i];
     const float distance = magnitude(delta);
     if (frame.mode == ForceMode::Suction && distance <= captureRadius) {
-        if (!frame.capture || (emitter.type != 1 && emitter.type != 0x11))
-            throw std::runtime_error("Dust capture requires its original event service and known emitter type.");
+        if (!frame.capture) throw std::runtime_error("Dust capture requires its original event service.");
         frame.capture(emitter.type == 1 ? 1 : 0, emitter.level);
         return ForceResult::Removed;
     }

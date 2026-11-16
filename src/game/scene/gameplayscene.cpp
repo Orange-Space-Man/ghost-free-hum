@@ -253,7 +253,7 @@ void gameplay::Scene::update(const playerinput::PadStatus& pad, std::int16_t por
     else managers.updateShadow();
     managers.updatePoses();
     managers.completePlayerFrame({}, false);
-    managers.particles().refresh(nullptr);
+    managers.refreshParticles();
     managers.updatePlacement(ticks / 30, false);
     managers.glows().update();
     managers.modelEffects().update(resources.rooms(), resources.visibility());

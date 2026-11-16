@@ -846,6 +846,16 @@ void gameplay::ManagerServices::completePlayerFrame(const playeractor::LateFrame
     state->players->advanceClock();
 }
 
+void gameplay::ManagerServices::refreshParticles() {
+    const auto& auxiliary = state->players->auxiliary;
+    particles::SecondarySource source{};
+    if (auxiliary && auxiliary->field3C) {
+        if (!auxiliary->actor) throw std::logic_error("Attached auxiliary particle source has no actor.");
+        source = {true, &auxiliary->actor->position, auxiliary->field14, auxiliary->field24, auxiliary->field30};
+    }
+    state->particles->refresh(&source);
+}
+
 void gameplay::ManagerServices::stopAuxiliaryBeam() {
     state->players->stopAuxiliaryBeam(state->dependencies.actors.pose, [this] { return state->runtime->random(); });
 }
