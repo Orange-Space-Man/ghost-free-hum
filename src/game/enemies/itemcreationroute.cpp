@@ -1,5 +1,6 @@
 #include "game/enemies/itemcreationroute.h"
 #include "game/actors/characterowner.h"
+#include "game/enemies/enemypearlstrategy.h"
 
 #include <cmath>
 #include <stdexcept>
@@ -100,4 +101,22 @@ unsigned characteritems::Creation::drop(characterowner::Owner& owner) {
     const auto source = (*capture)[3] >= 2 && table == 3 ? find(mission, "sheart") :
         select(mission, static_cast<std::int32_t>(table), static_cast<std::int16_t>(player().view.life), runtime);
     return create(source, dynamic_cast<actors::MoveActor&>(owner.actor()).position);
+}
+
+ghostcapture::DropServices characteritems::Creation::captureDrops() {
+    return {
+        [this](unsigned type, int source, const auto& position, const auto& velocity) {
+            const auto id = create(type, position, &velocity);
+            if (static_cast<std::int32_t>(id) < 0) return false;
+            auto* object = actors.actor(id);
+            auto* owner = object ? dynamic_cast<characterowner::Owner*>(manager.activeOwner(*object)) : nullptr;
+            auto* pearl = owner ? dynamic_cast<enemystrategy::Pearl*>(owner->ownership().strategy.get()) : nullptr;
+            if (!pearl) throw std::runtime_error("Capture pearl creation requires its original EnPearl owner.");
+            pearl->sourceIndex = source;
+            return true;
+        },
+        [this](unsigned table, int tick, int repeat, const auto& position, const auto& velocity) {
+            create(selectCapture(mission, static_cast<std::int32_t>(table), tick, repeat), position, &velocity);
+        }
+    };
 }

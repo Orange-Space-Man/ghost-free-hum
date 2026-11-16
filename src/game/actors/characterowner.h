@@ -93,6 +93,7 @@ namespace characterowner {
         void updateAnimationEffect();
         void updateDependentActors(const actors::Registry& actors);
         void updateSpecialAttachment(const actors::Registry& actors, const enemycreation::Catalog& creation);
+        actors::MoveActor* acquireDependentActor(const actors::Registry& registry);
         void releaseActorReference(void*& user);
         void updateReleaseTimer();
         void releaseFromManager();

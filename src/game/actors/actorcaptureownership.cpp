@@ -14,7 +14,7 @@ void actors::MoveActor::initializeCapture(actorcapture::Motion& motion, const st
     if (flags & 0x80000) return;
     field100 = target;
     if (!model->model) return;
-    if (!capture) throw std::runtime_error("Original actor capture storage has not been retained.");
+    if (!capture) capture = std::make_unique<actorcapture::State>(std::array<std::uint8_t, 0x430>{});
     actorcapture::initializeActor(motion, *capture, *this, target, type);
 }
 

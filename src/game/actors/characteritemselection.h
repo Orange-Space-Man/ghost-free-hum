@@ -8,6 +8,7 @@ namespace characteritems {
     std::uint32_t tableId(const jmp::ToolDataRef& source, unsigned type, const enemytypes::Manager& parameters);
     std::int32_t adjustTable(std::int32_t table, std::int16_t playerLife);
     jmp::ToolDataRef find(const mission::Resources& mission, std::string_view name);
+    jmp::ToolDataRef selectCapture(const mission::Resources& mission, std::int32_t table, int tick, int repeatColumn);
     jmp::ToolDataRef select(const mission::Resources& mission, std::int32_t table, std::int16_t playerLife,
         enemies::Runtime& runtime);
 }

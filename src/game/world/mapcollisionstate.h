@@ -4,6 +4,11 @@
 #include <array>
 
 namespace mapcollision {
+    struct NearestPolygon {
+        std::uint16_t polygon = 0xffff;
+        float distance = 3200000;
+    };
+
     struct SphereContact {
         std::array<float, 3> correction{}, floorNormal{}, wallNormal{};
         int floor = -1, wall = -1;
@@ -19,6 +24,7 @@ namespace mapcollision {
         int soundMaterialField() const;
         int soundEchoField() const;
         const jmp::ToolData* polygonInfo() const;
+        NearestPolygon nearestPolygon(const std::array<float, 3>& position, float radius) const;
         float ceilingHeight(const std::array<float, 3>& position) const;
         float floorHeight(const std::array<float, 3>& position) const;
         std::array<std::uint16_t, 4> floorPolygons(const std::array<float, 3>& position, float distance) const;

@@ -120,6 +120,7 @@ add_library(Game STATIC
     src/game/actors/characterowner.cpp
     src/game/actors/characterownerdamage.cpp
     src/game/actors/characterownerevents.cpp
+    src/game/actors/charactercaptureservices.cpp
     src/game/actors/characterownermotion.cpp
     src/game/actors/characterownerprojection.cpp
     src/game/actors/characterownership.cpp
@@ -198,11 +199,17 @@ add_library(Game STATIC
     src/game/enemies/enemytrainingservices.cpp
     src/game/enemies/enemyappearancestrategy.cpp
     src/game/enemies/enemyghostmovement.cpp
+    src/game/enemies/enemycapturelifecycle.cpp
     src/game/enemies/enemycapturemotion.cpp
+    src/game/enemies/enemycapturecollision.cpp
+    src/game/enemies/enemycapturestrategy.cpp
+    src/game/enemies/enemyghostcaptureparent.cpp
+    src/game/enemies/enemyghostdisappearance.cpp
     src/game/enemies/enemycapturesteering.cpp
     src/game/enemies/enemyscarenotification.cpp
     src/game/enemies/enemysearchstrategy.cpp
     src/game/enemies/enemyfrightstrategy.cpp
+    src/game/enemies/enemylightstrategy.cpp
     src/game/enemies/enemykeystrategy.cpp
     src/game/enemies/enemymanager.cpp
     src/game/enemies/enemymanagerruntime.cpp
@@ -390,6 +397,7 @@ add_library(Game STATIC
     src/game/world/doorpresentation.cpp
     src/game/world/doorresources.cpp
     src/game/world/doorstate.cpp
+    src/game/world/mapcollisionnearest.cpp
     src/game/world/mapcollisionprojection.cpp
     src/game/world/mapcollisionstate.cpp
     src/game/world/roomdependencies.cpp

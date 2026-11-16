@@ -1,6 +1,7 @@
 #pragma once
 
 #include "game/actors/characteritemselection.h"
+#include "game/enemies/enemycapturelifecycle.h"
 #include "game/enemies/enemyitemstrategy.h"
 
 namespace characterowner { class Owner; }
@@ -15,6 +16,7 @@ namespace characteritems {
         unsigned create(const jmp::ToolDataRef& source, const itemsuction::Vector& position,
             const itemsuction::Vector* velocity = nullptr);
         unsigned drop(characterowner::Owner& owner);
+        ghostcapture::DropServices captureDrops();
 
     private:
         const mission::Resources& mission;

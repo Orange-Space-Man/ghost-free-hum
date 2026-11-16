@@ -79,6 +79,20 @@ void characterowner::Owner::updateDependentActors(const actors::Registry& regist
     if (!player->view.field895) releaseActorReference(values.field928);
 }
 
+actors::MoveActor* characterowner::Owner::acquireDependentActor(const actors::Registry& registry) {
+    auto& actorState = dynamic_cast<actors::MoveActor&>(actor());
+    values.actorReferences = static_cast<std::int32_t>(static_cast<std::uint32_t>(values.actorReferences) + 1);
+    if (values.actorReferences < 2) {
+        const auto id = manager().createActor(0x3e, 0);
+        if (id == 0xffffffff) throw std::runtime_error("Original dependent actor acquire exhausted the actor pool.");
+        auto* child = registry.actor(id);
+        if (!child) throw std::runtime_error("Original dependent actor acquire actor is unavailable.");
+        owned.dependentActor = child;
+        actorState.attachChild(*child, strategies.attachmentJoint(actorState.actorType), nullptr, 0);
+    }
+    return static_cast<actors::MoveActor*>(owned.dependentActor);
+}
+
 void characterowner::Owner::updateSpecialAttachment(const actors::Registry& registry, const enemycreation::Catalog& creation) {
     const auto* player = dynamic_cast<playeractor::Player*>(registry.actor(manager().appearPoint(0).actor));
     if (!player) throw std::runtime_error("Original special attachment requires player zero.");
@@ -86,16 +100,7 @@ void characterowner::Owner::updateSpecialAttachment(const actors::Registry& regi
     auto& actorState = dynamic_cast<actors::MoveActor&>(actor());
     if ((actorState.flags & 0xc000) || creation.group(actorState.actorType) != 3 ||
         !manager().roomVisible(actorState.resolvePositionRoom())) return;
-    values.actorReferences = static_cast<std::int32_t>(static_cast<std::uint32_t>(values.actorReferences) + 1);
-    if (values.actorReferences < 2) {
-        const auto id = manager().createActor(0x3e, 0);
-        if (id == 0xffffffff) throw std::runtime_error("Original special attachment exhausted the actor pool.");
-        auto* child = registry.actor(id);
-        if (!child) throw std::runtime_error("Original special attachment actor is unavailable.");
-        owned.dependentActor = child;
-        actorState.attachChild(*child, strategies.attachmentJoint(actorState.actorType), nullptr, 0);
-    }
-    auto* child = static_cast<actors::MoveActor*>(owned.dependentActor);
+    auto* child = acquireDependentActor(registry);
     if (!child) throw std::runtime_error("Original special attachment retained a null actor.");
     values.field928 = child;
     child->fieldE4 = 0xffffffff;

@@ -1,3 +1,4 @@
+#include "game/actors/charactercaptureservices.h"
 #include "resources/dolresources.h"
 #include "game/scene/gameplaymanagerservices.h"
 #include "game/enemies/enemytrainingservices.h"
@@ -186,6 +187,8 @@ struct gameplay::ManagerServices::State : playerpresentation::Services {
                 if (enemies->slots()[i - 1].state == 2) enemies->deactivate(i - 1);
             }
         }
+        if (owners) owners->bindCapture(nullptr);
+        captureServices.reset();
         updates.reset();
         playerFurniture.reset();
         coins.reset();
@@ -332,6 +335,8 @@ struct gameplay::ManagerServices::State : playerpresentation::Services {
         };
         capture = std::make_unique<actorcapture::Motion>(dependencies.executable, dependencies.actors.pose,
             [this] { return runtime->random(); });
+        captureServices = std::make_unique<characterowner::NativeCaptureServices>(*capture, *events, *itemCreation);
+        owners->bindCapture(captureServices.get());
         updates = std::make_unique<characterowner::UpdateServices>(characterowner::UpdateServices{
             dependencies.actors.catalog, dependencies.actors.resources, dependencies.actors.pose, dependencies.actors.parameters,
             dependencies.creation, collision, *actors, *players, *runtime, models->factory, *particles, sound});
@@ -480,6 +485,7 @@ struct gameplay::ManagerServices::State : playerpresentation::Services {
     std::unique_ptr<playerevents::Dispatcher> events;
     std::unique_ptr<playerevents::LifeEnvironment> life;
     std::unique_ptr<actorcapture::Motion> capture;
+    std::unique_ptr<characterowner::NativeCaptureServices> captureServices;
     std::unique_ptr<characterowner::UpdateServices> updates;
     actors::RotatingSurfaces rotatingSurfaces;
     playerevents::ItemAward itemAward{};
@@ -1105,4 +1111,8 @@ std::vector<j3dmodel::ModelInstance*> gameplay::ManagerServices::moneyModels() {
 unsigned gameplay::ManagerServices::frightenPlayer(const actors::MoveActor& source, unsigned player) {
     return enemystrategy::notifyScare(source, player, state->dependencies.actors.rooms,
         state->dependencies.visibility, *state->events);
+}
+
+ghostcapture::DropServices gameplay::ManagerServices::captureDrops() {
+    return state->itemCreation->captureDrops();
 }

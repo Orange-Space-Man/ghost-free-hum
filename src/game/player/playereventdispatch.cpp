@@ -1,6 +1,7 @@
 #include "game/player/playereventdispatch.h"
 #include "game/player/playeractor.h"
 #include "game/player/playersuctioncompletion.h"
+#include "game/player/playerattractionevent.h"
 #include "game/actors/actorregistry.h"
 
 #include <stdexcept>
@@ -47,6 +48,11 @@ unsigned playerevents::dispatch(playeractor::Player& player, unsigned message, c
     if (message == 0x24) {
         player.components->controls->setMode(static_cast<std::int32_t>(values.word(0x8c)));
         return 0;
+    }
+    if (message == 0x15) {
+        if (!suction) throw std::runtime_error("Player capture registration requires its original save properties.");
+        return registerCapture(*player.components->bits[0], *player.components->bits[4],
+            suction->properties, values.word(0x78), player.life);
     }
     if (message == 0x14) {
         player.state.fields11D8.fill(0);
@@ -160,6 +166,12 @@ unsigned playerevents::Dispatcher::send(std::int32_t index, unsigned message, co
         attention.look(position, source);
         send(index, behind ? 8 : 7, &attention);
         return 1;
+    }
+    if (recipient && message == 10) {
+        const Payload defaults;
+        const auto& values = payload ? *payload : defaults;
+        if (values.word(0x34)) throw std::runtime_error("Player look target requires a native reference rather than an encoded game address.");
+        return beginAttraction(*recipient, actors, values.lookPosition, static_cast<std::int32_t>(values.word(0x38)), 10) ? 1 : 0;
     }
     if (recipient && (message == 7 || message == 8) && payload && static_cast<std::int32_t>(payload->word(0x30)) >= 0) {
         auto resolved = *payload;

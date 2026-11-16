@@ -1,6 +1,7 @@
 #pragma once
 
 #include "game/world/roomshadowprojector.h"
+#include "game/enemies/enemycapturelifecycle.h"
 
 #include "game/actors/actorregistry.h"
 #include "game/actors/charactercreationruntime.h"
@@ -92,6 +93,7 @@ namespace gameplay {
         void updateAuxiliaryEquipment();
         void refreshParticles();
         playerevents::Dispatcher& playerEvents();
+        ghostcapture::DropServices captureDrops();
         unsigned frightenPlayer(const actors::MoveActor& source, unsigned player);
         playerevents::LifeEnvironment& playerLife();
         particles::Scene& particles();
