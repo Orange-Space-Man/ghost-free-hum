@@ -6,6 +6,7 @@
 #include <memory>
 
 namespace actormodel { class InitialPose; }
+namespace ghostparent { struct Environment; }
 
 namespace enemystrategy {
     struct ItemEnvironment;
@@ -20,6 +21,7 @@ namespace enemystrategy {
         void bindItems(ItemEnvironment* environment);
         void bindTraining(TrainingEnvironment& environment);
         void bindPose(const actormodel::InitialPose& pose);
+        void bindGhostParent(ghostparent::Environment& environment);
         void bindPlacement(const Catalog& catalog, BarrierEnvironment& barriers, FireGeneratorEnvironment& fire,
             const std::array<std::uint8_t, 4>& ambient);
         std::uint32_t random() const;
@@ -35,5 +37,6 @@ namespace enemystrategy {
         FireGeneratorEnvironment* fire = nullptr;
         const std::array<std::uint8_t, 4>* ambient = nullptr;
         const actormodel::InitialPose* pose = nullptr;
+        ghostparent::Environment* ghost = nullptr;
     };
 }

@@ -4,6 +4,7 @@
 #include "game/enemies/enemyghostcaptureparent.h"
 #include "game/enemies/enemyghostdisappearance.h"
 #include <memory>
+#include <optional>
 
 namespace ghostparent {
     struct Children {
@@ -32,12 +33,22 @@ namespace ghostparent {
         std::function<void()> clearElement;
         std::function<void()> lightResult101;
         std::function<void()> secondResult101;
+        std::function<void(unsigned)> damagePlayer;
+        std::function<enemystrategy::Strategy*()> light;
     };
 
-    class Parent final : public enemystrategy::GhostCaptureParent {
+    class Parent : public enemystrategy::GhostCaptureParent {
     public:
         explicit Parent(ParentServices services);
         bool hitAdmissible() const;
+        std::uint32_t enteredFlashlight(characterevent::Event& event) override;
+        std::uint32_t collideWithPlayer(characterevent::Event& event) override;
+        std::uint32_t playerLeftRoom(characterevent::Event& event) override;
+        std::uint32_t playerEnteredRoom(characterevent::Event& event) override;
+        std::uint32_t replacement(characterevent::Event& event) override;
+        std::uint32_t sprayedWithFire(characterevent::Event& event) override;
+        std::uint32_t sprayedWithIce(characterevent::Event& event) override;
+        std::uint32_t sprayedWithWater(characterevent::Event& event) override;
         void setLightDelegate(enemystrategy::Strategy* delegate);
 
         Fields fields;
@@ -47,6 +58,8 @@ namespace ghostparent {
         enemystrategy::Strategy* secondDelegate = nullptr;
 
     protected:
+        Parent();
+        void bind(ParentServices services);
         std::unique_ptr<enemystrategy::Strategy> createCapture() override;
         void notifyAttackFishing(characterevent::Event& event) override;
         void initializeGhostState() override;
@@ -57,7 +70,10 @@ namespace ghostparent {
         void clearElement() override;
 
     private:
-        ParentServices services;
+        std::optional<ParentServices> bound;
+        ParentServices& services() const;
+        void startLight();
+        void pushAway();
         bool pumpLight();
         bool pumpSecond();
         enemystrategy::Strategy& child(enemystrategy::Strategy* value, const char* name) const;

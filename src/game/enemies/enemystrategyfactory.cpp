@@ -26,6 +26,7 @@
 #include "game/enemies/enemyfiregeneratorstrategy.h"
 #include "game/enemies/enemyfakedoorstrategy.h"
 #include "game/enemies/enemyroomobserverstrategy.h"
+#include "game/enemies/enemyghostparenthost.h"
 
 #include <sstream>
 #include <stdexcept>
@@ -44,6 +45,9 @@ std::unique_ptr<enemystrategy::Strategy> enemystrategy::Factory::construct(std::
         if (training) strategy->bindServices(training->bind(*strategy));
         return strategy;
     }
+    case glme01::ghostParentFactory:
+        if (!ghost) throw std::runtime_error("Original ghost parent services are not bound.");
+        return ghostparent::construct(*ghost);
     case glme01::barrierFactory:
         if (!barriers) throw std::runtime_error("Original door-barrier services are not bound.");
         return std::make_unique<Barrier>(*barriers);
@@ -127,6 +131,7 @@ void enemystrategy::Factory::bindTraining(TrainingEnvironment& environment) { tr
 
 void enemystrategy::Factory::bindItems(ItemEnvironment* environment) { items = environment; }
 void enemystrategy::Factory::bindPose(const actormodel::InitialPose& value) { pose = &value; }
+void enemystrategy::Factory::bindGhostParent(ghostparent::Environment& environment) { ghost = &environment; }
 
 void enemystrategy::Factory::bindPlacement(const Catalog& value, BarrierEnvironment& barrierServices,
     FireGeneratorEnvironment& fireServices, const std::array<std::uint8_t, 4>& roomAmbient) {

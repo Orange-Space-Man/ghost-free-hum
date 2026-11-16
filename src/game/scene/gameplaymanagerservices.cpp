@@ -2,6 +2,7 @@
 #include "resources/dolresources.h"
 #include "game/scene/gameplaymanagerservices.h"
 #include "game/enemies/enemytrainingservices.h"
+#include "game/enemies/enemyghostparenthost.h"
 #include "game/enemies/enemyscarenotification.h"
 #include "game/actors/charactereffectresources.h"
 #include "game/enemies/enemymanagerruntime.h"
@@ -376,6 +377,21 @@ struct gameplay::ManagerServices::State : playerpresentation::Services {
         trainingServices = std::make_unique<enemystrategy::TrainingEnvironment>(enemystrategy::TrainingEnvironment{
             *runtime, *enemies, dependencies.types, dependencies.actors.pose, models->factory, particles->effects()});
         strategies->bindTraining(*trainingServices);
+        std::string ghostError;
+        if (!ghostTrigonometry.read(dependencies.executable, ghostError)) throw std::runtime_error(ghostError);
+        ghostServices = std::make_unique<ghostparent::Environment>(ghostparent::Environment{
+            *runtime, dependencies.actors.parameters, dependencies.actors.pose, dependencies.actors.catalog,
+            dependencies.actors.resources, collision, dependencies.strategies, *strategies, *events, *actors,
+            dependencies.executable, ghostTrigonometry, dependencies.creation, dependencies.collisions,
+            dependencies.actors.rooms, dependencies.common, itemCreation->captureDrops(),
+            [this](unsigned id, const auto& position) { particles->effects().create(id, position, {0, 0, 0}); },
+            [this](unsigned id, const auto& position) { audio->playback.play(id, position); },
+            [this] { return simulationTicks; },
+            [this](unsigned index) -> actors::MoveActor& {
+                auto* target = events->player(static_cast<std::int32_t>(index));
+                if (!target) throw std::out_of_range("Original ghost player index.");
+                return *target;
+            }, [] { return false; }, {}});        strategies->bindGhostParent(*ghostServices);
         generators = std::make_unique<charactergenerator::Manager>(dependencies.types, dependencies.creation,
             dependencies.strategies, *strategies, *enemies, *runtime, dependencies.mission);
         webs = std::make_unique<modeleffects::CobwebPlacements>(models->factory, dependencies.actors.pose);
@@ -413,6 +429,9 @@ struct gameplay::ManagerServices::State : playerpresentation::Services {
     std::unique_ptr<enemystrategy::BarrierEnvironment> barrierServices;
     std::unique_ptr<enemystrategy::FireGeneratorEnvironment> fireServices;
     std::unique_ptr<enemystrategy::TrainingEnvironment> trainingServices;
+    std::unique_ptr<ghostparent::Environment> ghostServices;
+    std::uint32_t simulationTicks = 0;
+    dooranimation::PoseTables ghostTrigonometry;
     std::unique_ptr<gameevent::MissionActivation> missionEvents;
     std::unique_ptr<roomdependencies::Catalog> roomDependencies;
     std::unique_ptr<characterplacement::Runtime> placementRuntime;
@@ -948,6 +967,7 @@ void gameplay::ManagerServices::updateFurniture(unsigned frame) {
 }
 
 void gameplay::ManagerServices::updateDoors(unsigned frame) {
+    state->simulationTicks = frame;
     const auto* player = state->events->player(0);
     if (!player) throw std::logic_error("Door update requires player zero.");
     doors::UpdateServices services;

@@ -209,6 +209,7 @@ add_library(Game STATIC
     src/game/enemies/enemyghostparentselection.cpp
     src/game/enemies/enemyghostchakasu.cpp
     src/game/enemies/enemyghostparent.cpp
+    src/game/enemies/enemyghostparenthost.cpp
     src/game/enemies/enemycapturesteering.cpp
     src/game/enemies/enemyscarenotification.cpp
     src/game/enemies/enemysearchstrategy.cpp
