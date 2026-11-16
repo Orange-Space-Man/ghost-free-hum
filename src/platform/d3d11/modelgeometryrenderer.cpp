@@ -132,11 +132,14 @@ void modelrenderer::Geometry::load(ID3D11Device* device, const doors::ModelResou
     if (device->GetFeatureLevel() < D3D_FEATURE_LEVEL_11_0) throw std::runtime_error("Model rendering requires Direct3D feature level 11.");
     Geometry result;
     result.owner = device;
-    ComPtr<ID3DBlob> code, errors;
-    const std::string shaderText = std::string(modellighting::shaderSource()) + vertexSource;
-    const auto compiled = D3DCompile(shaderText.data(), shaderText.size(), nullptr, nullptr, nullptr, "main", "vs_5_0",
-        D3DCOMPILE_ENABLE_STRICTNESS, 0, code.GetAddressOf(), errors.GetAddressOf());
-    if (FAILED(compiled)) throw std::runtime_error(errors ? static_cast<const char*>(errors->GetBufferPointer()) : "Model vertex shader compilation failed.");
+    static const auto code = [] {
+        ComPtr<ID3DBlob> compiledCode, errors;
+        const std::string shaderText = std::string(modellighting::shaderSource()) + vertexSource;
+        const auto compiled = D3DCompile(shaderText.data(), shaderText.size(), nullptr, nullptr, nullptr, "main", "vs_5_0",
+            D3DCOMPILE_ENABLE_STRICTNESS, 0, compiledCode.GetAddressOf(), errors.GetAddressOf());
+        if (FAILED(compiled)) throw std::runtime_error(errors ? static_cast<const char*>(errors->GetBufferPointer()) : "Model vertex shader compilation failed.");
+        return compiledCode;
+    }();
     check(device->CreateVertexShader(code->GetBufferPointer(), code->GetBufferSize(), nullptr, result.shader.GetAddressOf()), "Cannot create model vertex shader.");
     using Vertex = modeldraw::Vertex;
     const D3D11_INPUT_ELEMENT_DESC elements[] = {

@@ -1,3 +1,5 @@
+#include <map>
+#include <chrono>
 #include "platform/d3d11/shadowtexturesampling.h"
 #include "platform/d3d11/modelmaterialrenderer.h"
 
@@ -7,6 +9,9 @@
 #include <utility>
 
 namespace {
+    std::map<std::pair<std::string, bool>, Microsoft::WRL::ComPtr<ID3DBlob>> compiledShaders;
+    unsigned compilationCount = 0;
+    double compilationMilliseconds = 0;
     bool supportedOperation(unsigned operation) {
         return operation <= 1 || (operation >= 8 && operation <= 15);
     }
@@ -72,6 +77,9 @@ namespace {
         throw std::runtime_error("Invalid model combiner alpha selector.");
     }
 }
+
+unsigned modelrenderer::materialShaderCompilations() { return compilationCount; }
+double modelrenderer::materialShaderCompilationMilliseconds() { return compilationMilliseconds; }
 
 void modelrenderer::MaterialShader::load(ID3D11Device* device, const modelmaterial::StageProgram& program,
     const std::array<StageRegisters, 16>& retained, const PipelineState& state, bool shadow) {
@@ -172,10 +180,20 @@ SamplerState lookupFiltering : register(s9);
         compare(state.alpha.second, state.alpha.secondReference) << ")) discard;\n";
     source << "return float4(r[" << last.colorOutput << "].rgb & 255, opacity)/255.0; }";
     const auto text = source.str();
-    Microsoft::WRL::ComPtr<ID3DBlob> code, errors;
-    if (FAILED(D3DCompile(text.data(), text.size(), nullptr, nullptr, nullptr, "main", state.earlyDepth ? "ps_5_0" : "ps_4_0", D3DCOMPILE_ENABLE_STRICTNESS,
-        0, code.GetAddressOf(), errors.GetAddressOf())))
-        throw std::runtime_error(errors ? static_cast<const char*>(errors->GetBufferPointer()) : "Model material shader compilation failed.");
+    const auto key = std::make_pair(text, state.earlyDepth);
+    auto compiled = compiledShaders.find(key);
+    if (compiled == compiledShaders.end()) {
+        Microsoft::WRL::ComPtr<ID3DBlob> code, errors;
+        const auto started = std::chrono::steady_clock::now();
+        if (FAILED(D3DCompile(text.data(), text.size(), nullptr, nullptr, nullptr, "main",
+            state.earlyDepth ? "ps_5_0" : "ps_4_0", D3DCOMPILE_ENABLE_STRICTNESS,
+            0, code.GetAddressOf(), errors.GetAddressOf())))
+            throw std::runtime_error(errors ? static_cast<const char*>(errors->GetBufferPointer()) : "Model material shader compilation failed.");
+        ++compilationCount;
+        compilationMilliseconds += std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - started).count();
+        compiled = compiledShaders.emplace(key, std::move(code)).first;
+    }
+    const auto& code = compiled->second;
     result.owner = device;
     if (FAILED(device->CreatePixelShader(code->GetBufferPointer(), code->GetBufferSize(), nullptr, result.shader.GetAddressOf())))
         throw std::runtime_error("Cannot create model material pixel shader.");

@@ -8,6 +8,8 @@
 #include <wrl/client.h>
 
 namespace modelrenderer {
+    unsigned materialShaderCompilations();
+    double materialShaderCompilationMilliseconds();
     struct CombinerInputs {
         std::array<std::array<int, 4>, 4> registers{}, constants{};
     };
