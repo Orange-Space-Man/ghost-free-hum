@@ -18,6 +18,7 @@ namespace jaudio {
         PositionalPlayback& operator=(const PositionalPlayback&) = delete;
         PositionalSound* play(unsigned id, const std::array<float, 3>& position, PositionalSound** binding = nullptr);
         PositionalSound* playGlobal(unsigned id, PositionalSound** binding = nullptr);
+        void stopSound(unsigned id);
         void setPlayerContext(std::uint32_t context);
         void setPort(PositionalSound& sound, unsigned port, std::uint16_t value);
         float interactionPitch(PositionalSound& sound);

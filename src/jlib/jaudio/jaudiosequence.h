@@ -26,8 +26,10 @@ namespace jaudio {
         std::uint8_t lastNote = 0;
         bool gateOn = false;
         std::uint8_t transpose = 0, combinedTranspose = 0;
-        unsigned tempo = 48;
-        unsigned timebase = 120;
+        unsigned tempo = 120;
+        unsigned timebase = 48;
+        bool clockChanged = false;
+        float clockPhase = 0;
         bool vibrato = false;
         unsigned oscillatorRoute = 0;
         unsigned envelopeRoute = 15;
@@ -75,7 +77,7 @@ namespace jaudio {
     class Interpreter {
     public:
         using Listener = std::function<void(const SequenceEvent&)>;
-        void start(const std::vector<std::uint8_t>& sequence, std::size_t offset = 0, unsigned tempo = 48, unsigned timebase = 120);
+        void start(const std::vector<std::uint8_t>& sequence, std::size_t offset = 0, unsigned tempo = 120, unsigned timebase = 48);
         void startEffect(const std::vector<std::uint8_t>& sequence, std::size_t offset);
         bool advance(const Listener& listener, std::string& error);
         void release(const Listener& listener);
@@ -97,6 +99,7 @@ namespace jaudio {
         unsigned take(Track& track, unsigned count);
         unsigned readRegister(unsigned track, unsigned reg) const;
         void update(unsigned index, const Listener& listener);
+        void inheritTimebase(unsigned index);
         void stop(unsigned index, const Listener& listener);
         void close(unsigned index, const Listener& listener);
         std::vector<std::uint8_t> data;

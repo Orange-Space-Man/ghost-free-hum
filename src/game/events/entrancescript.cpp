@@ -14,6 +14,7 @@ bool gameevent::EntranceServices::actorExists(std::string_view) const { return t
 void gameevent::EntranceServices::actorCommand(std::string_view, const ActorCommand&) { unsupportedService(); }
 void gameevent::EntranceServices::setFlag(unsigned) { unsupportedService(); }
 void gameevent::EntranceServices::sound(unsigned) { unsupportedService(); }
+void gameevent::EntranceServices::stopSound(unsigned) { unsupportedService(); }
 void gameevent::EntranceServices::effect(std::string_view, std::string_view) { unsupportedService(); }
 void gameevent::EntranceServices::fullscreen(bool) { unsupportedService(); }
 void gameevent::EntranceServices::playerEvent(unsigned) { unsupportedService(); }
@@ -119,7 +120,8 @@ bool gameevent::EntranceScript::update(EntranceServices& services) {
         else if (command == "LUIGIFREE2") services.releasePlayer();
         else if (command == "LUIGIFREE") services.releaseActor();
         else if (command == "FLAGON") services.setFlag(number() & 255);
-        else if (command == "SE") services.sound(number() & 65535);
+        else if (command == "SE" || command == "LEVSE") services.sound(number() & 65535);
+        else if (command == "LEVSTOP") services.stopSound(number() & 65535);
         else if (command == "FULLSCREEN") services.fullscreen(true);
         else if (command == "NORMALSCREEN") services.fullscreen(false);
         else if (command == "HLIGHTOFF") services.playerEvent(0x1e);

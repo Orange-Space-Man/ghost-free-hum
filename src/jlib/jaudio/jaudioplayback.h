@@ -92,8 +92,8 @@ namespace jaudio {
         unsigned voicePeak = 0;
         unsigned syncFlags = 0;
         std::size_t entryPoint = 0;
-        unsigned tempo = 48;
-        unsigned timebase = 120;
+        unsigned tempo = 120;
+        unsigned timebase = 48;
         bool effectDispatch = false;
         std::array<SpatialParameters, 32> effectParameterCache{};
         unsigned effectOutputMode = 1;

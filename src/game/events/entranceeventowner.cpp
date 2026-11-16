@@ -1,5 +1,6 @@
 #include "game/events/entranceeventowner.h"
 #include "resources/roomarchivereader.h"
+#include "game/events/eventsoundtable.h"
 
 #include <algorithm>
 #include <stdexcept>
@@ -201,13 +202,16 @@ void gameevent::EntranceOwner::beam(actors::MoveActor& target) {
 void gameevent::EntranceOwner::cutBeam() { managers.stopAuxiliaryBeam(); }
 
 void gameevent::EntranceOwner::sound(actors::MoveActor& actor, unsigned index) {
-    if (index != 0) throw std::runtime_error("Event actor sound requires its original sound-table entry.");
-    managers.playback()->play(0x1827, actor.position);
+    if (index != 0) throw std::runtime_error("Event actor sound requires its original positional routing.");
+    managers.playback()->play(soundId(executable, index), actor.position);
 }
 
 void gameevent::EntranceOwner::sound(unsigned index) {
-    if (index != 6 && index != 7) throw std::runtime_error("Event sound requires its original sound-table entry.");
-    managers.playback()->playGlobal(index == 6 ? 0x4870 : 0x4871);
+    managers.playback()->playGlobal(soundId(executable, index));
+}
+
+void gameevent::EntranceOwner::stopSound(unsigned index) {
+    managers.playback()->stopSound(soundId(executable, index));
 }
 
 void gameevent::EntranceOwner::setFlag(unsigned index) { managers.flags().setOn(static_cast<std::uint8_t>(index)); }

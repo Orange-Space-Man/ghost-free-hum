@@ -92,9 +92,23 @@ void jaudio::Interpreter::close(unsigned index, const Listener& listener) {
     current.parent = -1;
 }
 
+void jaudio::Interpreter::inheritTimebase(unsigned index) {
+    auto& current = tracks[index];
+    if (current.parent >= 0) current.timebase = tracks[current.parent].timebase;
+    for (const auto child : current.children)
+        if (child >= 0 && tracks[child].active) inheritTimebase(child);
+}
+
 void jaudio::Interpreter::update(unsigned index, const Listener& listener) {
     auto& current = tracks[index];
     if (!current.active) return;
+    if (current.parent >= 0 && current.clockChanged) {
+        auto ratio = static_cast<float>(current.tempo) / static_cast<float>(tracks[current.parent].tempo);
+        if (ratio > 1) ratio = 1;
+        current.clockPhase += ratio;
+        if (current.clockPhase < 1) return;
+        current.clockPhase -= 1;
+    }
     current.combinedTranspose = static_cast<std::uint8_t>(current.transpose + (current.parent >= 0 ? tracks[current.parent].combinedTranspose : 0));
     if (index == 0 && effectDispatch && dispatchReturned) {
         for (const auto child : current.children) if (child >= 0) update(child, listener);
@@ -225,7 +239,9 @@ void jaudio::Interpreter::update(unsigned index, const Listener& listener) {
                     std::find_if(tracks.begin() + 1, tracks.end(), [](const auto& entry) { return entry.parent == -1; });
                 if (found == tracks.end()) throw std::runtime_error("JAudio track capacity exceeded.");
                 const auto child = static_cast<int>(found - tracks.begin());
+                const auto retainedPhase = found->clockPhase;
                 *found = Track{};
+                found->clockPhase = retainedPhase;
                 found->active = true;
                 found->parent = static_cast<int>(index);
                 found->route = ((current.route & 0x00ffffff) << 4) | slot | ((current.route & 0xf0000000) + 0x10000000);
@@ -384,9 +400,10 @@ void jaudio::Interpreter::update(unsigned index, const Listener& listener) {
                 else throw std::runtime_error("Unported JAudio oscillator routing: " + std::to_string(route));
             } else if (opcode == 0xfd || opcode == 0xfe) {
                 const auto value = take(current, 2);
-                if (index != 0 || value == 0) throw std::runtime_error("Unported JAudio track clock.");
                 if (opcode == 0xfd) current.tempo = value;
                 else current.timebase = value;
+                if (current.parent >= 0) current.clockChanged = true;
+                else inheritTimebase(index);
             } else if (opcode == 0xff) {
                 stop(index, listener);
                 yield = true;

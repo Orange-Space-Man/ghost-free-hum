@@ -45,6 +45,7 @@ namespace gameevent {
         void cutBeam() override;
         void sound(actors::MoveActor& actor, unsigned index) override;
         void sound(unsigned index) override;
+        void stopSound(unsigned index) override;
         void setFlag(unsigned index) override;
         void effect(std::string_view placement, std::string_view command) override;
         void fullscreen(bool enabled) override;

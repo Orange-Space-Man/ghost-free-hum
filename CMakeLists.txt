@@ -56,6 +56,7 @@ add_library(Game STATIC
     src/game/events/eventmessagetext.cpp
     src/game/scene/gameplayhud.cpp
     src/game/events/eventactorcommands.cpp
+    src/game/events/eventsoundtable.cpp
     src/game/events/entrancescript.cpp
     src/game/events/entranceeventowner.cpp
     src/game/events/eventpathanimation.cpp

@@ -39,6 +39,7 @@ namespace gameevent {
         virtual void actorCommand(std::string_view actor, const ActorCommand& command);
         virtual void setFlag(unsigned index);
         virtual void sound(unsigned index);
+        virtual void stopSound(unsigned index);
         virtual void effect(std::string_view placement, std::string_view resource);
         virtual void fullscreen(bool enabled);
         virtual void playerEvent(unsigned event);
