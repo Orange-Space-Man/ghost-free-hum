@@ -13,21 +13,21 @@ namespace {
         std::array<std::array<float, 4>, 3> matrix{};
     };
     struct Constants {
-        j3dmodel::Matrix position;
-        std::array<std::array<float, 4>, 3> normal;
+        std::array<j3dmodel::Matrix, 10> position;
+        std::array<std::array<std::array<float, 4>, 3>, 10> normal;
         std::array<float, 16> projection;
         std::array<Coordinate, 8> coordinates;
         std::array<unsigned, 4> counts;
     };
     void check(HRESULT result, const char* message) { if (FAILED(result)) throw std::runtime_error(message); }
-    static_assert(sizeof(Constants) == 688);
+    static_assert(sizeof(Constants) == 1552);
     const char vertexSource[] = R"(
 struct Coordinate { uint4 control; float4 transform[3]; };
 cbuffer Transform : register(b0) {
-    float4 positionMatrix[3]; float4 normalMatrix[3]; float4 projection[4];
+    float4 positionMatrix[30]; float4 normalMatrix[30]; float4 projection[4];
     Coordinate coordinates[8]; uint4 counts;
 };
-struct Input { float3 position:POSITION; float3 normal:NORMAL0; float3 binormal:NORMAL1; float3 tangent:NORMAL2; float2 uv[8]:TEXCOORD0; float4 color[2]:COLOR0; };
+struct Input { float3 position:POSITION; float3 normal:NORMAL0; float3 binormal:NORMAL1; float3 tangent:NORMAL2; float2 uv[8]:TEXCOORD0; float4 color[2]:COLOR0; uint matrixRow:BLENDINDICES; };
 struct Output {
     float4 position:SV_POSITION; float4 color:COLOR0;
     float3 normal:NORMAL0; float3 binormal:NORMAL1; float3 tangent:NORMAL2;
@@ -35,16 +35,17 @@ struct Output {
     float3 viewPosition:TEXCOORD4; float2 generated[8]:TEXCOORD5; float4 secondaryColor:COLOR1;
     float4 generatedQ[2]:TEXCOORD13;
 };
-float3 normalTransform(float3 value) {
-    return float3(dot(normalMatrix[0].xyz,value),dot(normalMatrix[1].xyz,value),dot(normalMatrix[2].xyz,value));
+float3 normalTransform(float3 value, uint row) {
+    return float3(dot(normalMatrix[row].xyz,value),dot(normalMatrix[row+1].xyz,value),dot(normalMatrix[row+2].xyz,value));
 }
 Output main(Input input) {
     Output output=(Output)0;
     float4 position=float4(input.position,1);
-    float4 view=float4(dot(positionMatrix[0],position),dot(positionMatrix[1],position),dot(positionMatrix[2],position),1);
+    uint row=counts.z!=0?input.matrixRow:0;
+    float4 view=float4(dot(positionMatrix[row],position),dot(positionMatrix[row+1],position),dot(positionMatrix[row+2],position),1);
     output.position=float4(dot(projection[0],view),dot(projection[1],view),dot(projection[2],view),dot(projection[3],view));
     output.viewPosition=view.xyz;
-    output.normal=normalTransform(input.normal); output.binormal=normalTransform(input.binormal); output.tangent=normalTransform(input.tangent);
+    output.normal=normalTransform(input.normal,row); output.binormal=normalTransform(input.binormal,row); output.tangent=normalTransform(input.tangent,row);
     float3 normal=normalize(output.normal);
     if(counts.y>0) output.color=float4(illuminate(0,view.xyz,normal,round(input.color[0]*255)).rgb,illuminate(2,view.xyz,normal,round(input.color[0]*255)).a)/255.0;
     if(counts.y>1) output.secondaryColor=float4(illuminate(1,view.xyz,normal,round(input.color[1]*255)).rgb,illuminate(3,view.xyz,normal,round(input.color[1]*255)).a)/255.0;
@@ -112,6 +113,7 @@ void j3drenderer::VertexShader::load(ID3D11Device* device) {
     check(device->CreateVertexShader(code->GetBufferPointer(), code->GetBufferSize(), nullptr, result.shader.GetAddressOf()), "Cannot create J3D vertex shader.");
     using Vertex = j3dmodel::ShapeVertex;
     std::vector<D3D11_INPUT_ELEMENT_DESC> elements{{"POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, offsetof(Vertex, position), D3D11_INPUT_PER_VERTEX_DATA, 0}};
+    elements.push_back({"BLENDINDICES", 0, DXGI_FORMAT_R8_UINT, 0, offsetof(Vertex, matrixIndices), D3D11_INPUT_PER_VERTEX_DATA, 0});
     for (unsigned i = 0; i < 3; ++i) elements.push_back({"NORMAL", i, DXGI_FORMAT_R32G32B32_FLOAT, 0,
         unsigned(offsetof(Vertex, normals)) + i * 12, D3D11_INPUT_PER_VERTEX_DATA, 0});
     for (unsigned i = 0; i < 8; ++i) elements.push_back({"TEXCOORD", i, DXGI_FORMAT_R32G32_FLOAT, 0,
@@ -137,6 +139,16 @@ void j3drenderer::VertexShader::bind(ID3D11DeviceContext* context, const j3dmode
 
 void j3drenderer::VertexShader::bindMatrices(ID3D11DeviceContext* context, const j3dmodel::MaterialState& state,
     const j3dmodel::Matrix& position, const j3dmodel::NormalMatrix& normal, const std::array<float, 16>& projection) const {
+    std::array<j3dmodel::Matrix, 10> positions{};
+    std::array<j3dmodel::NormalMatrix, 10> normals{};
+    positions[0] = position;
+    normals[0] = normal;
+    bindPalette(context, state, positions, normals, projection, false);
+}
+
+void j3drenderer::VertexShader::bindPalette(ID3D11DeviceContext* context, const j3dmodel::MaterialState& state,
+    const std::array<j3dmodel::Matrix, 10>& positions, const std::array<j3dmodel::NormalMatrix, 10>& normals,
+    const std::array<float, 16>& projection, bool indexed) const {
     if (!context || !owner) throw std::runtime_error("J3D vertex matrices require an initialized renderer.");
     Microsoft::WRL::ComPtr<ID3D11Device> device;
     context->GetDevice(device.GetAddressOf());
@@ -144,7 +156,7 @@ void j3drenderer::VertexShader::bindMatrices(ID3D11DeviceContext* context, const
     if (state.textureCoordinates > 8 || state.colorChannels > 2) throw std::runtime_error("Invalid J3D vertex channel counts.");
     const auto lights = prepareLighting(state);
     Constants data{};
-    data.position = position;
+    data.position = positions;
     std::array<float, 3> scale{1, 1, 1};
     if (state.nbtScale) for (unsigned i = 0; i < 3; ++i) {
         const auto& bytes = *state.nbtScale;
@@ -152,10 +164,11 @@ void j3drenderer::VertexShader::bindMatrices(ID3D11DeviceContext* context, const
         const std::uint32_t bits = (std::uint32_t(bytes[at]) << 24) | (std::uint32_t(bytes[at + 1]) << 16) | (std::uint32_t(bytes[at + 2]) << 8) | bytes[at + 3];
         std::memcpy(&scale[i], &bits, 4);
     }
-    for (unsigned row = 0; row < 3; ++row) for (unsigned column = 0; column < 3; ++column)
-        data.normal[row][column] = normal[row * 3 + column] * scale[column];
+    for (unsigned matrix = 0; matrix < 10; ++matrix)
+        for (unsigned row = 0; row < 3; ++row) for (unsigned column = 0; column < 3; ++column)
+            data.normal[matrix][row][column] = normals[matrix][row * 3 + column] * scale[column];
     data.projection = projection;
-    data.counts = {state.textureCoordinates, state.colorChannels, 0, 0};
+    data.counts = {state.textureCoordinates, state.colorChannels, indexed ? 1u : 0u, 0};
     for (unsigned i = 0; i < state.textureCoordinates; ++i) {
         const auto& input = state.coordinates[i];
         const unsigned type = input.info[0], source = input.info[1], matrix = input.info[2];

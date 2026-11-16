@@ -11,8 +11,32 @@ namespace {
     constexpr unsigned displayHidden = 0xc000;
 }
 
+void gameevent::ActorServices::cleaner(actors::MoveActor&, actors::MoveActor&, actors::MoveActor&) {
+    throw std::runtime_error("Event cleaner requires the player manager auxiliary owner.");
+}
+void gameevent::ActorServices::beam(actors::MoveActor&) {
+    throw std::runtime_error("Event beam requires the player manager auxiliary owner.");
+}
+void gameevent::ActorServices::cutBeam() {
+    throw std::runtime_error("Event beam release requires the player manager point pool.");
+}
+
 void gameevent::applyActorCommand(actors::MoveActor& actor, const ActorCommand& command, ActorServices& services) {
     switch (command.operation) {
+    case ActorOperation::SetCleaner: {
+        auto* head = services.find(command.argument);
+        auto* body = services.find(command.secondArgument);
+        if (!head || !body) throw std::runtime_error("Event cleaner attachment actor is missing.");
+        services.cleaner(actor, *head, *body);
+        actor.setMaterialFlags(0, 2, false);
+        break;
+    }
+    case ActorOperation::Beam:
+        services.beam(actor);
+        break;
+    case ActorOperation::BeamCut:
+        services.cutBeam();
+        break;
     case ActorOperation::Animation:
         actor.selectAnimation(command.argument);
         break;

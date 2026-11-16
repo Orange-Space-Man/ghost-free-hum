@@ -8,7 +8,8 @@
 namespace gameevent {
     enum class ActorOperation {
         Animation, Look, Path, Stop, Start, Sound, Position, CollisionOn, CollisionOff,
-        Alpha, FixedAlpha, ShadowOn, ShadowOff, BodyOn, BodyOff, MaskOn, MaskOff, DisplayOn, DisplayOff
+        Alpha, FixedAlpha, ShadowOn, ShadowOff, BodyOn, BodyOff, MaskOn, MaskOff, DisplayOn, DisplayOff,
+        SetCleaner, Beam, BeamCut
     };
 
     struct ActorCommand {
@@ -16,6 +17,7 @@ namespace gameevent {
         std::string_view argument;
         std::array<float, 3> position{};
         unsigned value = 0;
+        std::string_view secondArgument;
     };
 
     class EntranceServices {

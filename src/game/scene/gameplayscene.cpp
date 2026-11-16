@@ -132,6 +132,7 @@ void gameplay::Scene::prepareGraphics() {
 
 void gameplay::Scene::prepareModelGraphics(ID3D11Device* device) {
     particleRenderer.load(device);
+    pointRenderer.load(device);
     sheetRenderer.load(device);
     mirrorRenderer.load(device, resources.mirror());
     particleRenderer.prepare(resources.managers().particles().pool());
@@ -496,6 +497,8 @@ void gameplay::Scene::drawWorld(bool reflection, const s3denvironment::Camera& c
     drawRooms(1);
     resources.managers().doors().submitTranslucent(visibilityBuffer, false, submitDoor);
     if (reflection) return;
+    const auto& players = resources.managers().players();
+    pointRenderer.draw(gamerenderer::modelContext(), *players.points, players.pointSettings, view, projection, {640, 480});
     drawModelEffects();
     particleRenderer.draw(gamerenderer::modelContext(), resources.managers().particles().prepareGlows(
         resources.managers().glows(), view), view, projection);

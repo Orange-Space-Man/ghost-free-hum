@@ -9,11 +9,24 @@ void j3drenderer::ShapeGeometry::load(ID3D11Device* device, const j3dmodel::Geom
     if (!device) throw std::runtime_error("J3D shape upload requires a Direct3D device.");
     ShapeGeometry result;
     result.owner = device;
+    std::array<bool, 10> paletteLoaded{};
     for (const auto& group : shape.groups) {
+        if (group.matrixKind == 3) {
+            if (group.matrixTable.size() > paletteLoaded.size()) throw std::runtime_error("J3D shape matrix palette is too large.");
+            for (unsigned slot = 0; slot < group.matrixTable.size(); ++slot)
+                if (group.matrixTable[slot] != 0xffff) paletteLoaded[slot] = true;
+        }
         auto& output = result.groups.emplace_back();
         for (const auto& primitive : j3dmodel::decodeShapeGroup(geometry, shape, group, nbtEnabled)) {
             std::vector<j3dmodel::ShapeVertex> vertices;
-            for (const auto& vertex : primitive.vertices) if (!vertex.skipped) vertices.push_back(vertex);
+            for (const auto& vertex : primitive.vertices) {
+                if (vertex.skipped) continue;
+                if (vertex.matrixIndices[0] > 27 || vertex.matrixIndices[0] % 3)
+                    throw std::runtime_error("J3D vertex references an invalid position matrix row.");
+                if (group.matrixKind == 3 && !paletteLoaded[vertex.matrixIndices[0] / 3])
+                    throw std::runtime_error("J3D vertex requires a matrix retained outside its shape.");
+                vertices.push_back(vertex);
+            }
             std::vector<unsigned> indices;
             D3D11_PRIMITIVE_TOPOLOGY topology;
             const auto count = static_cast<unsigned>(vertices.size());

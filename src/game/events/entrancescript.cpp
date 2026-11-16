@@ -59,6 +59,10 @@ void gameevent::EntranceScript::actor(EntranceServices& services) {
         call.operation = command == "ACT" ? ActorOperation::Animation :
             command == "LOOK" ? ActorOperation::Look : ActorOperation::Path;
         call.argument = token('"', '"');
+    } else if (command == "SETCLEANER") {
+        call.operation = ActorOperation::SetCleaner;
+        call.argument = token('"', '"');
+        call.secondArgument = token('"', '"');
     } else if (command == "POS") {
         call.operation = ActorOperation::Position;
         for (auto& coordinate : call.position) coordinate = static_cast<float>(integer());
@@ -77,6 +81,8 @@ void gameevent::EntranceScript::actor(EntranceServices& services) {
     else if (command == "MASKOFF") call.operation = ActorOperation::MaskOff;
     else if (command == "DISPON") call.operation = ActorOperation::DisplayOn;
     else if (command == "DISPOFF") call.operation = ActorOperation::DisplayOff;
+    else if (command == "BEAM") call.operation = ActorOperation::Beam;
+    else if (command == "BEAMCUT") call.operation = ActorOperation::BeamCut;
     else throw std::runtime_error("Unsupported event actor command: " + std::string(command));
     services.actorCommand(name, call);
 }

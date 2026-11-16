@@ -33,6 +33,7 @@ namespace players {
         Manager& operator=(const Manager&) = delete;
         void initializeEntries();
         void initializeAuxiliary(const std::vector<std::uint8_t>& executable);
+        void stopAuxiliaryBeam(const actormodel::InitialPose& pose, const std::function<std::uint32_t()>& random);
         void advanceClock();
         float frame() const;
         void bindActors(enemies::Manager& enemies, actors::Registry& actors,
@@ -41,6 +42,7 @@ namespace players {
         std::array<std::unique_ptr<playerinput::ControllerState>, 4> controllers;
         std::unique_ptr<playerresources::LightPulse> state;
         std::unique_ptr<playerresources::PointPool> points;
+        playerresources::PointSettings pointSettings;
         std::unique_ptr<playerresources::EffectPool80> effects80;
         std::unique_ptr<playerresources::EffectPool20> effects20;
         std::unique_ptr<playermodels::VacuumEntries> entries;

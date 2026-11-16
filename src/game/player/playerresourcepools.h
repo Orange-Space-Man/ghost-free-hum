@@ -3,20 +3,43 @@
 #include <array>
 #include <cstdint>
 #include <memory>
+#include <functional>
 #include <vector>
 #include "game/actors/actorcollisionowner.h"
 
 namespace roomlighting { class Pool; }
+namespace actormodel { class InitialPose; }
+namespace mapcollision { struct SphereContact; }
 
 namespace playerresources {
     struct PointRecord {
-        std::array<float, 3> first{}, second{};
-        float field18 = 0;
+        std::array<float, 3> position{}, velocity{};
+        float lifetime = 0;
+    };
+
+    struct PointSettings {
+        static PointSettings read(const std::vector<std::uint8_t>& executable);
+        float gravity = 0, damping = 0, bounce = 0;
+        std::int32_t lifetime = 0;
+        bool collision = false;
+    };
+
+    struct PointLine {
+        std::array<float, 3> start{}, end{};
+        std::array<std::uint8_t, 4> color{};
+        unsigned width = 12;
     };
 
     class PointPool {
     public:
         explicit PointPool(unsigned count);
+        void emit(unsigned requested, float speed, const std::array<float, 3>& position,
+            const std::array<float, 3>* velocity, const PointSettings& settings,
+            const actormodel::InitialPose& pose, const std::function<std::uint32_t()>& random);
+        void update(const PointSettings& settings,
+            const std::function<mapcollision::SphereContact(const std::array<float, 3>&,
+                const std::array<float, 3>&)>& collision);
+        void draw(const PointSettings& settings, const std::function<void(const PointLine&)>& line) const;
         unsigned count;
         std::unique_ptr<PointRecord[]> records;
         PointRecord* last;

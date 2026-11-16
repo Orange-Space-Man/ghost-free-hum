@@ -1,7 +1,32 @@
 #include "jlib/j3d/j3dmaterialcalculation.h"
+#include "jlib/j3d/j3dkeyanimation.h"
 
 #include <cstring>
 #include <stdexcept>
+
+void j3dmodel::animateMaterialColors(Material& material) {
+    if (!material.animation) return;
+    for (unsigned slot = 0; slot < material.animation->colors.size(); ++slot) {
+        const auto& binding = material.animation->colors[slot];
+        if (!binding || !binding->animation) continue;
+        const auto& animation = *binding->animation;
+        if (animation.kind != AnimationKind::Color || !material.color)
+            throw std::runtime_error("J3D color animation requires its original material color block.");
+        const auto& group = animation.groups[0];
+        if (binding->index >= group.count) throw std::runtime_error("J3D color animation exceeds its key table.");
+        for (unsigned channel = 0; channel < 4; ++channel) {
+            const auto descriptor = group.table + binding->index * 24 + channel * 6;
+            const auto& bytes = *animation.bytes;
+            const unsigned count = (unsigned(bytes.at(descriptor)) << 8) | bytes.at(descriptor + 1);
+            const float value = sampleAnimationKey(animation, group, descriptor, channel, true, 0);
+            auto& output = material.color->material[slot][channel];
+            if (count <= 1) output = static_cast<std::uint8_t>(static_cast<int>(value));
+            else if (value < 0) output = 0;
+            else if (value > 255) output = 255;
+            else if (value >= 0 && value <= 255) output = static_cast<std::uint8_t>(value);
+        }
+    }
+}
 
 namespace {
     float number(const std::array<std::uint8_t, 100>& bytes, unsigned offset) {

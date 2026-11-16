@@ -88,6 +88,7 @@ namespace gameplay {
         enemies::Manager& enemies();
         actors::Registry& actors();
         players::Manager& players();
+        void stopAuxiliaryBeam();
         playerevents::Dispatcher& playerEvents();
         playerevents::LifeEnvironment& playerLife();
         particles::Scene& particles();

@@ -4,6 +4,7 @@
 #include <functional>
 
 namespace actormodel { class InitialPose; }
+namespace j3dmodel { class TransformTables; }
 
 namespace playermodels {
     class VacuumVolume {
@@ -86,6 +87,8 @@ namespace playermodels {
         VacuumModel& operator=(const VacuumModel&) = delete;
         void updateSegments();
         void publishJoints(const std::array<float, 3>& frameDirection);
+        void prepare(unsigned stage, const j3dmodel::Matrix& view,
+            const j3dmodel::TransformTables& tables, SharedModels& shared);
         void updateMotion(const VacuumParameters& value, const actormodel::InitialPose& pose,
             const PathCollision& collision, const VacuumFeedback& feedback);
         bool intersects(double radius, std::array<float, 3>& direction, const std::array<float, 3>& position) const override;

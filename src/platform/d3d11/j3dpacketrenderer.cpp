@@ -40,7 +40,8 @@ void j3drenderer::PacketRenderer::load(ID3D11Device* device, std::shared_ptr<con
                 (unsigned(bytes.at(offset + 2)) << 8) | bytes.at(offset + 3);
         };
         for (std::size_t offset = shape->descriptorOffset; word(offset) != 255; offset += 8)
-            if (word(offset) <= 8 && word(offset + 4)) throw std::runtime_error("J3D packet renderer requires a rigid vertex matrix binding.");
+            if (word(offset) >= 1 && word(offset) <= 8 && word(offset + 4))
+                throw std::runtime_error("J3D packet renderer requires texture matrix palette support for this shape.");
         const bool nbt = material->texture->nbtScale[0] == 1;
         const auto key = std::make_pair(shape, nbt);
         if (!result.shapes.count(key)) result.shapes[key].load(device, result.resource->geometry, *shape, nbt);
@@ -69,8 +70,23 @@ void j3drenderer::PacketRenderer::draw(ID3D11DeviceContext* context, j3dmodel::M
     draw.submit = [&](j3dmodel::ShapePacket& shape) {
         if (state.cullMode == 3) return;
         const auto& geometry = shapes.at({shape.shape, state.nbtScale != nullptr});
+        std::array<j3dmodel::Matrix, 10> positions{};
+        std::array<j3dmodel::NormalMatrix, 10> normals{};
         for (unsigned i = 0; i < shape.shape->groups.size(); ++i) {
-            vertex.bind(context, state, shape, resource->geometry.drawMatrices.size(), shape.shape->groups[i], projection);
+            const auto& group = shape.shape->groups[i];
+            if (group.matrixKind == 3) {
+                if (!shape.drawMatrices || !shape.normalMatrices || group.matrixTable.size() > positions.size())
+                    throw std::runtime_error("J3D matrix palette exceeds its original ten slots.");
+                for (unsigned slot = 0; slot < group.matrixTable.size(); ++slot) {
+                    const auto index = group.matrixTable[slot];
+                    if (index == 0xffff) continue;
+                    if (index >= resource->geometry.drawMatrices.size())
+                        throw std::runtime_error("J3D palette references an invalid draw matrix.");
+                    positions[slot] = shape.drawMatrices[index];
+                    normals[slot] = shape.normalMatrices[index];
+                }
+                vertex.bindPalette(context, state, positions, normals, projection, true);
+            } else vertex.bind(context, state, shape, resource->geometry.drawMatrices.size(), group, projection);
             geometry.drawGroup(context, i);
         }
     };

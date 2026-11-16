@@ -392,6 +392,7 @@ add_library(WindowsRuntime STATIC
     src/platform/d3d11/j3dpacketrenderer.cpp
     src/platform/d3d11/modelmaterialrenderer.cpp
     src/platform/d3d11/particlebillboardrenderer.cpp
+    src/platform/d3d11/playerpointrenderer.cpp
     src/platform/d3d11/playersheetrenderer.cpp
     src/platform/d3d11/roommirrorrenderer.cpp
     src/platform/d3d11/modelrenderstate.cpp

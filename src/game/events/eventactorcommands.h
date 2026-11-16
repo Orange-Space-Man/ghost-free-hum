@@ -10,6 +10,9 @@ namespace gameevent {
         virtual actors::MoveActor* find(std::string_view name) = 0;
         virtual void lookPlayer(actors::MoveActor& target) = 0;
         virtual void sound(actors::MoveActor& actor, unsigned index) = 0;
+        virtual void cleaner(actors::MoveActor& actor, actors::MoveActor& head, actors::MoveActor& body);
+        virtual void beam(actors::MoveActor& target);
+        virtual void cutBeam();
     };
 
     void applyActorCommand(actors::MoveActor& actor, const ActorCommand& command, ActorServices& services);

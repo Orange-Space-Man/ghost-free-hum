@@ -6,6 +6,7 @@
 #include "platform/d3d11/j3dpacketrenderer.h"
 #include "game/effects/modeleffectlighting.h"
 #include "platform/d3d11/particlebillboardrenderer.h"
+#include "platform/d3d11/playerpointrenderer.h"
 #include "platform/d3d11/playersheetrenderer.h"
 #include "platform/d3d11/roommirrorrenderer.h"
 
@@ -64,6 +65,7 @@ namespace gameplay {
         unsigned visibleModelEffects = 0;
         std::unique_ptr<particles::Billboards> particleBillboards;
         particlerenderer::Renderer particleRenderer;
+        playerpoints::Renderer pointRenderer;
         playersheets::Renderer sheetRenderer;
         roommirror::Renderer mirrorRenderer;
         D3D11_VIEWPORT drawViewport{0, 0, 640, 480, 0, 1};

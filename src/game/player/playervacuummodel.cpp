@@ -1,4 +1,8 @@
 #include "game/player/playervacuummodel.h"
+#include "jlib/j3d/j3dmaterialcalculation.h"
+#include "jlib/j3d/j3dmaterialdisplaylist.h"
+#include "jlib/j3d/j3dtextureanimation.h"
+#include "jlib/j3d/j3ddrawbuffer.h"
 
 #include <stdexcept>
 #include <algorithm>
@@ -116,6 +120,43 @@ playermodels::VacuumModel::VacuumModel(const SharedModels& shared, unsigned coun
 playermodels::VacuumModel::~VacuumModel() {
     segments.reset();
     instance.reset();
+}
+
+void playermodels::VacuumModel::prepare(unsigned stage, const j3dmodel::Matrix& view,
+    const j3dmodel::TransformTables& tables, SharedModels& shared) {
+    if (!parameters.field64) return;
+    if (stage == 3) {
+        j3dmodel::calculateViewMatrices(*instance, view);
+        return;
+    }
+    if (stage != 0) return;
+    const auto& geometry = data->geometry;
+    std::vector<int> pending;
+    if (geometry.hierarchy.root >= 0) pending.push_back(geometry.hierarchy.root);
+    j3dmodel::DrawBuffer buffer(1);
+    while (!pending.empty()) {
+        const auto jointIndex = pending.back();
+        pending.pop_back();
+        const auto& links = geometry.hierarchy.joints.at(jointIndex);
+        if (links.sibling >= 0) pending.push_back(links.sibling);
+        if (links.child >= 0) pending.push_back(links.child);
+        const auto& matrix = instance->jointMatrices[geometry.joints.at(jointIndex).index];
+        for (int index = links.material; index >= 0; index = geometry.hierarchy.materials.at(index).next) {
+            auto& packet = instance->materials.at(index);
+            auto& material = *packet.material;
+            j3dmodel::animateMaterialColors(material);
+            j3dmodel::animateTextureMatrices(material);
+            j3dmodel::calculateMaterial(material, matrix, view, instance->field8 & 12, tables);
+            auto& target = shared.buffer((material.mode & 3) ? 4 : 5);
+            if (target.sort != 0) throw std::runtime_error("Vacuum beam requires its original material-sort buffer.");
+            buffer.packets.swap(target.entries);
+            packet.materialIdentity = material.identity;
+            packet.identityFlags = material.identityFlags;
+            const bool admitted = buffer.entryMaterial(packet, geometry.textureOffset);
+            buffer.packets.swap(target.entries);
+            if (admitted) j3dmodel::updateMaterialPacket(packet);
+        }
+    }
 }
 
 void playermodels::VacuumModel::publishJoints(const std::array<float, 3>& frameDirection) {

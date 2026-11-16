@@ -35,7 +35,17 @@ void players::Manager::initializeEntries() {
 }
 
 void players::Manager::initializeAuxiliary(const std::vector<std::uint8_t>& executable) {
-    if (!auxiliary) auxiliary = std::make_unique<playerresources::AuxiliaryOwner>(executable, *models, globals.effects, globals.pipe);
+    if (!auxiliary) {
+        pointSettings = playerresources::PointSettings::read(executable);
+        auxiliary = std::make_unique<playerresources::AuxiliaryOwner>(executable, *models, globals.effects, globals.pipe);
+    }
+}
+
+void players::Manager::stopAuxiliaryBeam(const actormodel::InitialPose& pose, const std::function<std::uint32_t()>& random) {
+    if (!auxiliary) return;
+    auxiliary->stopBeam([&](const playermodels::VacuumPoint& point, unsigned count, float speed) {
+        points->emit(count, speed, point.position, &point.previous, pointSettings, pose, random);
+    });
 }
 
 void players::Manager::advanceClock() { globals.field8BF8 += 1; }

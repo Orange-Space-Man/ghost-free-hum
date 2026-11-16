@@ -40,6 +40,9 @@ namespace gameevent {
         bool actorExists(std::string_view name) const override;
         void actorCommand(std::string_view name, const ActorCommand& command) override;
         void lookPlayer(actors::MoveActor& target) override;
+        void cleaner(actors::MoveActor& actor, actors::MoveActor& head, actors::MoveActor& body) override;
+        void beam(actors::MoveActor& target) override;
+        void cutBeam() override;
         void sound(actors::MoveActor& actor, unsigned index) override;
         void sound(unsigned index) override;
         void setFlag(unsigned index) override;

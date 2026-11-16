@@ -18,6 +18,10 @@ namespace j3drenderer {
         void bindMatrices(ID3D11DeviceContext* context, const j3dmodel::MaterialState& state,
             const j3dmodel::Matrix& position, const j3dmodel::NormalMatrix& normal,
             const std::array<float, 16>& projection) const;
+        void bindPalette(ID3D11DeviceContext* context, const j3dmodel::MaterialState& state,
+            const std::array<j3dmodel::Matrix, 10>& positions,
+            const std::array<j3dmodel::NormalMatrix, 10>& normals,
+            const std::array<float, 16>& projection, bool indexed) const;
 
     private:
         Microsoft::WRL::ComPtr<ID3D11Device> owner;

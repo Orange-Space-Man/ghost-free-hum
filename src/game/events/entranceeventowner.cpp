@@ -185,6 +185,20 @@ void gameevent::EntranceOwner::lookPlayer(actors::MoveActor& target) {
     managers.playerEvents().send(0, 7, &payload);
 }
 
+void gameevent::EntranceOwner::cleaner(actors::MoveActor& actor, actors::MoveActor& head, actors::MoveActor& body) {
+    auto& auxiliary = managers.players().auxiliary;
+    if (!auxiliary) throw std::runtime_error("Event cleaner requires its initialized auxiliary owner.");
+    auxiliary->attach(actor, head, body);
+}
+
+void gameevent::EntranceOwner::beam(actors::MoveActor& target) {
+    auto& auxiliary = managers.players().auxiliary;
+    if (!auxiliary) throw std::runtime_error("Event beam requires its initialized auxiliary owner.");
+    auxiliary->startBeam(0, target);
+}
+
+void gameevent::EntranceOwner::cutBeam() { managers.stopAuxiliaryBeam(); }
+
 void gameevent::EntranceOwner::sound(actors::MoveActor& actor, unsigned index) {
     if (index != 0) throw std::runtime_error("Event actor sound requires its original sound-table entry.");
     managers.playback()->play(0x1827, actor.position);

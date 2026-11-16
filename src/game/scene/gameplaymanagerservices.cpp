@@ -839,7 +839,14 @@ void gameplay::ManagerServices::completePlayerFrame(const playeractor::LateFrame
         state->playerLight.publishShadow(*state->events->player(static_cast<std::int32_t>(index)), state->lights, state->playerFinish);
     }
     state->players->state->update(state->lights);
+    state->players->points->update(state->players->pointSettings, [this](const auto& position, const auto& previous) {
+        return state->collision.pointContact(position, previous);
+    });
     state->players->advanceClock();
+}
+
+void gameplay::ManagerServices::stopAuxiliaryBeam() {
+    state->players->stopAuxiliaryBeam(state->dependencies.actors.pose, [this] { return state->runtime->random(); });
 }
 
 void gameplay::ManagerServices::updatePlayerFurniture(unsigned index) {
