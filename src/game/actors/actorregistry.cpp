@@ -67,7 +67,7 @@ const std::array<actors::MoveActor*, 128>& actors::Registry::entries() const {
 
 void actors::Registry::updateContacts(enemies::Manager& manager, const actorcollision::Manager& collision,
     const playerresources::RecordPool44& pool, const mapcollision::State& map,
-    const actorcollision::Catalog& catalog, gameflags::State& flags) {
+    const actorcollision::Catalog& catalog, gameflags::State& flags, const std::function<void()>& afterPaths) {
     for (unsigned i = 0; i < used; ++i) {
         auto& actor = *objects[i];
         if (!(actor.flags & 0x60) && actor.fieldF4) {
@@ -75,6 +75,7 @@ void actors::Registry::updateContacts(enemies::Manager& manager, const actorcoll
             actor.approachRotation();
         }
     }
+    if (afterPaths) afterPaths(); // 800829FC runs between the two actor passes of 800612AC
     for (unsigned i = 0; i < used; ++i) objects[i]->field9C = -1;
     for (unsigned i = 0; i < used; ++i) objects[i]->fieldA0 = -1;
     for (unsigned i = 0; i < used; ++i) objects[i]->updateContactFrame(*this, manager, collision, pool, map, catalog, flags);

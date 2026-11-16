@@ -1,6 +1,7 @@
 #pragma once
 
 #include "game/player/playeractor.h"
+#include <functional>
 
 namespace actors {
     class Registry {
@@ -20,7 +21,7 @@ namespace actors {
             const std::function<void(MoveActor&)>& animationSound);
         void updateContacts(enemies::Manager& manager, const actorcollision::Manager& collision,
             const playerresources::RecordPool44& pool, const mapcollision::State& map,
-            const actorcollision::Catalog& catalog, gameflags::State& flags);
+            const actorcollision::Catalog& catalog, gameflags::State& flags, const std::function<void()>& afterPaths = {});
         void updateCaptures(actorcapture::Motion& motion, const playermodels::VacuumPath* path,
             const actorcapture::Vector* suctionDirection, actormodel::Matrix& retainedTransform,
             const actorcapture::Vector* originalScratch = nullptr, const float* originalRegister = nullptr,

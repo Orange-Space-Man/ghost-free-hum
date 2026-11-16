@@ -3,6 +3,8 @@
 #include "game/scene/gameplaymanagerservices.h"
 #include "game/enemies/enemytrainingservices.h"
 #include "game/enemies/enemyghostparenthost.h"
+#include "game/player/playervacuumframe.h"
+#include "game/audio/jaudiopositionalplayback.h"
 #include "game/enemies/enemyscarenotification.h"
 #include "game/actors/charactereffectresources.h"
 #include "game/enemies/enemymanagerruntime.h"
@@ -113,6 +115,56 @@ struct gameplay::ManagerServices::State : playerpresentation::Services {
         if (scene == 1 && !events->player(0)->view.field861) return;
         throw std::runtime_error("Collected key requires its original map scene admission.");
     }
+    // Vacuum capture (phases 1-3): sounds whose effects are not recovered yet (jaudio positional scope) are skipped.
+    void vacuumSound(unsigned id, const std::array<float, 3>* position) {
+        if (!jaudio::PositionalPlayback::admitted(id)) return;
+        if (position) audio->playback.play(id, *position);
+        else audio->playback.playGlobal(id);
+    }
+    playermodels::PathCollision pathCollision() {
+        return [this](const auto& position, const auto& previous) {
+            const auto contact = collision.pointContact(position, previous);
+            playermodels::PathContact result;
+            const int polygon = contact.floor >= 0 ? contact.floor : contact.wall;
+            if (polygon >= 0) {
+                result.surface = static_cast<unsigned>(polygon) + 1;
+                result.normal = contact.floor >= 0 ? contact.floorNormal : contact.wallNormal;
+                result.correction = contact.correction;
+            }
+            return result;
+        };
+    }
+    playermodels::VacuumFeedback vacuumFeedback(bool gameplayBeam = false) {
+        playermodels::VacuumFeedback feedback;
+        feedback.roomState = [this](unsigned room) {
+            return static_cast<std::int8_t>(particles->runningDust().level(room));
+        };
+        feedback.random = [this] { return runtime->random(); };
+        feedback.impact = [this, gameplayBeam](const auto& point, float speed, float radius, int level) {
+            // The Poltergust beam raising dust needs the equipped-player dust force callbacks (particle scene), which are not
+            // recovered yet; the gameplay beams skip the dust puff instead of stopping the scene.
+            if (gameplayBeam && (events->player(0)->state.flags792 & 8)) return;
+            std::array<float, 3> normal;
+            if (!point.field18 || !collision.polygonNormal(static_cast<int>(point.field18 - 1), normal))
+                throw std::runtime_error("Beam impact requires its retained collision polygon normal.");
+            particles->beamImpact(speed, radius, point.position, point.previous, normal, static_cast<unsigned>(level));
+        };
+        return feedback;
+    }
+    static std::array<float, 3> jointWorld(const actors::MoveActor& actor, unsigned joint) {
+        // 80097B9C: zero when the actor has no model.
+        if (!actor.model) return {};
+        const auto matrix = dooranimation::concatenate(actor.matrix, actor.model->matrix(0, joint));
+        return {matrix[3], matrix[7], matrix[11]};
+    }
+    static float parameterFloat(const gameparameters::Parameters& parameters, unsigned index) {
+        const auto bits = parameters.entries().at(index).bits;
+        float value;
+        std::memcpy(&value, &bits, sizeof value);
+        return value;
+    }
+    void buildVacuum();
+    vacuumcapture::Vacuum& vacuumFor(unsigned index, playeractor::Player& player);
     explicit State(const ManagerDependencies& dependencies) : dependencies(dependencies),
         savedDoors(dependencies.entry.inventory.data(), dependencies.entry.inventory.size()),
         commonResources(dependencies.common), mapResources(dependencies.map), collision(dependencies.mission),
@@ -386,12 +438,13 @@ struct gameplay::ManagerServices::State : playerpresentation::Services {
             dependencies.actors.rooms, dependencies.common, itemCreation->captureDrops(),
             [this](unsigned id, const auto& position) { particles->effects().create(id, position, {0, 0, 0}); },
             [this](unsigned id, const auto& position) { audio->playback.play(id, position); },
-            [this] { return simulationTicks; },
+            [this] { return static_cast<std::uint32_t>(players->frame()); },
             [this](unsigned index) -> actors::MoveActor& {
                 auto* target = events->player(static_cast<std::int32_t>(index));
                 if (!target) throw std::out_of_range("Original ghost player index.");
                 return *target;
             }, [] { return false; }, {}});        strategies->bindGhostParent(*ghostServices);
+        buildVacuum();
         generators = std::make_unique<charactergenerator::Manager>(dependencies.types, dependencies.creation,
             dependencies.strategies, *strategies, *enemies, *runtime, dependencies.mission);
         webs = std::make_unique<modeleffects::CobwebPlacements>(models->factory, dependencies.actors.pose);
@@ -430,8 +483,11 @@ struct gameplay::ManagerServices::State : playerpresentation::Services {
     std::unique_ptr<enemystrategy::FireGeneratorEnvironment> fireServices;
     std::unique_ptr<enemystrategy::TrainingEnvironment> trainingServices;
     std::unique_ptr<ghostparent::Environment> ghostServices;
-    std::uint32_t simulationTicks = 0;
     dooranimation::PoseTables ghostTrigonometry;
+    std::unique_ptr<vacuumcapture::Controller> vacuumEntries;
+    std::array<std::unique_ptr<vacuumcapture::Vacuum>, 2> vacuums;
+    std::unique_ptr<vacuumcapture::PlayerFrame> vacuumFrame;
+    std::unique_ptr<vacuumcapture::CaptureReaction> vacuumReaction;
     std::unique_ptr<gameevent::MissionActivation> missionEvents;
     std::unique_ptr<roomdependencies::Catalog> roomDependencies;
     std::unique_ptr<characterplacement::Runtime> placementRuntime;
@@ -516,6 +572,88 @@ struct gameplay::ManagerServices::State : playerpresentation::Services {
     std::unique_ptr<enemystrategy::ItemEnvironment> itemServices;
 };
 
+void gameplay::ManagerServices::State::buildVacuum() {
+    const auto& actorDependencies = dependencies.actors;
+    vacuumFrame = std::make_unique<vacuumcapture::PlayerFrame>(dependencies.executable);
+    vacuumReaction = std::make_unique<vacuumcapture::CaptureReaction>(dependencies.executable);
+    vacuumcapture::Services services{actorDependencies.catalog, ghostTrigonometry,
+        [](const actors::MoveActor& actor, unsigned joint) { return jointWorld(actor, joint); },
+        [this](const actors::MoveActor& actor) { return dependencies.strategies.attachmentJoint(actor.type()); },
+        [this](unsigned type) { return parameterFloat(dependencies.actors.parameters.parameters(type), 11); },
+        [this](unsigned type) { return parameterFloat(dependencies.actors.parameters.parameters(type), 12); },
+        [this](unsigned type) {
+            // 8006A36C: halfword at +4 of the 28-byte actor type table entry.
+            std::vector<std::uint8_t> half;
+            std::string error;
+            if (!dolresources::read(dependencies.executable, glme01::actorTypeTable + type * 28 + 4, 2, half, error))
+                throw std::runtime_error(error);
+            return static_cast<int>(static_cast<std::int16_t>((half[0] << 8) | half[1]));
+        },
+        [this](unsigned type) { return static_cast<int>(dependencies.creation.group(type)); },
+        [this] { return players->frame(); }, [] { return false; },
+        [this](unsigned id, const std::array<float, 3>& position) { vacuumSound(id, &position); },
+        [] {}, // 8018B4A4 life-drain sound sequence: not recovered
+        [this](unsigned id, const std::array<float, 3>& position) { particles->effects().create(id, position, {0, 0, 0}); },
+        [](const std::array<float, 3>&, unsigned) {}, // 80098678 dust request: not recovered
+        [](unsigned, const std::array<float, 3>&, const std::array<float, 3>&) {}, // 8016696C dust burst: not recovered
+        [this](actors::MoveActor& actor, characterevent::Event& event) {
+            if (auto* owner = enemies->activeOwner(actor)) owner->event(event);
+        },
+        [](actors::MoveActor& actor, const std::array<float, 3>& velocity) { actor.setVelocity(velocity); },
+        [this](const playermodels::VacuumPoint& point, unsigned count, float speed) {
+            players->points->emit(count, speed, point.position, &point.previous, players->pointSettings,
+                dependencies.actors.pose, [this] { return runtime->random(); });
+        },
+        [this](playermodels::VacuumEffectOwner& effect) {
+            effect.updateMotion(playerGlobals.effects, dependencies.actors.pose, pathCollision(), vacuumFeedback(true));
+        }};
+    vacuumEntries = std::make_unique<vacuumcapture::Controller>(*players->entries, std::move(services));
+}
+
+vacuumcapture::Vacuum& gameplay::ManagerServices::State::vacuumFor(unsigned index, playeractor::Player& player) {
+    if (index >= vacuums.size()) throw std::out_of_range("Original vacuum index exceeds the player count.");
+    if (vacuums[index]) return *vacuums[index];
+    auto* model = player.components->vacuum->model.get();
+    if (!model) throw std::logic_error("Original player vacuum has no beam model.");
+    const auto mix = [](float blend, float from, float to) {
+        return from + static_cast<float>(static_cast<double>(blend) * static_cast<double>(to - from));
+    };
+    vacuumcapture::ScanServices scan{*vacuumEntries, dependencies.collisions, dependencies.actors.pose,
+        [this] {
+            std::vector<vacuumcapture::Candidate> candidates;
+            for (const auto& slot : enemies->slots()) {
+                if (slot.state != 2 || !slot.owner) continue;
+                auto* actor = dynamic_cast<actors::MoveActor*>(&slot.owner->actor());
+                if (!actor) continue;
+                auto* owner = slot.owner.get();
+                candidates.push_back({actor, [owner](characterevent::Event& event) { return owner->event(event); }});
+            }
+            return candidates;
+        },
+        [this](unsigned type) { return static_cast<int>(dependencies.creation.group(type)); },
+        [this](unsigned type) { return static_cast<int>(dependencies.actors.parameters.parameters(type).entries().at(0).bits); },
+        [this](unsigned room, unsigned buffer) { return runtime->roomVisible(room, buffer); },
+        [this](unsigned id, const std::array<float, 3>* position) { vacuumSound(id, position); },
+        [](float, const std::array<float, 3>&, unsigned) {}, // 8018ACF8 vacuum loop sound: not recovered
+        [this](actors::MoveActor& actor, characterevent::Event& event) {
+            if (auto* owner = enemies->activeOwner(actor)) owner->event(event);
+        },
+        [this](const std::array<float, 3>& position) { particles->effects().create(3, position, {0, 0, 0}); },
+        [model](const vacuumcapture::VacuumInput& input) { model->initialize(0.0f, *input.parameters, nullptr); },
+        [this, model, mix](float strength, const vacuumcapture::VacuumInput& input) {
+            // 8008A960: blend the two parameter sets by the strength, then step the beam.
+            auto blended = *input.parameters;
+            if (input.target && strength > 0) {
+                blended.field20 = mix(strength, blended.field20, input.target->field20);
+                for (unsigned axis = 0; axis < 3; ++axis) blended.field24[axis] = mix(strength, blended.field24[axis], input.target->field24[axis]);
+                blended.field30 = mix(strength, blended.field30, input.target->field30);
+                blended.field34 = mix(strength, blended.field34, input.target->field34);
+            }
+            model->updateMotion(blended, dependencies.actors.pose, pathCollision(), vacuumFeedback(true));
+        }};
+    vacuums[index] = std::make_unique<vacuumcapture::Vacuum>(std::move(scan), *model);
+    return *vacuums[index];
+}
 gameplay::ManagerServices::ManagerServices(const ManagerDependencies& dependencies) : state(std::make_unique<State>(dependencies)) {
     state->initialize();
 }
@@ -622,9 +760,9 @@ playerenvironment::Services gameplay::ManagerServices::preparePlayerEnvironment(
     const auto& actor = state->dependencies.actors;
     return {state->collision, actor.catalog, actor.resources, actor.pose, *state->enemies, *state->players->entries,
         [](auto&) { throw std::runtime_error("Player type changes require the original model-replacement binding."); },
-        [](const auto&) -> playeractor::Target* { throw std::runtime_error("Captured-player targeting requires its original capture-owner binding."); },
+        [this](const playeractor::Player& player) -> playeractor::Target* { return state->vacuumEntries->captureTarget(player); },
         [this](unsigned room) { return roomCleared(room); },
-        [](bool) { throw std::runtime_error("Captured-player audio requires its original capture-state binding."); },
+        [](bool) {}, // 8018BBB8 capture music/ducking state: not recovered
         [this](unsigned room) { state->audio->music.notifyRoom(room, state->mapMode); }};
 }
 
@@ -700,7 +838,38 @@ void gameplay::ManagerServices::updatePlayerMain(unsigned index, const PlayerMai
         updatePlayerMotion(index, {*state->life, services.timers.doubledDamage, services.timers.frame, services.platforms, globalSound});
     };
     frame.sound = [this](unsigned id, const auto& position) { state->audio->playback.play(id, position); };
+    frame.vacuum = [this, index](playeractor::Player& target) {
+        auto& vacuum = state->vacuumFor(index, target);
+        vacuumcapture::PlayerFrameServices vacuumServices{vacuum, state->playerGlobals.vacuum,
+            [&target](unsigned pattern) { target.playFeedback(pattern); },
+            [](float, const std::array<float, 3>&, unsigned) {}, // 8018ACF8 blocked-vacuum loop sound: not recovered
+            [](const std::array<float, 3>&, const std::array<std::uint8_t, 4>&, int, int) {}}; // 80016C98 nozzle light: not recovered
+        return state->vacuumFrame->run(target, vacuumServices);
+    };
+    frame.captureReaction = [this, index](playeractor::Player& target, std::uint8_t previous) {
+        vacuumcapture::ReactionServices reactionServices{*state->vacuumEntries, *state->players->entries, *state->events,
+            *state->life, index, [&target](unsigned pattern) { target.playFeedback(pattern); },
+            [this](unsigned id, const std::array<float, 3>* position) { state->vacuumSound(id, position); },
+            [](const actors::MoveActor& actor, unsigned joint) { return State::jointWorld(actor, joint); },
+            [this](const actors::MoveActor& actor) { return state->dependencies.strategies.attachmentJoint(actor.type()); },
+            [this](unsigned type) { return static_cast<int>(state->dependencies.creation.group(type)); },
+            [this](const actors::MoveActor& actor) -> std::uint32_t {
+                const auto& slots = state->enemies->slots();
+                for (unsigned slot = 0; slot < slots.size(); ++slot)
+                    if (slots[slot].state == 2 && slots[slot].owner && &slots[slot].owner->actor() == &actor) return slot + 1;
+                return 0;
+            },
+            [](const std::array<float, 3>&) {}, // 8008907C vacuum release trail: not recovered
+            [] { return false; }};
+        state->vacuumReaction->run(target, previous, reactionServices);
+    };
     state->playerMain.run(*player, frame);
+    if (index < state->vacuums.size() && state->vacuums[index]) {
+        // The original attached-actor list lives in the vacuum object; the player environment reads it as words.
+        auto& words = player->components->vacuum->fieldsC;
+        const auto& attached = state->vacuums[index]->attached;
+        for (unsigned i = 0; i < words.size(); ++i) words[i] = attached[i] ? attached[i]->id() + 1 : 0;
+    }
 }
 
 playeractor::FinishServices gameplay::ManagerServices::preparePlayerFinish(unsigned index,
@@ -738,7 +907,8 @@ playeractor::FinishServices gameplay::ManagerServices::preparePlayerFinish(unsig
 }
 void gameplay::ManagerServices::updateContacts() {
     state->actors->updateContacts(*state->enemies, state->actorCollision, *state->players->records,
-        state->collision, state->dependencies.collisions, state->dependencies.flags);
+        state->collision, state->dependencies.collisions, state->dependencies.flags,
+        [this] { state->vacuumEntries->update(); });
     state->players->records->finishContacts();
 }
 doors::State& gameplay::ManagerServices::doors() { return state->doors; }
@@ -850,7 +1020,15 @@ void gameplay::ManagerServices::updateRoomLights() {
 void gameplay::ManagerServices::setAudioInterfaceFrame(std::uint32_t frame) { state->audioInterfaceFrame = frame; }
 const std::array<std::uint32_t, 2>& gameplay::ManagerServices::playerFootstepFrames() const { return state->playerAudio.footsteps; }
 
-void gameplay::ManagerServices::updatePlayerLate(unsigned index, const playeractor::LateFrameServices& services) {
+void gameplay::ManagerServices::updatePlayerLate(unsigned index, const playeractor::LateFrameServices& provided) {
+    auto services = provided;
+    if (!services.pipe) {
+        // The visible vacuum hose: the same weapon-owner update the auxiliary equipment uses (800B3xxx late frame).
+        services.pipe = [this](playeractor::Player& target, float scale, bool collisionEnabled, bool bodyConstraint, bool rigid) {
+            target.components->weapon->updatePipe(state->playerGlobals.pipe, *target.state.field7A4, *target.state.field7A8, scale,
+                collisionEnabled, bodyConstraint, rigid, state->pathCollision());
+        };
+    }
     if (index >= state->dependencies.playerCount) throw std::out_of_range("Player late-frame index exceeds the bound player count.");
     auto* player = state->events->player(static_cast<std::int32_t>(index));
     if (!player) throw std::runtime_error("Player late frame requires its registered owner.");
@@ -967,7 +1145,6 @@ void gameplay::ManagerServices::updateFurniture(unsigned frame) {
 }
 
 void gameplay::ManagerServices::updateDoors(unsigned frame) {
-    state->simulationTicks = frame;
     const auto* player = state->events->player(0);
     if (!player) throw std::logic_error("Door update requires player zero.");
     doors::UpdateServices services;
@@ -1033,28 +1210,8 @@ void gameplay::ManagerServices::stopAuxiliaryBeam() {
 void gameplay::ManagerServices::updateAuxiliaryEquipment() {
     auto& auxiliary = state->players->auxiliary;
     if (!auxiliary || !auxiliary->field3C) return;
-    playermodels::PathCollision collision = [this](const auto& position, const auto& previous) {
-        const auto contact = state->collision.pointContact(position, previous);
-        playermodels::PathContact result;
-        const int polygon = contact.floor >= 0 ? contact.floor : contact.wall;
-        if (polygon >= 0) {
-            result.surface = static_cast<unsigned>(polygon) + 1;
-            result.normal = contact.floor >= 0 ? contact.floorNormal : contact.wallNormal;
-            result.correction = contact.correction;
-        }
-        return result;
-    };
-    playermodels::VacuumFeedback feedback;
-    feedback.roomState = [this](unsigned room) {
-        return static_cast<std::int8_t>(state->particles->runningDust().level(room));
-    };
-    feedback.random = [this] { return state->runtime->random(); };
-    feedback.impact = [this](const auto& point, float speed, float radius, int level) {
-        std::array<float, 3> normal;
-        if (!point.field18 || !state->collision.polygonNormal(static_cast<int>(point.field18 - 1), normal))
-            throw std::runtime_error("Beam impact requires its retained collision polygon normal.");
-        state->particles->beamImpact(speed, radius, point.position, point.previous, normal, static_cast<unsigned>(level));
-    };
+    const auto collision = state->pathCollision();
+    const auto feedback = state->vacuumFeedback();
     auxiliary->update({state->dependencies.actors, state->dependencies.strategies,
         state->playerGlobals.pipe, state->playerGlobals.effects, collision, feedback,
         [this] { return state->runtime->random(); },

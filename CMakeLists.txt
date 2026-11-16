@@ -361,6 +361,9 @@ add_library(Game STATIC
     src/game/player/playervacuumeffects.cpp
     src/game/player/playervacuummodel.cpp
     src/game/player/playervacuumqueries.cpp
+    src/game/player/playervacuumentries.cpp
+    src/game/player/playervacuumscan.cpp
+    src/game/player/playervacuumframe.cpp
     src/game/player/playervacuumquery.cpp
     src/game/player/playervelocitycontext.cpp
     src/game/player/playervelocityframe.cpp
