@@ -110,6 +110,7 @@ void gameevent::EntranceOwner::releasePlayer() { managers.playerEvents().send(0,
 void gameevent::EntranceOwner::music(unsigned index) {
     if (index == 10) managers.music().requestEntrance(audioFrame);
     else if (index == 0) managers.music().requestFirstKey(audioFrame);
+    else if (index == 1) managers.music().requestParlor(audioFrame);
     else throw std::runtime_error("Unsupported entrance music request.");
 }
 

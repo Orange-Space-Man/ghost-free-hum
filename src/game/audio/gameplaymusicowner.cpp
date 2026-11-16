@@ -66,6 +66,7 @@ void gameplaymusic::Owner::stop() {
 
 bool gameplaymusic::Owner::requestDeath(std::uint32_t audioFrame) {
     std::lock_guard<std::recursive_mutex> lock(mutex);
+    if (deferRequest(0x80000012)) return true;
     if (lastRequestFrame == audioFrame) return false;
     const auto* info = jaudio::soundInfo(resources, 0x80000012);
     if (!info || (*info)[0] || (*info)[1] || (*info)[2] || (*info)[3])
@@ -91,6 +92,7 @@ void gameplaymusic::Owner::setCutsceneActive(bool active) {
 
 bool gameplaymusic::Owner::requestEntrance(std::uint32_t audioFrame) {
     std::lock_guard<std::recursive_mutex> lock(mutex);
+    if (deferRequest(0x80000019)) return true;
     if (lastRequestFrame == audioFrame) return false;
     const auto* info = jaudio::soundInfo(resources, 0x80000019);
     if (!info || (*info)[0] || (*info)[1] || (*info)[2] || (*info)[3])
@@ -117,6 +119,7 @@ void gameplaymusic::Owner::updateSequenceControls() {
 
 bool gameplaymusic::Owner::requestItem(std::uint32_t audioFrame) {
     std::lock_guard<std::recursive_mutex> lock(mutex);
+    if (deferRequest(0x8000000e)) return true;
     if (lastRequestFrame == audioFrame) return false;
     const auto* info = jaudio::soundInfo(resources, 0x8000000e);
     if (!info || (*info)[0] != 0x40 || (*info)[1] || (*info)[2] || (*info)[3])
@@ -142,6 +145,7 @@ bool gameplaymusic::Owner::requestItem(std::uint32_t audioFrame) {
 
 bool gameplaymusic::Owner::requestFirstKey(std::uint32_t audioFrame) {
     std::lock_guard<std::recursive_mutex> lock(mutex);
+    if (deferRequest(0x8000001b)) return true;
     if (lastRequestFrame == audioFrame) return false;
     const auto* info = jaudio::soundInfo(resources, 0x8000001b);
     if (!info || (*info)[0] || (*info)[1] || (*info)[2] || (*info)[3])
@@ -157,6 +161,48 @@ bool gameplaymusic::Owner::requestFirstKey(std::uint32_t audioFrame) {
     soundState = 4;
     lastRequestFrame = audioFrame;
     return true;
+}
+
+bool gameplaymusic::Owner::deferRequest(unsigned id) {
+    if (!soundState || activeSound != 0x8000001a) return false;
+    pendingSound = id;
+    return true;
+}
+
+bool gameplaymusic::Owner::requestParlor(std::uint32_t audioFrame) {
+    std::lock_guard<std::recursive_mutex> lock(mutex);
+    if (deferRequest(0x8000001a)) return true;
+    if (lastRequestFrame == audioFrame) return false;
+    const auto* info = jaudio::soundInfo(resources, 0x8000001a);
+    if (!info || (*info)[0] != 2 || (*info)[1] || (*info)[2] || (*info)[3])
+        throw std::runtime_error("Unsupported original Parlor sequence routing metadata.");
+    stop();
+    std::string error;
+    if (!sequence.loadParlor(package, resources, error)) {
+        preparedSound = 0;
+        throw std::runtime_error(error);
+    }
+    preparedSound = activeSound = 0x8000001a;
+    sequence.start();
+    soundState = 4;
+    lastRequestFrame = audioFrame;
+    return true;
+}
+
+void gameplaymusic::Owner::updateRequests(std::uint32_t audioFrame, bool enabled, bool paused) {
+    std::lock_guard<std::recursive_mutex> lock(mutex);
+    if (!pendingSound || soundState) return;
+    const auto pending = pendingSound;
+    pendingSound = 0;
+    if (!enabled || paused) return;
+    switch (pending) {
+    case 0x80000012: requestDeath(audioFrame); break;
+    case 0x80000019: requestEntrance(audioFrame); break;
+    case 0x8000001a: requestParlor(audioFrame); break;
+    case 0x8000001b: requestFirstKey(audioFrame); break;
+    case 0x8000000e: requestItem(audioFrame); break;
+    default: throw std::logic_error("Pending music request has no recovered route.");
+    }
 }
 
 void gameplaymusic::Owner::retainSection() {

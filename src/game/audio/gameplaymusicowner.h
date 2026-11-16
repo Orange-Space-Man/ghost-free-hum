@@ -17,6 +17,8 @@ namespace gameplaymusic {
         bool requestDeath(std::uint32_t audioFrame);
         bool requestEntrance(std::uint32_t audioFrame);
         bool requestFirstKey(std::uint32_t audioFrame);
+        bool requestParlor(std::uint32_t audioFrame);
+        void updateRequests(std::uint32_t audioFrame, bool enabled = true, bool paused = false);
         bool requestItem(std::uint32_t audioFrame);
         void stop();
         void setCutsceneActive(bool active);
@@ -36,6 +38,7 @@ namespace gameplaymusic {
         void setTrackMuted(unsigned track, bool muted) override;
         void setTrackVolume(unsigned track, float volume, unsigned frames) override;
         void refreshContext();
+        bool deferRequest(unsigned id);
         gameassets::Package& package;
         const jaudio::Resources& resources;
         const gameplayaudio::Context& context;
@@ -51,6 +54,7 @@ namespace gameplaymusic {
         std::int16_t soundPolygon = -1;
         unsigned lastSection = 0;
         unsigned preparedSound = 0, activeSound = 0;
+        unsigned pendingSound = 0;
         std::uint32_t lastRequestFrame = 0;
     };
 }

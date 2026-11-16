@@ -663,6 +663,7 @@ void gameplay::ManagerServices::updateCaptures(const playermodels::VacuumPath* p
 void gameplay::ManagerServices::updateAudio(const std::array<float, 12>& listener) {
     state->audio->listener = listener;
     state->audio->playback.update(listener);
+    state->audio->music.updateRequests(state->audioInterfaceFrame);
 }
 
 void gameplay::ManagerServices::updateShadow() {
