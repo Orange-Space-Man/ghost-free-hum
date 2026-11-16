@@ -5,6 +5,10 @@
 
 bool keypresentation::State::request(bool missingKey, bool front, unsigned doorType, unsigned playbackMode,
     Services& services, bool overrideGate) {
+    return requestCutscene(openingscene::doorCutscene(missingKey, front, doorType), playbackMode, services, overrideGate);
+}
+
+bool keypresentation::State::requestCutscene(unsigned id, unsigned playbackMode, Services& services, bool overrideGate) {
     if (!overrideGate && (phase != Phase::Idle || owned)) return false;
     mode = playbackMode;
     if (mode == 0 && !overrideGate) {
@@ -14,7 +18,7 @@ bool keypresentation::State::request(bool missingKey, bool front, unsigned doorT
         services.setAudioCutsceneActive(true);
     }
     overrideAdmission = overrideGate;
-    cutscene = openingscene::doorCutscene(missingKey, front, doorType);
+    cutscene = id;
     phase = Phase::Loading;
     owned = true;
     forceFinish = updated = false;

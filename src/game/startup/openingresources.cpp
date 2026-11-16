@@ -59,7 +59,7 @@ unsigned openingscene::doorCutscene(bool missingKey, bool front, unsigned type) 
 bool openingscene::read(gameassets::Package& package, unsigned cutscene, Resources& resources, std::string& error) {
     error.clear();
     try {
-        if (cutscene != 0 && cutscene != 0x4c && (cutscene < 3 || cutscene > 58)) throw std::runtime_error("Unsupported cutscene ID.");
+        if (cutscene != 0 && cutscene != 60 && cutscene != 0x4c && (cutscene < 3 || cutscene > 58)) throw std::runtime_error("Unsupported cutscene ID.");
         std::vector<std::uint8_t> executable;
         if (!package.read("sys/main.dol", executable, error)) throw std::runtime_error(error);
         Resources result;

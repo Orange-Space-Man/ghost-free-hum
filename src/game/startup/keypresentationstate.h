@@ -22,6 +22,7 @@ namespace keypresentation {
         bool overrideAdmission = false;
 
         bool request(bool missingKey, bool front, unsigned doorType, unsigned playbackMode, Services& services, bool overrideGate = false);
+        bool requestCutscene(unsigned id, unsigned playbackMode, Services& services, bool overrideGate = false);
         void loaded();
         Action beginDraw();
         void initialized(Services& services);
