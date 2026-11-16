@@ -45,6 +45,10 @@ void gameapplication::Application::loadDebugCheckpoint(unsigned checkpoint) {
         while (gameplayPreparation.wait_for(std::chrono::milliseconds(1)) != std::future_status::ready) progress();
     }
     gameplayPreparation = {};
+    transitionPhase = TransitionPhase::Idle;
+    transitionWipe = {};
+    transitionFrame = {};
+    transitionDestination = -1;
     startupaudio::bindPositionalPlayback({});
     startupaudio::stop();
     gameplayScene.reset();

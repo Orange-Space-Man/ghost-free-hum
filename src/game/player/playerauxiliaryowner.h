@@ -27,6 +27,8 @@ namespace playerresources {
         void startBeam(int mode, actors::MoveActor& target);
         void stopBeam(const std::function<void(const playermodels::VacuumPoint&, unsigned, float)>& particles);
         void update(const AuxiliaryFrameServices& services);
+        void prepare(unsigned stage, const j3dmodel::Matrix& view, const j3dmodel::TransformTables& tables,
+            playermodels::SharedModels& shared);
         actors::MoveActor* actor = nullptr;
         actors::MoveActor* head = nullptr;
         actors::MoveActor* body = nullptr;

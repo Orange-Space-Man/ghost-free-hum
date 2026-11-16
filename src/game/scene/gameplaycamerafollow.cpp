@@ -7,7 +7,7 @@
 #include <stdexcept>
 
 namespace {
-    constexpr unsigned mapTwoDescriptor = 0x802ff220, presetTable = 0x802ffc48;
+    constexpr unsigned mapDescriptors = 0x802ff218, presetTable = 0x802ffc48;
     constexpr unsigned leadScaleAddress = 0x804d9ce0, leadDecayAddress = 0x804d9ce4;
     constexpr unsigned insetAddress = 0x804d0098, heightThresholdAddress = 0x804d9cec;
     constexpr unsigned followRateAddress = 0x804d9cf0, absentRoomRateAddress = 0x804d9d04;
@@ -40,8 +40,9 @@ namespace {
     }
 }
 
-gameplaycamera::Follow::Follow(const std::vector<std::uint8_t>& executable) {
-    const auto descriptor = word(executable, mapTwoDescriptor);
+gameplaycamera::Follow::Follow(const std::vector<std::uint8_t>& executable, unsigned map) {
+    if (map != 1 && map != 2) throw std::runtime_error("Unsupported camera follow map.");
+    const auto descriptor = word(executable, mapDescriptors + map * 4);
     const auto count = word(executable, descriptor) >> 24;
     const auto records = word(executable, descriptor + 20);
     for (unsigned index = 0; index < count; ++index) {

@@ -24,13 +24,14 @@ namespace {
 }
 
 bool gameplaycamera::initialize(const std::vector<std::uint8_t>& executable, const gameplayspawn::Spawn& spawn,
-    s3denvironment::Camera& camera, std::string& error) {
+    s3denvironment::Camera& camera, std::string& error, unsigned map) {
     error.clear();
     try {
-        if (spawn.roomId != 0x02000102) throw std::runtime_error("Unsupported initial gameplay camera room.");
-        const auto descriptor = word(executable, 0x802ff220);
-        if ((word(executable, descriptor) >> 24) <= 2) throw std::runtime_error("Missing initial camera room.");
-        const auto room = word(executable, descriptor + 20) + 2 * 48;
+        if (map != 1 && map != 2) throw std::runtime_error("Unsupported initial gameplay camera map.");
+        const auto descriptor = word(executable, 0x802ff218 + map * 4);
+        const auto index = spawn.roomId >> 24;
+        if ((word(executable, descriptor) >> 24) <= index) throw std::runtime_error("Missing initial camera room.");
+        const auto room = word(executable, descriptor + 20) + index * 48;
         if (word(executable, room) != spawn.roomId || word(executable, room + 4) != 0)
             throw std::runtime_error("Unsupported initial gameplay camera flags.");
         const float minimumX = static_cast<float>(static_cast<std::int32_t>(word(executable, room + 8)));

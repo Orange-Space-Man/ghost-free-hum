@@ -4,6 +4,12 @@
 #include <cstdint>
 
 namespace scenetransition {
+    struct Request {
+        std::int32_t destination = -1;
+        std::int32_t kind = 0;
+        std::int32_t duration = 0;
+    };
+
     class ParlorWipe {
     public:
         void beginOutgoing(const std::array<std::uint8_t, 3>& retainedColor = {0, 0, 0});

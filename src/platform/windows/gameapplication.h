@@ -16,6 +16,7 @@
 #include "game/startup/openingscene.h"
 #include "platform/windows/gameframepacing.h"
 #include "game/startup/scenetransition.h"
+#include "platform/d3d11/transitionframecapture.h"
 #include "game/scene/gameentrystate.h"
 #include "platform/windows/windowpadinput.h"
 #include <windows.h>
@@ -40,6 +41,14 @@ namespace gameapplication {
 
     protected:
         void advanceScene(bool audioFinished);
+        void advanceGameplay();
+        void beginTransition();
+        void advanceTransition();
+        enum class TransitionPhase { Idle, Outgoing, Loading, Incoming };
+        TransitionPhase transitionPhase = TransitionPhase::Idle;
+        int transitionDestination = -1;
+        scenetransition::ParlorWipe transitionWipe;
+        scenetransition::FrameCapture transitionFrame;
         startupresources::Resources resources;
         startupscene::Scene scene;
         gamesave::State saves;

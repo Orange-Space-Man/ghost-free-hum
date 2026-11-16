@@ -1,6 +1,7 @@
 #include "resources/glme01addresses.h"
 #include "game/enemies/enemystrategyfactory.h"
 #include "game/enemies/enemynomovestrategy.h"
+#include "game/enemies/enemylabprofessorstrategy.h"
 #include "game/enemies/enemypathcondition.h"
 #include "game/enemies/enemygeneratordoorstrategy.h"
 #include "game/enemies/enemyitemstrategy.h"
@@ -93,6 +94,7 @@ std::unique_ptr<enemystrategy::Strategy> enemystrategy::Factory::construct(std::
     case glme01::itemFactory:
         if (!items) throw std::runtime_error("Original EnItem services are not bound.");
         return std::make_unique<Item>(*items, *this);
+    case glme01::labProfessorFactory: return std::make_unique<LabProfessor>();
     case glme01::noMoveFactory: return std::make_unique<NoMove>();
     case glme01::spearFactory: return std::make_unique<Spear>();
     case glme01::pathConditionFactory: return std::make_unique<PathCondition>(resources);

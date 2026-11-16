@@ -172,8 +172,9 @@ struct gameplay::ManagerServices::State : playerpresentation::Services {
     }
 
     void initialize() {
-        if (!dependencies.entry.initialized || dependencies.entry.map != mapMode) {
-            throw std::invalid_argument("First-area manager services require the selected map-two save entry.");
+        mapMode = dependencies.entry.map;
+        if (!dependencies.entry.initialized || (mapMode != 1 && mapMode != 2)) {
+            throw std::invalid_argument("Manager services require a supported selected save entry.");
         }
         if (!dependencies.playerCount || dependencies.playerCount > dependencies.records.size()) {
             throw std::invalid_argument("Original manager services require one or two players.");
@@ -776,8 +777,8 @@ void gameplay::ManagerServices::updateFurniture(unsigned frame) {
     if (!state->furniture) throw std::logic_error("Furniture update requires its room-owned pool.");
     auto* player = state->events->player(0);
     if (!player) throw std::logic_error("Furniture update requires player zero.");
-    if (state->dependencies.flags.value(1) || player->state.field1180 == 1)
-        throw std::runtime_error("Equipped furniture interaction requires its original vacuum and animated-trigger services.");
+    if (player->view.field89E == 1 && player->view.field8A0 == 1)
+        throw std::runtime_error("Active furniture suction requires its original vacuum and animated-trigger services.");
     roomfurniture::ResponseServices services;
     services.roomCleared = [this](unsigned room) { return roomCleared(room); };
     services.selectItem = [this, player](unsigned table) {

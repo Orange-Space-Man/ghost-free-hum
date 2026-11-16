@@ -113,3 +113,11 @@ void playerresources::AuxiliaryOwner::update(const AuxiliaryFrameServices& servi
     }
     field18 = actor->position;
 }
+
+void playerresources::AuxiliaryOwner::prepare(unsigned stage, const j3dmodel::Matrix& view,
+    const j3dmodel::TransformTables& tables, playermodels::SharedModels& shared) {
+    if (!field3C) return;
+    if (stage < 2 || ((stage == 2 || stage == 5) && stage == weapon->fieldC))
+        weapon->pipe->prepare(stage, weapon->fieldC == 5, view, tables, shared);
+    if (vacuum->state) vacuum->model->prepare(stage, view, tables, shared);
+}

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "game/events/entrancescript.h"
+#include "game/startup/scenetransition.h"
 #include "game/events/eventactorcommands.h"
 #include "game/events/eventpathanimation.h"
 #include "game/events/eventmessagetext.h"
@@ -19,8 +20,13 @@ namespace gameevent {
         bool fullscreen() const;
         bool active() const;
         bool cameraActive() const;
+        const scenetransition::Request& transition() const;
 
     private:
+        void wipeKind(std::int32_t kind) override;
+        void wipeTime(std::int32_t duration) override;
+        void warp(std::int32_t destination) override;
+        scenetransition::Request requestedTransition;
         bool flag(unsigned index) const override;
         void menu(bool enabled) override;
         void stopPlayer() override;

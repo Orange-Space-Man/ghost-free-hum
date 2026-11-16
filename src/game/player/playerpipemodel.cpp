@@ -1,4 +1,7 @@
 #include "game/player/playerpipemodel.h"
+#include "jlib/j3d/j3dmaterialcalculation.h"
+#include "jlib/j3d/j3dmaterialdisplaylist.h"
+#include "jlib/j3d/j3ddrawbuffer.h"
 
 #include <stdexcept>
 #include <cmath>
@@ -172,4 +175,59 @@ void playermodels::PipeModel::publishJoints(double scale, const std::array<float
         instance->jointMatrices[joint + i] = matrix;
     }
     for (unsigned i = joint + count; i < jointCount; ++i) instance->jointMatrices[i] = matrix;
+    for (unsigned i = joint; i < jointCount; ++i) instance->jointScaleFlags[i] = 0;
+    j3dmodel::calculateEnvelopes(*instance);
+}
+
+void playermodels::PipeModel::prepare(unsigned stage, bool alternate, const j3dmodel::Matrix& view,
+    const j3dmodel::TransformTables& tables, SharedModels& shared) {
+    if (stage != 0) {
+        j3dmodel::calculateViewMatrices(*instance, view);
+        return;
+    }
+    const auto& geometry = instance->model->geometry;
+    std::vector<int> pending;
+    if (geometry.hierarchy.root >= 0) pending.push_back(geometry.hierarchy.root);
+    j3dmodel::DrawBuffer buffer(1);
+    while (!pending.empty()) {
+        const auto jointIndex = pending.back();
+        pending.pop_back();
+        const auto& links = geometry.hierarchy.joints.at(jointIndex);
+        if (links.sibling >= 0) pending.push_back(links.sibling);
+        if (links.child >= 0) pending.push_back(links.child);
+        const auto& matrix = instance->jointMatrices[geometry.joints.at(jointIndex).index];
+        for (int index = links.material; index >= 0; index = geometry.hierarchy.materials.at(index).next) {
+            auto& packet = instance->materials.at(index);
+            auto& material = *packet.material;
+            j3dmodel::calculateMaterial(material, matrix, view, instance->field8 & 12, tables);
+            auto& target = shared.buffer((alternate ? 6 : 2) + ((material.mode & 3) ? 0 : 1));
+            if (target.sort != 0) throw std::runtime_error("Vacuum hose requires its original material-sort buffer.");
+            buffer.packets.swap(target.entries);
+            packet.materialIdentity = material.identity;
+            packet.identityFlags = material.identityFlags;
+            const bool admitted = buffer.entryMaterial(packet, geometry.textureOffset);
+            buffer.packets.swap(target.entries);
+            if (admitted) j3dmodel::updateMaterialPacket(packet);
+        }
+    }
+}
+
+void playermodels::PipeModel::lighting(unsigned mask, const std::array<std::uint8_t, 4>& ambient) {
+    for (auto& entry : instance->model->materials.entries) {
+        auto& material = *entry;
+        if (!(material.identityFlags & 0xc0000000) && material.original) {
+            material.identityFlags |= 0x80000000;
+            material.mode = material.original->mode;
+            material.fieldE = material.original->fieldE;
+            material.animation.reset();
+        }
+        for (auto& channel : material.color->channels) {
+            channel = static_cast<std::uint16_t>((channel & 0xfffd) | 2);
+            channel &= 0xffbe;
+            channel = static_cast<std::uint16_t>((channel & 0xffc3) | ((mask << 2) & 0x3c));
+            channel = static_cast<std::uint16_t>((channel & 0x87ff) | ((mask << 7) & 0x7800));
+            channel = static_cast<std::uint16_t>((channel & 0xfe7f) | 0x700);
+        }
+        material.color->ambient.fill(ambient);
+    }
 }

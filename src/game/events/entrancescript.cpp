@@ -24,6 +24,9 @@ void gameevent::EntranceServices::blendCamera() { unsupportedService(); }
 void gameevent::EntranceServices::speak(unsigned, unsigned) { unsupportedService(); }
 void gameevent::EntranceServices::messageColor(unsigned, int) { unsupportedService(); }
 void gameevent::EntranceServices::closeWindow(unsigned) { unsupportedService(); }
+void gameevent::EntranceServices::wipeKind(std::int32_t) { unsupportedService(); }
+void gameevent::EntranceServices::wipeTime(std::int32_t) { unsupportedService(); }
+void gameevent::EntranceServices::warp(std::int32_t) { unsupportedService(); }
 
 gameevent::EntranceScript::EntranceScript(std::string source) : source(std::move(source)) {}
 
@@ -136,6 +139,9 @@ bool gameevent::EntranceScript::update(EntranceServices& services) {
             services.effect(placement, resource);
         }
         else if (command == "BGM") services.music(number() & 255);
+        else if (command == "WIPEKIND") services.wipeKind(integer());
+        else if (command == "WIPETIME") services.wipeTime(integer());
+        else if (command == "WARP") services.warp(integer());
         else if (command == "WINDOW") messageWindow = static_cast<std::uint8_t>(number());
         else if (command == "COLOR") services.messageColor(messageWindow, integer());
         else if (command == "CLOSEWINDOW") services.closeWindow(number());

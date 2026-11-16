@@ -5,5 +5,5 @@
 
 namespace gameplaycamera {
     bool initialize(const std::vector<std::uint8_t>& executable, const gameplayspawn::Spawn& spawn,
-        s3denvironment::Camera& camera, std::string& error);
+        s3denvironment::Camera& camera, std::string& error, unsigned map = 2);
 }

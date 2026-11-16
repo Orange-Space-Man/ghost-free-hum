@@ -14,13 +14,13 @@ struct gameplay::ResourceOwner::State {
     explicit State(gameentry::State& entry) : entry(entry), motors(motorOutput) {}
 
     void initialize(const std::filesystem::path& path) {
-        if (!entry.initialized || entry.map != 2) throw std::invalid_argument("Gameplay resources require a selected map-two entry.");
+        if (!entry.initialized || (entry.map != 1 && entry.map != 2)) throw std::invalid_argument("Gameplay resources require a supported selected map entry.");
         std::string error;
         std::vector<std::uint8_t> compressed, commonBytes, mapBytes;
         if (!package.open(path, error) || !package.read("sys/main.dol", executable, error) ||
             !package.read("files/Game/game_usa.szp", compressed, error) ||
             !roomarchive::decompress(compressed, commonBytes, error) || !common.read(commonBytes, error) ||
-            !package.read("files/Map/map2.szp", compressed, error) ||
+            !package.read("files/Map/map" + std::to_string(entry.map) + ".szp", compressed, error) ||
             !roomarchive::decompress(compressed, mapBytes, error) || !map.read(mapBytes, error) ||
             !mission.read(mapBytes, error) || !types.read(executable, error) ||
             !creation.read(executable, error) || !strategies.read(executable, error) ||
@@ -32,7 +32,7 @@ struct gameplay::ResourceOwner::State {
         models->initializeEmbedded(common);
         pose = std::make_unique<actormodel::InitialPose>(executable);
         cameraProjection = std::make_unique<gameplaycamera::Projection>(executable);
-        cameraFollow = std::make_unique<gameplaycamera::Follow>(executable);
+        cameraFollow = std::make_unique<gameplaycamera::Follow>(executable, entry.map);
         rooms = std::make_unique<roomlocation::Rooms>(executable, entry.map);
         mirror = std::make_unique<roommirror::Owner>(executable, *rooms);
         collisions = std::make_unique<actorcollision::Catalog>(executable, modelCatalog);
@@ -41,6 +41,10 @@ struct gameplay::ResourceOwner::State {
         visibility.initialize(static_cast<unsigned>(rooms->entries().size()));
         roomFlags.resize(rooms->entries().size());
         for (unsigned i = 0; i < rooms->entries().size(); ++i) {
+            if (entry.map == 1) {
+                roomFlags[i] = 8;
+                continue;
+            }
             const auto number = rooms->entries()[i].id & 255;
             const auto offset = 0xa0 + number * 2;
             const unsigned saved = (unsigned(entry.inventory.at(offset)) << 8) | entry.inventory.at(offset + 1);
@@ -95,7 +99,7 @@ struct gameplay::ResourceOwner::State {
         spawn.roomId = player->room();
         cameraRoom = spawn.roomId;
         roomTransition.initialize(spawn.roomId);
-        if (!gameplaycamera::initialize(executable, spawn, camera, error)) throw std::runtime_error(error);
+        if (!gameplaycamera::initialize(executable, spawn, camera, error, entry.map)) throw std::runtime_error(error);
         auto& owner = *cameras.cameras[0];
         owner.position = camera.position;
         owner.target = camera.target;
@@ -113,6 +117,7 @@ struct gameplay::ResourceOwner::State {
             [this](const std::string& text) { return messageGraphics->measure(text); },
             [this](unsigned sound) { managers->playback()->playGlobal(sound); },
             [this](bool active) { managers->music().setCutsceneActive(active); }});
+        if (entry.map == 1) managers->music().requestLab(1);
         entrance = std::make_unique<gameevent::EntranceOwner>(package, types, entry, *rooms, *managers, owner, executable, *messages);
     }
 
@@ -282,3 +287,5 @@ std::vector<roomtraversal::Submission> gameplay::ResourceOwner::prepareVisibilit
     }), submissions.end());
     return submissions;
 }
+
+const scenetransition::Request& gameplay::ResourceOwner::transition() const { return state->entrance->transition(); }

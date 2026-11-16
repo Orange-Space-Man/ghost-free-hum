@@ -7,7 +7,7 @@
 namespace gameplaycamera {
     class Follow {
     public:
-        explicit Follow(const std::vector<std::uint8_t>& executable);
+        explicit Follow(const std::vector<std::uint8_t>& executable, unsigned map = 2);
         void update(CameraOwner& camera, const playeractor::View& player, unsigned room, unsigned playerIndex = 0);
         unsigned preset() const;
 

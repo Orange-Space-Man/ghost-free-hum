@@ -475,3 +475,7 @@ bool jaudio::Playback::finished() const { return voicesFinished() && !mixer.hasT
 std::uint64_t jaudio::Playback::notes() const { return noteCount; }
 std::uint64_t jaudio::Playback::ticks() const { return interpreter.ticks(); }
 unsigned jaudio::Playback::peakVoices() const { return voicePeak; }
+
+bool jaudio::Playback::loadLab(gameassets::Package& package, const Resources& resources, std::string& error) {
+    return loadMusic(package, resources, 0x8000000c, error);
+}

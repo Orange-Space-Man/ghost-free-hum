@@ -67,6 +67,7 @@ std::vector<particles::Billboard> particles::Billboards::prepare(EmitterPool& po
         if (!(emitter->flags & 8)) continue;
         if (!(pool.flags & 1)) {
             const auto room = rooms.resolve(emitter->position);
+            if (room == 0xffffffff && !emitter->nodes.count && !emitter->shortNodes.count) continue;
             const bool visible = (visibility.record(room, 0).flags & 3) == 1;
             if (visible) emitter->flags &= 0xffbf;
             else emitter->flags |= 0x40;

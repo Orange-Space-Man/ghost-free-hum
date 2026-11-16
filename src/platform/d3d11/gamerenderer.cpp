@@ -1,6 +1,7 @@
 #include "platform/d3d11/shadowtexturesampling.h"
 #include "platform/windows/debugoverlay.h"
 #include "platform/d3d11/gamerenderer.h"
+#include "platform/d3d11/transitionframecapture.h"
 #include "platform/d3d11/gameshadowrenderer.h"
 #include "game/models/s3dfog.h"
 
@@ -19,6 +20,8 @@ namespace {
     ComPtr<ID3D11DeviceContext> context;
     ComPtr<IDXGISwapChain> swapChain;
     ComPtr<ID3D11RenderTargetView> targetView;
+    ComPtr<ID3D11RenderTargetView> transitionTarget;
+    ComPtr<ID3D11ShaderResourceView> transitionImage;
     ComPtr<ID3D11VertexShader> vertexShader;
     ComPtr<ID3D11InputLayout> layout;
     ComPtr<ID3D11Buffer> constants;
@@ -355,6 +358,60 @@ bool gamerenderer::useScene(const std::string& name) {
     return true;
 }
 
+namespace {
+    void renderTransitionSurface(const std::function<void()>& render) {
+        if (!transitionTarget) {
+            D3D11_TEXTURE2D_DESC description{};
+            description.Width = 640;
+            description.Height = 480;
+            description.MipLevels = description.ArraySize = 1;
+            description.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+            description.SampleDesc.Count = 1;
+            description.BindFlags = D3D11_BIND_RENDER_TARGET | D3D11_BIND_SHADER_RESOURCE;
+            ComPtr<ID3D11Texture2D> texture;
+            check(device->CreateTexture2D(&description, nullptr, texture.GetAddressOf()), "Could not create transition surface");
+            check(device->CreateRenderTargetView(texture.Get(), nullptr, transitionTarget.GetAddressOf()), "Could not create transition target");
+            check(device->CreateShaderResourceView(texture.Get(), nullptr, transitionImage.GetAddressOf()), "Could not create transition image");
+        }
+        if (!render) return;
+        auto retainedTarget = targetView;
+        const int retainedWidth = width, retainedHeight = height;
+        targetView = transitionTarget;
+        width = 640;
+        height = 480;
+        try { render(); }
+        catch (...) {
+            targetView = retainedTarget;
+            width = retainedWidth;
+            height = retainedHeight;
+            throw;
+        }
+        context->OMSetRenderTargets(0, nullptr, nullptr);
+        targetView = retainedTarget;
+        width = retainedWidth;
+        height = retainedHeight;
+    }
+}
+
+void gamerenderer::captureTransition(scenetransition::FrameCapture& frame, const std::function<void()>& render) {
+    renderTransitionSurface(render);
+    frame.capture(context.Get(), transitionImage.Get());
+}
+
+void gamerenderer::drawTransition(scenetransition::FrameCapture& frame, const scenetransition::ParlorWipe& wipe,
+    const std::function<void()>& render, bool present) {
+    renderTransitionSurface(wipe.drawsCapturedFrame() || wipe.alpha() == 255 ? std::function<void()>{} : render);
+    frame.draw(context.Get(), transitionTarget.Get(), wipe);
+    startupscene::Picture picture;
+    picture.texture = interfaceTextures.size();
+    picture.width = 640;
+    picture.height = 480;
+    interfaceTextures.push_back(transitionImage);
+    try { drawInterface({picture}, present); }
+    catch (...) { interfaceTextures.pop_back(); throw; }
+    interfaceTextures.pop_back();
+}
+
 void gamerenderer::drawInterface(const std::vector<startupscene::Picture>& pictures, bool present) {
     context->OMSetDepthStencilState(nullptr, 0);
     if (!context || !targetView || !interfaceShader) return;
@@ -676,6 +733,8 @@ void gamerenderer::waitForFrame() {
 
 void gamerenderer::close() {
     debugoverlay::close();
+    transitionTarget.Reset();
+    transitionImage.Reset();
     if (context) context->ClearState();
     gameshadowrenderer::close();
     interfaceTextures.clear();

@@ -141,7 +141,8 @@ void gameplay::Scene::prepareModelGraphics(ID3D11Device* device) {
     particleRenderer.prepare(resources.managers().particles().pool());
     particleRenderer.prepare(resources.managers().particles().runningDust().material());
     for (auto kind : {playermodels::SharedModel::Coin, playermodels::SharedModel::Bill,
-        playermodels::SharedModel::Bill2, playermodels::SharedModel::Bill3}) {
+        playermodels::SharedModel::Bill2, playermodels::SharedModel::Bill3,
+        playermodels::SharedModel::Pipe, playermodels::SharedModel::Vacuum}) {
         const auto& model = resources.managers().players().models->model(kind);
         effectRenderers[model.get()].load(device, model);
     }
@@ -498,15 +499,18 @@ void gameplay::Scene::drawWorld(bool reflection, const s3denvironment::Camera& c
                     pass, std::min(object.opacity, static_cast<std::uint8_t>(marker)), object.room >> 24, fullBounds);
         }
     };
+    prepareAuxiliary();
     drawRooms(0);
     resources.managers().doors().submitOpaque(visibilityBuffer, false, submitDoor);
     drawFurniture(0);
     drawActors(0, camera, visibilityBuffer);
+    if (!reflection) drawAuxiliary(2);
     drawSheets(2);
     gamerenderer::bindSceneTarget(false, &drawViewport);
     particleRenderer.draw(gamerenderer::modelContext(), resources.managers().particles().prepareActorGlows(
         resources.managers().actors(), resources.visibility(), view, visibilityBuffer), view, projection);
     drawActors(1, camera, visibilityBuffer);
+    drawAuxiliary(reflection ? 1 : 3);
     drawFurniture(1);
     drawRooms(1);
     resources.managers().doors().submitTranslucent(visibilityBuffer, false, submitDoor);
@@ -518,6 +522,7 @@ void gameplay::Scene::drawWorld(bool reflection, const s3denvironment::Camera& c
     particleRenderer.draw(gamerenderer::modelContext(), resources.managers().particles().prepareGlows(
         resources.managers().glows(), view), view, projection);
     drawPlayerLight();
+    drawAuxiliary(5);
     particleRenderer.draw(gamerenderer::modelContext(), particleBillboards->prepare(resources.managers().particles().pool(),
         resources.rooms(), resources.visibility(), view), view, projection);
     particleRenderer.draw(gamerenderer::modelContext(), resources.managers().particles().runningDust().prepare(view), view, projection);
@@ -553,6 +558,47 @@ void gameplay::Scene::drawModelEffects() {
             effectRenderers.at(instance.model.get()).draw(gamerenderer::modelContext(), instance, packet,
                 effectMaterialState, projection, instance.field8 & 12, pass + 3);
         });
+    }
+}
+
+void gameplay::Scene::prepareAuxiliary() {
+    auto& managers = resources.managers();
+    auto& shared = *managers.players().models;
+    for (unsigned i = 2; i < 8; ++i) shared.buffer(i).clear();
+    auto& auxiliary = *managers.players().auxiliary;
+    if (!auxiliary.field3C) return;
+    const auto mask = effectLighting->prepare(equipmentMaterialState, view, managers.lights().lights(), trig);
+    const auto& player = *managers.playerEvents().player(0);
+    auxiliary.weapon->pipe->lighting(mask, {player.fieldsE9[0], player.fieldsE9[1], player.fieldsE9[2], player.fieldEC});
+    auxiliary.prepare(0, view, *modelTransforms, shared);
+}
+
+void gameplay::Scene::drawAuxiliary(unsigned stage) {
+    auto& managers = resources.managers();
+    auto& auxiliary = *managers.players().auxiliary;
+    if (!auxiliary.field3C) return;
+    auto& shared = *managers.players().models;
+    auxiliary.prepare(stage, view, *modelTransforms, shared);
+    gamerenderer::bindSceneTarget(false, &drawViewport);
+    const auto draw = [&](unsigned index, bool beam) {
+        auto& instance = beam ? *auxiliary.vacuum->model->instance : *auxiliary.weapon->pipe->instance;
+        auto& state = beam ? lightMaterialState : equipmentMaterialState;
+        const auto& buffer = shared.buffer(index);
+        for (unsigned i = 0; i < buffer.entries.size(); ++i) {
+            const auto bucket = buffer.draw ? buffer.entries.size() - 1 - i : i;
+            for (auto* packet = buffer.entries[bucket]; packet; packet = packet->next)
+                effectRenderers.at(instance.model.get()).draw(gamerenderer::modelContext(), instance, *packet,
+                    state, projection, instance.field8 & 12, (index & 1) ? 4 : 3);
+        }
+    };
+    if (stage == 1) {
+        for (unsigned index : {2u, 6u, 3u, 7u}) draw(index, false);
+    } else if (stage == 2 || stage == 3) {
+        draw(stage, false);
+        draw(stage + 2, true);
+    } else if (stage == 5) {
+        draw(6, false);
+        draw(7, false);
     }
 }
 
@@ -741,3 +787,5 @@ void gameplay::Scene::drawMoney() {
             }
 }
 
+
+const scenetransition::Request& gameplay::Scene::transition() const { return resources.transition(); }

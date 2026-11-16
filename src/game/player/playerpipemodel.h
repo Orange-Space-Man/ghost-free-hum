@@ -28,6 +28,9 @@ namespace playermodels {
         ~PipeModel() override;
         std::int32_t pulse(double speed, double amount);
         void updatePulses();
+        void prepare(unsigned stage, bool alternate, const j3dmodel::Matrix& view,
+            const j3dmodel::TransformTables& tables, SharedModels& shared);
+        void lighting(unsigned mask, const std::array<std::uint8_t, 4>& ambient);
         void publishJoints(double scale, const std::array<float, 3>& frameDirection);
         void updateMotion(const PipeParameters& parameters, const PathCollision& collision);
         std::array<PipeSection, 4> sections;

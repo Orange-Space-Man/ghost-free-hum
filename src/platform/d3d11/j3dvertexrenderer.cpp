@@ -94,7 +94,7 @@ modellighting::Inputs j3drenderer::prepareLighting(const j3dmodel::MaterialState
         if (i % 2 >= state.colorChannels) continue;
         const auto& channel = state.channels[i];
         if (channel.enabled > 1 || channel.diffuse > 2 || channel.attenuation > 2 || channel.lights > 255 ||
-            (channel.enabled && (channel.lights & ~loaded))) throw std::runtime_error("J3D lighting references invalid channels or unloaded lights.");
+            (channel.enabled && (channel.lights & ~loaded))) throw std::runtime_error("J3D lighting references invalid channels or unloaded lights: channel " + std::to_string(i) + ", mask " + std::to_string(channel.lights) + ", loaded " + std::to_string(loaded));
         result.channels[i].control = {channel.enabled, channel.ambientSource, channel.materialSource, channel.lights};
         result.channels[i].functions = {channel.attenuation == 0 ? 0 : channel.diffuse, channel.attenuation, 0, 0};
     }

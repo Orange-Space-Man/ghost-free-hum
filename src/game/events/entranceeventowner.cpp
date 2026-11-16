@@ -27,9 +27,12 @@ bool gameevent::EntranceOwner::eligible(unsigned event, unsigned elapsedSeconds)
         checkTime(condition, static_cast<std::int32_t>(elapsedSeconds), 0) != 1) return false;
     const auto* player = managers.playerEvents().player(0);
     if (!player || !player->view.life) return false;
-    if (definition->trigger != 5)
-        throw std::runtime_error("Unsupported entrance event activation conditions.");
-    if (((rooms.resolve(definition->position, 0) ^ player->room()) & 0xff0000) != 0) return false;
+    const auto eventRoom = rooms.resolve(definition->position, 0xffffffff);
+    if (definition->trigger == 4) {
+        if (eventRoom != player->room() || managers.doors().activeDoor() != -1) return false;
+    } else if (definition->trigger == 5) {
+        if (((eventRoom ^ player->room()) & 0xff0000) != 0) return false;
+    } else throw std::runtime_error("Unsupported entrance event activation conditions.");
     if (condition.characterType != 0xffffffff) {
         bool found = false;
         for (const auto& slot : managers.enemies().slots())
@@ -53,7 +56,7 @@ void gameevent::EntranceOwner::update(unsigned elapsedSeconds, std::uint32_t fra
         currentEvent = 0;
         for (const auto& condition : managers.missionEvents().conditions()) {
             const auto event = static_cast<unsigned>(condition.eventNumber);
-            if ((event == entranceEvent || event == firstKeyEvent) && eligible(event, elapsedSeconds)) {
+            if ((event == entranceEvent || event == firstKeyEvent || (entry.map == 2 && event == 1)) && eligible(event, elapsedSeconds)) {
                 currentEvent = event;
                 break;
             }
@@ -242,3 +245,12 @@ void gameevent::EntranceOwner::speak(unsigned window, unsigned line) {
 void gameevent::EntranceOwner::messageColor(unsigned window, int color) { messages.color(window, color); }
 void gameevent::EntranceOwner::closeWindow(unsigned window) { messages.close(window); }
 void gameevent::EntranceOwner::finish() { managers.playerEvents().player(0)->flags &= ~0x10u; }
+
+const scenetransition::Request& gameevent::EntranceOwner::transition() const { return requestedTransition; }
+void gameevent::EntranceOwner::wipeKind(std::int32_t kind) { requestedTransition.kind = kind; }
+void gameevent::EntranceOwner::wipeTime(std::int32_t duration) { requestedTransition.duration = duration; }
+void gameevent::EntranceOwner::warp(std::int32_t destination) {
+    if (destination != 1 || requestedTransition.kind != 1 || requestedTransition.duration != 126)
+        throw std::runtime_error("Scene transition requires its original destination and wipe lifecycle.");
+    requestedTransition.destination = destination;
+}

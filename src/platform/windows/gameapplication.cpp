@@ -174,21 +174,20 @@ void gameapplication::Application::advance(bool audioFinished) {
         loadDebugCheckpoint(checkpoint);
         return;
     }
-    const bool interfaceTick = !gameplayActive || gameplayPhase != 0 || gameplayScene->gameplaySuspended();
+    const bool interfaceTick = transitionPhase != TransitionPhase::Idle || !gameplayActive || gameplayPhase != 0 || gameplayScene->gameplaySuspended();
     advanceScene(audioFinished);
     if (audioEnabled && interfaceTick) startupaudio::updateInterface([&] {
-        if (gameplayActive) gameplayScene->updateAudio();
+        if (gameplayActive && gameplayScene) gameplayScene->updateAudio();
     });
 }
 
 void gameapplication::Application::advanceScene(bool audioFinished) {
     if (gameplayActive) {
-        gameplayPhase ^= 1;
-        if (!gameplayPhase || gameplayScene->gameplaySuspended()) {
-            const auto input = playerinput::pollWindowPad(applicationWindow, true);
-            gameplayScene->update(input.status, input.port, startupaudio::interfaceFrame());
+        if (transitionPhase != TransitionPhase::Idle) advanceTransition();
+        else {
+            advanceGameplay();
+            if (gameplayScene->transition().destination >= 0) beginTransition();
         }
-        gameplayScene->updatePresentation(!gameplayPhase);
         return;
     }
     if (openingActive) { advanceOpening(); return; }
@@ -212,7 +211,66 @@ void gameapplication::Application::advanceScene(bool audioFinished) {
     OutputDebugStringA(text.c_str());
 }
 
+void gameapplication::Application::advanceGameplay() {
+    gameplayPhase ^= 1;
+    if (!gameplayPhase || gameplayScene->gameplaySuspended()) {
+        const auto input = playerinput::pollWindowPad(applicationWindow, true);
+        gameplayScene->update(input.status, input.port, startupaudio::interfaceFrame());
+    }
+    gameplayScene->updatePresentation(!gameplayPhase);
+}
+
+void gameapplication::Application::beginTransition() {
+    const auto request = gameplayScene->transition();
+    if (request.destination != 1 || request.kind != 1 || request.duration != 126)
+        throw std::runtime_error("Unsupported gameplay scene transition.");
+    transitionDestination = request.destination;
+    transitionFrame.load(gamerenderer::modelDevice());
+    gamerenderer::captureTransition(transitionFrame, [this] { gameplayScene->draw(false); });
+    transitionWipe.beginOutgoing();
+    transitionPhase = TransitionPhase::Outgoing;
+}
+
+void gameapplication::Application::advanceTransition() {
+    if (transitionPhase == TransitionPhase::Outgoing) {
+        if (!transitionWipe.update(1)) return;
+        startupaudio::bindPositionalPlayback({});
+        gameplayScene.reset();
+        gameEntry.map = transitionDestination;
+        Microsoft::WRL::ComPtr<ID3D11Device> device = gamerenderer::modelDevice();
+        gameplayPreparation = std::async(std::launch::async, [this, path = currentAssets, device] {
+            auto prepared = std::make_unique<gameplay::Scene>(path, gameEntry);
+            prepared->prepareModelGraphics(device.Get());
+            return prepared;
+        });
+        transitionPhase = TransitionPhase::Loading;
+        return;
+    }
+    if (transitionPhase == TransitionPhase::Loading) {
+        if (gameplayPreparation.wait_for(std::chrono::seconds(0)) != std::future_status::ready) return;
+        gameplayScene = gameplayPreparation.get();
+        gameplayScene->prepareGraphics();
+        if (audioEnabled) startupaudio::bindPositionalPlayback(gameplayScene->playback());
+        gameplayPhase = 0;
+        transitionWipe.beginIncoming();
+        transitionPhase = TransitionPhase::Incoming;
+        resetHostClock = true;
+        return;
+    }
+    advanceGameplay();
+    if (transitionWipe.update(1)) {
+        transitionPhase = TransitionPhase::Idle;
+        transitionDestination = -1;
+    }
+}
+
 void gameapplication::Application::draw(bool present) {
+    if (transitionPhase != TransitionPhase::Idle) {
+        std::function<void()> render;
+        if (transitionPhase == TransitionPhase::Incoming) render = [this] { gameplayScene->draw(false); };
+        gamerenderer::drawTransition(transitionFrame, transitionWipe, render, present);
+        return;
+    }
     if (debugoverlay::isVisible()) {
         std::string information = gameplayActive ? gameplayScene->debugInfo() : openingActive ? "Scene: Opening | Stream frame: " +
             std::to_string(openingUpdates) : menuActive ? "Scene: File selection / options" : "Scene: Boot / title";
@@ -234,6 +292,10 @@ void gameapplication::Application::draw(bool present) {
 
 void gameapplication::Application::close() {
     gameplayPreparation = {};
+    transitionPhase = TransitionPhase::Idle;
+    transitionWipe = {};
+    transitionFrame = {};
+    transitionDestination = -1;
     startupaudio::bindPositionalPlayback({});
     gameplayScene.reset();
     startupaudio::close();
@@ -243,6 +305,10 @@ void gameapplication::Application::close() {
 void gameapplication::Application::restart() {
     debugCheckpoint = 0;
     gameplayPreparation = {};
+    transitionPhase = TransitionPhase::Idle;
+    transitionWipe = {};
+    transitionFrame = {};
+    transitionDestination = -1;
     startupaudio::bindPositionalPlayback({});
     gameplayScene.reset();
     gameplayActive = false;

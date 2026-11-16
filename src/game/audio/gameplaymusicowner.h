@@ -14,6 +14,7 @@ namespace gameplaymusic {
         void setRoom(unsigned room, std::int16_t soundPolygon);
         void notifyRoom(unsigned packedRoom, unsigned mapMode);
         void start();
+        bool requestLab(std::uint32_t audioFrame);
         bool requestDeath(std::uint32_t audioFrame);
         bool requestEntrance(std::uint32_t audioFrame);
         bool requestFirstKey(std::uint32_t audioFrame);

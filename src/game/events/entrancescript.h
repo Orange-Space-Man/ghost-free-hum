@@ -49,6 +49,9 @@ namespace gameevent {
         virtual void speak(unsigned window, unsigned line);
         virtual void messageColor(unsigned window, int color);
         virtual void closeWindow(unsigned window);
+        virtual void wipeKind(std::int32_t kind);
+        virtual void wipeTime(std::int32_t ticks);
+        virtual void warp(std::int32_t destination);
     };
 
     class EntranceScript {

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "game/scene/gameplaymanagerservices.h"
+#include "game/startup/scenetransition.h"
 #include "game/scene/gameplaycamera.h"
 #include "game/scene/gameplaycameraprojection.h"
 #include "game/world/roomresidency.h"
@@ -23,6 +24,7 @@ namespace gameplay {
         void updateCamera();
         void updateEvents(unsigned elapsedSeconds, std::uint32_t audioFrame);
         bool entranceActive() const;
+        const scenetransition::Request& transition() const;
         bool eventCameraActive() const;
         bool menuEnabled() const;
         bool fullscreen() const;

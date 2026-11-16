@@ -193,6 +193,7 @@ add_library(Game STATIC
     src/game/enemies/enemyitemphysics.cpp
     src/game/enemies/enemyitemstrategy.cpp
     src/game/enemies/enemyjewelstrategy.cpp
+    src/game/enemies/enemylabprofessorstrategy.cpp
     src/game/enemies/enemykeystrategy.cpp
     src/game/enemies/enemymanager.cpp
     src/game/enemies/enemymanagerruntime.cpp

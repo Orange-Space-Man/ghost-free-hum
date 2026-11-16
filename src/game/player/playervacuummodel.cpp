@@ -207,6 +207,8 @@ void playermodels::VacuumModel::publishJoints(const std::array<float, 3>& frameD
     }
     for (unsigned i = firstJoint + count; i < jointCount; ++i) instance->jointMatrices[i] = matrix;
     trailingMatrix = matrix;
+    for (unsigned i = firstJoint; i < jointCount; ++i) instance->jointScaleFlags[i] = 0;
+    j3dmodel::calculateEnvelopes(*instance);
 }
 
 namespace {

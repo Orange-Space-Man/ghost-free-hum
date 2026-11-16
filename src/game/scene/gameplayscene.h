@@ -24,6 +24,7 @@ namespace gameplay {
         std::shared_ptr<jaudio::PositionalPlayback> playback();
         void draw(bool present);
         unsigned updates() const;
+        const scenetransition::Request& transition() const;
         const playeractor::View& playerView(unsigned index = 0);
         bool presentKey(bool missingKey, bool front, unsigned doorType);
         bool keyPresentationActive() const;
@@ -74,6 +75,9 @@ namespace gameplay {
         void drawSheets(unsigned pass);
         float lightProjectionDepth = 0;
         void drawPlayerLight();
+        void prepareAuxiliary();
+        void drawAuxiliary(unsigned stage);
+        j3dmodel::MaterialState equipmentMaterialState;
         void drawModelEffects();
         void drawMoney();
         void updateOpacity();

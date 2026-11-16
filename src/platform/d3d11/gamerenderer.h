@@ -6,6 +6,9 @@
 #include <windows.h>
 #include <filesystem>
 #include <d3d11.h>
+#include <functional>
+
+namespace scenetransition { class FrameCapture; class ParlorWipe; }
 
 namespace gamerenderer {
     void open(HWND window, const std::vector<roommaterials::Texture>& textures);
@@ -15,6 +18,9 @@ namespace gamerenderer {
     void resize(int width, int height);
     void drawInterface(const std::vector<startupscene::Picture>& pictures, bool present);
     void capture(const std::filesystem::path& path);
+    void captureTransition(scenetransition::FrameCapture& frame, const std::function<void()>& render);
+    void drawTransition(scenetransition::FrameCapture& frame, const scenetransition::ParlorWipe& wipe,
+        const std::function<void()>& render, bool present);
     void waitForFrame();
     ID3D11Device* modelDevice();
     ID3D11DeviceContext* modelContext();
