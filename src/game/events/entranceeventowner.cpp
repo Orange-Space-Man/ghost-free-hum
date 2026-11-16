@@ -17,6 +17,15 @@ gameevent::EntranceOwner::EntranceOwner(gameassets::Package& package, const enem
     package(package), types(types), entry(entry), rooms(rooms), managers(managers), cameraOwner(camera),
     executable(executable), messages(messages), follow(follow) {}
 
+void gameevent::EntranceOwner::bindPlayerDemo(std::function<void(std::string_view)> request) {
+    requestDemo = std::move(request);
+}
+
+void gameevent::EntranceOwner::playerDemo(std::string_view name) {
+    if (!requestDemo) throw std::runtime_error("Player demo requires its gameplay presentation owner.");
+    requestDemo(name);
+}
+
 void gameevent::EntranceOwner::bindRoomLight(std::function<void(bool)> change) {
     changeRoomLight = std::move(change);
 }

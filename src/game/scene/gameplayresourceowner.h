@@ -23,6 +23,7 @@ namespace gameplay {
         gameplaycamera::DrawState publishCamera();
         void updateCamera();
         void setCurrentRoomLight(bool enabled);
+        void bindPlayerDemo(std::function<void(std::string_view)> request);
         void bindControllerInstructions(std::function<void()> request);
         void updateEvents(unsigned elapsedSeconds, std::uint32_t audioFrame);
         bool entranceActive() const;

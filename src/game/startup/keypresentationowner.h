@@ -22,20 +22,24 @@ namespace keypresentation {
         Owner(const Owner&) = delete;
         Owner& operator=(const Owner&) = delete;
         bool request(bool missingKey, bool front, unsigned doorType);
+        bool requestNamed(std::string_view name);
         void advanceDraw(unsigned pressed);
+        void drawOverlay(const std::string& target);
         void draw(bool present);
         void release();
         const State& state() const;
 
     private:
         Services services();
+        bool requestCutscene(unsigned id);
+        const std::vector<std::uint8_t>& executable;
         std::filesystem::path package;
         SceneControl& control;
         gameflags::State& flags;
         gameplaymusic::Owner& music;
         jaudio::PositionalPlayback& playback;
         State retained;
-        std::array<unsigned, 56> modes{};
+        std::array<unsigned, 78> modes{};
         std::unique_ptr<openingscene::Scene> movie;
         bool flag56 = false;
     };

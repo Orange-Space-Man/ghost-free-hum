@@ -31,6 +31,6 @@ namespace gamerenderer {
     void drawPreview(std::size_t index, const s3dmodel::Model& model, const std::vector<s3dmodel::Batch>& batches,
         const s3denvironment::Lighting& lighting, const s3denvironment::Camera* camera = nullptr, bool clear = true, unsigned passes = 3, bool receiver = false,
         const std::vector<float>& trigonometry = {}, const s3denvironment::Fog* fog = nullptr,
-        const D3D11_VIEWPORT* viewport = nullptr, bool translucentDepthWrite = false);
+        const D3D11_VIEWPORT* viewport = nullptr, bool translucentDepthWrite = false, const std::string* overlayTarget = nullptr);
     void close();
 }

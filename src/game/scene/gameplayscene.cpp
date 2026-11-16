@@ -45,6 +45,7 @@ namespace {
 gameplay::Scene::Scene(const std::filesystem::path& package, gameentry::State& entry) : resources(package, entry), packagePath(package),
     keyPresentation(package, resources.executable(), sceneControl, resources.managers().flags(), resources.managers().music(),
         *resources.managers().playback()) {
+    resources.bindPlayerDemo([this](std::string_view name) { requestPlayerDemo(name); });
     resources.bindControllerInstructions([this] { requestControllerInstructions(); });
     std::string error;
     if (!trig.read(resources.executable(), error) || !poseTables.read(resources.executable(), error)) throw std::runtime_error(error);
@@ -329,6 +330,8 @@ bool gameplay::Scene::presentKey(bool missingKey, bool front, unsigned doorType)
     return keyPresentation.request(missingKey, front, doorType);
 }
 
+bool gameplay::Scene::requestPlayerDemo(std::string_view name) { return keyPresentation.requestNamed(name); }
+
 bool gameplay::Scene::keyPresentationActive() const { return keyPresentation.state().owned; }
 bool gameplay::Scene::gameplaySuspended() const { return !sceneControl.gameplayEnabled || instructions.active(); }
 
@@ -397,8 +400,10 @@ void gameplay::Scene::draw(bool present) {
     }
     const bool gameplayDrawn = sceneControl.gameplayEnabled;
     if (gameplayDrawn) drawGameplay(false);
-    if (keyPresentation.state().owned && keyPresentation.state().updated) keyPresentation.draw(present);
+    const bool movieReady = keyPresentation.state().owned && keyPresentation.state().updated;
+    if (movieReady && keyPresentation.state().mode != 1) keyPresentation.draw(present);
     else {
+        if (movieReady) keyPresentation.drawOverlay("gameplay");
         startupscene::Picture picture;
         if (!gameplayDrawn && !gamerenderer::useScene("gameplay"))
             throw std::runtime_error("Retained gameplay graphics ownership is unavailable.");

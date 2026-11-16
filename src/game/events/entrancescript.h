@@ -57,6 +57,7 @@ namespace gameevent {
         virtual bool acknowledgeMessage();
         virtual void controllerInstructions();
         virtual void playerLight(bool enabled);
+        virtual void playerDemo(std::string_view name);
         virtual void cameraTarget(std::string_view actor, std::int32_t height);
     };
 

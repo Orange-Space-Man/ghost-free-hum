@@ -174,7 +174,16 @@ void openingscene::Scene::update(bool flag55) {
     stepped = true;
 }
 
-void openingscene::Scene::draw(bool present) {
+void openingscene::Scene::draw(bool present) { drawModels(present, nullptr); }
+
+void openingscene::Scene::drawOverlay(const std::string& target) {
+    if (resources.mode != 1) throw std::runtime_error("Overlay drawing requires a mode-one demo.");
+    if (timeline.flags & 16) return;
+    drawModels(false, &target);
+    if (!gamerenderer::useScene(target)) throw std::runtime_error("Demo overlay lost its gameplay target.");
+}
+
+void openingscene::Scene::drawModels(bool present, const std::string* overlayTarget) {
     if (graphicsReady && !gamerenderer::useScene(graphicsKey(loadedSegment))) graphicsReady = false;
     if (!graphicsReady) {
         if (!gamerenderer::useScene(graphicsKey(loadedSegment))) {
@@ -207,18 +216,21 @@ void openingscene::Scene::draw(bool present) {
         for (unsigned effect = 0; effect < state.effects.size(); ++effect) if (state.active[effect])
             state.effects[effect].apply(state.effects[effect].advance(state.effectDrawFrames[effect], 0), models[i]);
     }
-    gameshadowrenderer::begin(shadow.sample(sceneFrame), view.aspect);
-    for (unsigned i = 0; i < models.size(); ++i)
-        if ((animations[i].flags & 3) == 3 && !(timeline.flags & 16)) gameshadowrenderer::draw(shadowBatches[i]);
-    gameshadowrenderer::finish();
-    bool clear = true;
+    if (!overlayTarget) {
+        gameshadowrenderer::begin(shadow.sample(sceneFrame), view.aspect);
+        for (unsigned i = 0; i < models.size(); ++i)
+            if ((animations[i].flags & 3) == 3 && !(timeline.flags & 16)) gameshadowrenderer::draw(shadowBatches[i]);
+        gameshadowrenderer::finish();
+    }
+    bool clear = !overlayTarget;
     const std::vector<s3dmodel::Batch> empty;
     for (unsigned pass = 0; pass < 2; ++pass) for (unsigned i = 0; i < models.size(); ++i) {
         const bool visible = (animations[i].flags & 1) && !(timeline.flags & 16);
-        gamerenderer::drawPreview(i, models[i], visible ? batches[i] : empty, lighting, &view, clear, 1U << pass, (animations[i].flags & 4) != 0, trigonometry, &fog);
+        gamerenderer::drawPreview(i, models[i], visible ? batches[i] : empty, lighting, &view, clear, 1U << pass, !overlayTarget && (animations[i].flags & 4) != 0, trigonometry, &fog, nullptr, false, overlayTarget);
         clear = false;
     }
     for (unsigned i = 0; i < models.size(); ++i) models[i].materials = std::move(materials[i]);
+    if (overlayTarget) return;
     startupscene::Picture picture;
     picture.texture = texture;
     picture.width = 640;

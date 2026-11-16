@@ -33,6 +33,7 @@ namespace gameplay {
         const playeractor::View& playerView(unsigned index = 0);
         bool presentKey(bool missingKey, bool front, unsigned doorType);
         bool keyPresentationActive() const;
+        bool requestPlayerDemo(std::string_view name);
         bool gameplaySuspended() const;
 
     private:

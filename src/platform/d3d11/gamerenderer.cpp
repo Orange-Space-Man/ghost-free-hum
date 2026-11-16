@@ -32,7 +32,7 @@ namespace {
     ComPtr<ID3D11PixelShader> opaqueShader;
     ComPtr<ID3D11Buffer> interfaceVertices;
     ComPtr<ID3D11Buffer> interfaceColors;
-    ComPtr<ID3D11BlendState> interfaceBlend;
+    ComPtr<ID3D11BlendState> interfaceBlend, overlayBlend;
     ComPtr<ID3D11SamplerState> interfaceSampler;
     std::vector<ComPtr<ID3D11ShaderResourceView>> interfaceTextures;
     struct Preview {
@@ -52,7 +52,7 @@ namespace {
         std::size_t capacity = 0, textureStart = 0;
     };
     std::map<std::string, SceneResources> sceneResources;
-    ComPtr<ID3D11DepthStencilState> modelDepth[2];
+    ComPtr<ID3D11DepthStencilState> modelDepth[4];
     ComPtr<ID3D11SamplerState> modelSamplers[9];
     ComPtr<ID3D11RasterizerState> modelRasterizers[3];
     int width = 1;
@@ -311,6 +311,8 @@ float4 pixelEarly(float4 position : SV_POSITION, float4 color : COLOR0, float2 c
         target.BlendOpAlpha = D3D11_BLEND_OP_ADD;
         target.RenderTargetWriteMask = D3D11_COLOR_WRITE_ENABLE_ALL;
         check(device->CreateBlendState(&blend, &interfaceBlend), "Could not create interface blending");
+        target.RenderTargetWriteMask = D3D11_COLOR_WRITE_ENABLE_RED | D3D11_COLOR_WRITE_ENABLE_GREEN | D3D11_COLOR_WRITE_ENABLE_BLUE;
+        check(device->CreateBlendState(&blend, &overlayBlend), "Could not create overlay blending");
         D3D11_SAMPLER_DESC sampler{};
         sampler.Filter = D3D11_FILTER_MIN_MAG_MIP_LINEAR;
         sampler.AddressU = sampler.AddressV = sampler.AddressW = D3D11_TEXTURE_ADDRESS_CLAMP;
@@ -529,11 +531,11 @@ std::vector<std::size_t> gamerenderer::loadPreviews(const std::vector<s3dmodel::
     buffer.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
     check(device->CreateBuffer(&buffer, nullptr, &modelVertices), "Could not create S3D vertex buffer");
     modelVertexCapacity = capacity;
-    for (unsigned index = 0; index < 2; ++index) {
+    for (unsigned index = 0; index < 4; ++index) {
         D3D11_DEPTH_STENCIL_DESC depth{};
         depth.DepthEnable = TRUE;
-        depth.DepthWriteMask = index == 0 ? D3D11_DEPTH_WRITE_MASK_ALL : D3D11_DEPTH_WRITE_MASK_ZERO;
-        depth.DepthFunc = D3D11_COMPARISON_LESS_EQUAL;
+        depth.DepthWriteMask = (index & 1) == 0 ? D3D11_DEPTH_WRITE_MASK_ALL : D3D11_DEPTH_WRITE_MASK_ZERO;
+        depth.DepthFunc = index < 2 ? D3D11_COMPARISON_LESS_EQUAL : D3D11_COMPARISON_LESS;
         check(device->CreateDepthStencilState(&depth, &modelDepth[index]), "Could not create S3D depth state");
     }
     const D3D11_TEXTURE_ADDRESS_MODE modes[]{D3D11_TEXTURE_ADDRESS_CLAMP, D3D11_TEXTURE_ADDRESS_WRAP, D3D11_TEXTURE_ADDRESS_MIRROR};
@@ -560,9 +562,9 @@ std::vector<std::size_t> gamerenderer::loadPreviews(const std::vector<s3dmodel::
 
 void gamerenderer::drawPreview(std::size_t index, const s3dmodel::Model& model, const std::vector<s3dmodel::Batch>& batches,
     const s3denvironment::Lighting& lighting, const s3denvironment::Camera* sceneCamera, bool clearTarget, unsigned passes, bool receiver,
-    const std::vector<float>& trigonometry, const s3denvironment::Fog* fog, const D3D11_VIEWPORT* sceneViewport, bool translucentDepthWrite) {
+    const std::vector<float>& trigonometry, const s3denvironment::Fog* fog, const D3D11_VIEWPORT* sceneViewport, bool translucentDepthWrite, const std::string* overlayTarget) {
     auto& preview = previews.at(index);
-    auto& surface = sceneCamera ? previews.at(0) : preview;
+    auto& surface = overlayTarget ? sceneResources.at(*overlayTarget).previews.at(0) : (sceneCamera ? previews.at(0) : preview);
     ID3D11ShaderResourceView* empty = nullptr;
     context->PSSetShaderResources(0, 1, &empty);
     context->OMSetRenderTargets(1, surface.target.GetAddressOf(), surface.depth.Get());
@@ -674,7 +676,7 @@ void gamerenderer::drawPreview(std::size_t index, const s3dmodel::Model& model, 
         context->Unmap(modelVertices.Get(), 0);
         const std::array<std::array<float, 4>, 3> colors{{{0,0,0,0}, {1,1,1,1}, {1, 1.0f / 255.0f,0,0}}};
         context->UpdateSubresource(interfaceColors.Get(), 0, nullptr, colors.data(), 0, 0);
-        context->OMSetBlendState(interfaceBlend.Get(), nullptr, 0xffffffff);
+        context->OMSetBlendState(overlayTarget ? overlayBlend.Get() : interfaceBlend.Get(), nullptr, 0xffffffff);
         for (const auto& draw : draws) {
             const auto& batch = *draw.batch;
             const auto& material = model.materials.at(batch.material);
@@ -687,7 +689,7 @@ void gamerenderer::drawPreview(std::size_t index, const s3dmodel::Model& model, 
                 stageColors[2][2] = 1;
             }
             context->UpdateSubresource(interfaceColors.Get(), 0, nullptr, stageColors.data(), 0, 0);
-            context->OMSetDepthStencilState(modelDepth[translucentDepthWrite ? 0 : draw.pass].Get(), 0);
+            context->OMSetDepthStencilState(modelDepth[(overlayTarget ? 2 : 0) + (translucentDepthWrite ? 0 : draw.pass)].Get(), 0);
             context->PSSetShader(s3dmodel::renderMode(material) == 0 ? opaqueShader.Get() : interfaceShader.Get(), nullptr, 0);
             gameshadowrenderer::bind(receiver, material.color[3]);
             context->RSSetState(modelRasterizers[batch.cull].Get());
@@ -751,6 +753,7 @@ void gamerenderer::close() {
     interfaceVertices.Reset();
     interfaceColors.Reset();
     interfaceBlend.Reset();
+    overlayBlend.Reset();
     interfaceSampler.Reset();
     solidState.Reset();
     constants.Reset();

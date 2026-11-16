@@ -205,6 +205,10 @@ void gameplay::ResourceOwner::setCurrentRoomLight(bool enabled) {
     state->managers->setRoomLight(state->cameraRoom >> 24, enabled);
 }
 
+void gameplay::ResourceOwner::bindPlayerDemo(std::function<void(std::string_view)> request) {
+    state->entrance->bindPlayerDemo(std::move(request));
+}
+
 void gameplay::ResourceOwner::bindControllerInstructions(std::function<void()> request) {
     state->entrance->bindControllerInstructions(std::move(request));
 }

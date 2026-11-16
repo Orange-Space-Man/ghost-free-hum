@@ -19,6 +19,8 @@ namespace gameevent {
             gameplaycamera::CameraOwner& camera, const std::vector<std::uint8_t>& executable, MessageWindows& messages, gameplaycamera::Follow& follow);
         void bindRoomLight(std::function<void(bool)> change);
         void bindControllerInstructions(std::function<void()> request);
+        void bindPlayerDemo(std::function<void(std::string_view)> request);
+        void playerDemo(std::string_view name) override;
         void update(unsigned elapsedSeconds, std::uint32_t audioFrame);
         bool updateCamera();
         bool menuEnabled() const;
@@ -83,6 +85,7 @@ namespace gameevent {
         const std::vector<std::uint8_t>& executable;
         MessageWindows& messages;
         gameplaycamera::Follow& follow;
+        std::function<void(std::string_view)> requestDemo;
         bool targetCameraActive = false;
         std::array<float, 3> cameraSubject{};
         std::unique_ptr<MessageText> messageText;

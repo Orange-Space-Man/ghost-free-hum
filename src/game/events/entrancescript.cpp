@@ -31,6 +31,7 @@ void gameevent::EntranceServices::wipeTime(std::int32_t) { unsupportedService();
 void gameevent::EntranceServices::warp(std::int32_t) { unsupportedService(); }
 bool gameevent::EntranceServices::acknowledgeMessage() { unsupportedService(); return false; }
 void gameevent::EntranceServices::playerLight(bool) { unsupportedService(); }
+void gameevent::EntranceServices::playerDemo(std::string_view) { unsupportedService(); }
 void gameevent::EntranceServices::controllerInstructions() { unsupportedService(); }
 void gameevent::EntranceServices::cameraTarget(std::string_view, std::int32_t) { unsupportedService(); }
 
@@ -166,6 +167,7 @@ bool gameevent::EntranceScript::update(EntranceServices& services) {
             services.effect(placement, resource);
         }
         else if (command == "PLIGHT") services.playerLight(integer() != 0);
+        else if (command == "PDEMO") services.playerDemo(token('"', '"'));
         else if (command == "CONTEXP") services.controllerInstructions();
         else if (command == "BGM") services.music(number() & 255);
         else if (command == "WIPEKIND") services.wipeKind(integer());
