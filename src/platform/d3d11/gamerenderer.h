@@ -14,6 +14,7 @@ namespace gamerenderer {
     void open(HWND window, const std::vector<roommaterials::Texture>& textures);
     void setInterfaceTextures(const std::vector<roommaterials::Texture>& textures);
     void cacheScene(const std::string& name);
+    void releaseScene(const std::string& name);
     bool useScene(const std::string& name);
     void resize(int width, int height);
     void drawInterface(const std::vector<startupscene::Picture>& pictures, bool present);

@@ -345,6 +345,8 @@ void gamerenderer::cacheScene(const std::string& name) {
     sceneResources[name] = {interfaceTextures, previews, modelVertices, modelVertexCapacity, previewTextureStart};
 }
 
+void gamerenderer::releaseScene(const std::string& name) { sceneResources.erase(name); }
+
 bool gamerenderer::useScene(const std::string& name) {
     const auto found = sceneResources.find(name);
     if (found == sceneResources.end()) return false;

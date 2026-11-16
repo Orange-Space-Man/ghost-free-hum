@@ -1,5 +1,7 @@
 #pragma once
 
+#include <functional>
+
 #include "game/events/entrancescript.h"
 #include "game/scene/gameplaycamerafollow.h"
 #include "game/startup/scenetransition.h"
@@ -15,6 +17,7 @@ namespace gameevent {
         EntranceOwner(gameassets::Package& package, const enemytypes::Catalog& types,
             gameentry::State& entry, const roomlocation::Rooms& rooms, gameplay::ManagerServices& managers,
             gameplaycamera::CameraOwner& camera, const std::vector<std::uint8_t>& executable, MessageWindows& messages, gameplaycamera::Follow& follow);
+        void bindControllerInstructions(std::function<void()> request);
         void update(unsigned elapsedSeconds, std::uint32_t audioFrame);
         bool updateCamera();
         bool menuEnabled() const;
@@ -24,6 +27,8 @@ namespace gameevent {
         const scenetransition::Request& transition() const;
 
     private:
+        std::function<void()> requestInstructions;
+        void controllerInstructions() override;
         void wipeKind(std::int32_t kind) override;
         void wipeTime(std::int32_t duration) override;
         void warp(std::int32_t destination) override;

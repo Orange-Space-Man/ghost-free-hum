@@ -49,6 +49,7 @@ void gameapplication::Application::enterOpening(unsigned destination, unsigned c
     openingFade.reset();
     boundaryReported = false;
     if (destination == 2) {
+        gameplaySaves = &saves;
         gameplayPreparation = {};
         gameplayScene.reset();
         Microsoft::WRL::ComPtr<ID3D11Device> device = gamerenderer::modelDevice();
@@ -64,6 +65,7 @@ void gameapplication::Application::enterOpening(unsigned destination, unsigned c
 void gameapplication::Application::advanceOpening() {
     if (gameplayPreparation.valid() && gameplayPreparation.wait_for(std::chrono::seconds(0)) == std::future_status::ready) {
         gameplayScene = gameplayPreparation.get();
+        gameplayScene->bindControllerOptions(*gameplaySaves, &presentationFrames);
         gameplayScene->prepareGraphics();
     }
     if (openingFade.active()) {
@@ -168,6 +170,7 @@ void gameapplication::Application::advanceMenu() {
 }
 
 void gameapplication::Application::advance(bool audioFinished) {
+    ++presentationFrames;
     if (debugCheckpoint) {
         const auto checkpoint = debugCheckpoint;
         debugCheckpoint = 0;
@@ -215,7 +218,7 @@ void gameapplication::Application::advanceGameplay() {
     gameplayPhase ^= 1;
     if (!gameplayPhase || gameplayScene->gameplaySuspended()) {
         const auto input = playerinput::pollWindowPad(applicationWindow, true);
-        gameplayScene->update(input.status, input.port, startupaudio::interfaceFrame());
+        gameplayScene->update(input.status, input.port, startupaudio::interfaceFrame(), !gameplayPhase);
     }
     gameplayScene->updatePresentation(!gameplayPhase);
 }
@@ -251,6 +254,7 @@ void gameapplication::Application::advanceTransition() {
     if (transitionPhase == TransitionPhase::Loading) {
         if (gameplayPreparation.wait_for(std::chrono::seconds(0)) != std::future_status::ready) return;
         gameplayScene = gameplayPreparation.get();
+        gameplayScene->bindControllerOptions(*gameplaySaves, &presentationFrames);
         gameplayScene->prepareGraphics();
         if (audioEnabled) startupaudio::bindPositionalPlayback(gameplayScene->playback());
         gameplayPhase = 0;
@@ -305,6 +309,7 @@ void gameapplication::Application::close() {
 }
 
 void gameapplication::Application::restart() {
+    gameplaySaves = &saves;
     debugCheckpoint = 0;
     gameplayPreparation = {};
     transitionPhase = TransitionPhase::Idle;

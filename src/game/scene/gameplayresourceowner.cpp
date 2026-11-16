@@ -7,6 +7,7 @@
 #include "game/events/entranceeventowner.h"
 
 #include <stdexcept>
+#include <utility>
 #include <cstring>
 #include <algorithm>
 
@@ -197,6 +198,10 @@ void gameplay::ResourceOwner::updateCamera() {
     state->roomTransition.update(state->cameraRoom);
     if (state->entrance->updateCamera()) return;
     state->cameraFollow->update(*state->cameras.cameras[0], player->view, state->cameraRoom);
+}
+
+void gameplay::ResourceOwner::bindControllerInstructions(std::function<void()> request) {
+    state->entrance->bindControllerInstructions(std::move(request));
 }
 
 void gameplay::ResourceOwner::updateEvents(unsigned elapsedSeconds, std::uint32_t audioFrame) {

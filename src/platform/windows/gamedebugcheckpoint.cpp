@@ -57,15 +57,17 @@ void gameapplication::Application::loadDebugCheckpoint(unsigned checkpoint) {
     openingSkip = startPressed = false;
     menuInput = {};
     gameplayPhase = 0;
-    auto scratch = defaults;
+    checkpointSaves = defaults;
+    gameplaySaves = &checkpointSaves;
     std::string error;
-    if (!gameentry::selectNewFile(scratch, 0, gameEntry, error)) throw std::runtime_error(error);
+    if (!gameentry::selectNewFile(checkpointSaves, 0, gameEntry, error)) throw std::runtime_error(error);
     progress("Loading room, actors and audio resources");
     auto preparation = std::async(std::launch::async, [this] {
         return std::make_unique<gameplay::Scene>(currentAssets, gameEntry);
     });
     while (preparation.wait_for(std::chrono::milliseconds(1)) != std::future_status::ready) progress();
     gameplayScene = preparation.get();
+    gameplayScene->bindControllerOptions(*gameplaySaves, &presentationFrames);
     progress("Preparing models and shaders");
     auto graphics = std::async(std::launch::async, [this] {
         gameplayScene->prepareModelGraphics(gamerenderer::modelDevice());

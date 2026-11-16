@@ -1,6 +1,7 @@
 #pragma once
 
 #include "game/scene/gameplayresourceowner.h"
+#include "game/menu/controllerinstructionservices.h"
 #include "platform/d3d11/modelbatchrenderer.h"
 #include "game/startup/keypresentationowner.h"
 #include "platform/d3d11/j3dpacketrenderer.h"
@@ -15,10 +16,14 @@ namespace gameplay {
     public:
         std::string debugInfo();
         Scene(const std::filesystem::path& package, gameentry::State& entry);
+        ~Scene();
+        void bindControllerOptions(gamesave::State& saves, const std::uint64_t* presentationClock = nullptr);
+        void requestControllerInstructions();
+        bool controllerInstructionsActive() const;
         void prepareGraphics();
         bool updateRoomResources();
         void prepareModelGraphics(ID3D11Device* device);
-        void update(const playerinput::PadStatus& pad = {}, std::int16_t port = -1, std::uint32_t audioFrame = 0);
+        void update(const playerinput::PadStatus& pad = {}, std::int16_t port = -1, std::uint32_t audioFrame = 0, bool gameplayTick = true);
         void updatePresentation(bool gameplayTick);
         void updateAudio();
         std::shared_ptr<jaudio::PositionalPlayback> playback();
@@ -32,6 +37,13 @@ namespace gameplay {
 
     private:
         ResourceOwner resources;
+        std::filesystem::path packagePath;
+        gamesave::State* controllerOptions = nullptr;
+        controllerinstructions::Owner instructions;
+        std::unique_ptr<controllerinstructions::GameplayServices> instructionServices;
+        bool instructionGraphics = false, instructionUpdated = false;
+        std::uint64_t presentationFrame = 0;
+        const std::uint64_t* instructionClock = nullptr;
         keypresentation::SceneControl sceneControl;
         keypresentation::Owner keyPresentation;
         unsigned presentationButtons = 0;

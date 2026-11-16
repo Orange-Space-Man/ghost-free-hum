@@ -52,6 +52,9 @@ namespace gameapplication {
         startupresources::Resources resources;
         startupscene::Scene scene;
         gamesave::State saves;
+        gamesave::State checkpointSaves;
+        std::uint64_t presentationFrames = 0;
+        gamesave::State* gameplaySaves = &saves;
         gamecard::Storage card;
         bool audioEnabled = false;
         bool startPressed = false;

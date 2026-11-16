@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <stdexcept>
+#include <utility>
 
 namespace {
     constexpr unsigned entranceEvent = 48;
@@ -15,6 +16,15 @@ gameevent::EntranceOwner::EntranceOwner(gameassets::Package& package, const enem
     gameplaycamera::CameraOwner& camera, const std::vector<std::uint8_t>& executable, MessageWindows& messages, gameplaycamera::Follow& follow) :
     package(package), types(types), entry(entry), rooms(rooms), managers(managers), cameraOwner(camera),
     executable(executable), messages(messages), follow(follow) {}
+
+void gameevent::EntranceOwner::bindControllerInstructions(std::function<void()> request) {
+    requestInstructions = std::move(request);
+}
+
+void gameevent::EntranceOwner::controllerInstructions() {
+    if (!requestInstructions) throw std::runtime_error("Controller instructions require their gameplay owner.");
+    requestInstructions();
+}
 
 bool gameevent::EntranceOwner::eligible(unsigned event, unsigned elapsedSeconds) const {
     const auto& events = managers.missionEvents();

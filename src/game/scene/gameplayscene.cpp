@@ -42,9 +42,10 @@ namespace {
     }
 }
 
-gameplay::Scene::Scene(const std::filesystem::path& package, gameentry::State& entry) : resources(package, entry),
+gameplay::Scene::Scene(const std::filesystem::path& package, gameentry::State& entry) : resources(package, entry), packagePath(package),
     keyPresentation(package, resources.executable(), sceneControl, resources.managers().flags(), resources.managers().music(),
         *resources.managers().playback()) {
+    resources.bindControllerInstructions([this] { requestControllerInstructions(); });
     std::string error;
     if (!trig.read(resources.executable(), error) || !poseTables.read(resources.executable(), error)) throw std::runtime_error(error);
     textureTrigonometry.resize(5120);
@@ -125,6 +126,31 @@ gameplay::Scene::Scene(const std::filesystem::path& package, gameentry::State& e
     }
     if (actors.empty()) throw std::runtime_error("First-area scene has no manager-owned visible actors.");
 }
+
+gameplay::Scene::~Scene() {
+    if (instructionGraphics) gamerenderer::releaseScene("controller-instructions");
+}
+
+void gameplay::Scene::bindControllerOptions(gamesave::State& saves, const std::uint64_t* presentationClock) {
+    if (instructions.active()) throw std::logic_error("Cannot replace options while controller instructions are open.");
+    if (!saves.initialized) throw std::invalid_argument("Controller instructions require initialized save options.");
+    controllerOptions = &saves;
+    instructionClock = presentationClock;
+}
+
+void gameplay::Scene::requestControllerInstructions() {
+    if (!controllerOptions || !sceneControl.gameplayEnabled || instructions.active())
+        throw std::logic_error("Controller instructions require available gameplay and bound options.");
+    auto bindings = std::make_unique<controllerinstructions::GameplayServices>(*controllerOptions,
+        resources.managers().playerEvents(), [this](unsigned id) { resources.managers().playback()->playGlobal(id); });
+    std::string error;
+    if (!instructions.open(packagePath, error)) throw std::runtime_error(error);
+    instructionServices = std::move(bindings);
+    instructionUpdated = false;
+    presentationButtons = 0;
+}
+
+bool gameplay::Scene::controllerInstructionsActive() const { return instructions.active(); }
 
 void gameplay::Scene::prepareGraphics() {
     gamerenderer::setInterfaceTextures(resources.interfaceTextures());
@@ -217,11 +243,23 @@ bool gameplay::Scene::updateRoomResources() {
     return changed;
 }
 
-void gameplay::Scene::update(const playerinput::PadStatus& pad, std::int16_t port, std::uint32_t audioFrame) {
+void gameplay::Scene::update(const playerinput::PadStatus& pad, std::int16_t port, std::uint32_t audioFrame, bool gameplayTick) {
     resources.managers().sampleInput(pad, port);
     auto& managers = resources.managers();
     managers.setAudioInterfaceFrame(audioFrame);
+    if (instructions.active()) {
+        instructions.update(managers.controller().pressed, instructionClock ? *instructionClock : presentationFrame, *instructionServices);
+        instructionUpdated = true;
+        if (instructions.active()) return;
+        instructionServices.reset();
+        if (instructionGraphics) {
+            gamerenderer::useScene("gameplay");
+            gamerenderer::releaseScene("controller-instructions");
+            instructionGraphics = false;
+        }
+    }
     presentationButtons |= managers.controller().pressed;
+    if (!gameplayTick) return;
     if (!sceneControl.gameplayEnabled) return;
     managers.lights().beginFrame();
     const bool cameraWasActive = resources.eventCameraActive();
@@ -292,7 +330,7 @@ bool gameplay::Scene::presentKey(bool missingKey, bool front, unsigned doorType)
 }
 
 bool gameplay::Scene::keyPresentationActive() const { return keyPresentation.state().owned; }
-bool gameplay::Scene::gameplaySuspended() const { return !sceneControl.gameplayEnabled; }
+bool gameplay::Scene::gameplaySuspended() const { return !sceneControl.gameplayEnabled || instructions.active(); }
 
 
 void gameplay::Scene::updateOpacity() {
@@ -337,12 +375,26 @@ void gameplay::Scene::drawModel(const doors::ModelResource& model,
 }
 
 void gameplay::Scene::updatePresentation(bool gameplayTick) {
+    ++presentationFrame;
+    if (instructions.active()) return;
     if (!gameplayTick && sceneControl.gameplayEnabled) return;
     keyPresentation.advanceDraw(presentationButtons);
     presentationButtons = 0;
 }
 
 void gameplay::Scene::draw(bool present) {
+    if (instructions.active()) {
+        if (!instructionUpdated) { gamerenderer::drawInterface({}, present); return; }
+        const auto& screen = instructions.screen();
+        if (!instructionGraphics) {
+            gamerenderer::setInterfaceTextures(screen.graphics().textures);
+            gamerenderer::cacheScene("controller-instructions");
+            instructionGraphics = true;
+        } else if (!gamerenderer::useScene("controller-instructions"))
+            throw std::runtime_error("Controller instruction graphics ownership is unavailable.");
+        gamerenderer::drawInterface(screen.graphics().pictures(screen.layout()), present);
+        return;
+    }
     const bool gameplayDrawn = sceneControl.gameplayEnabled;
     if (gameplayDrawn) drawGameplay(false);
     if (keyPresentation.state().owned && keyPresentation.state().updated) keyPresentation.draw(present);

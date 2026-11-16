@@ -30,6 +30,7 @@ void gameevent::EntranceServices::wipeKind(std::int32_t) { unsupportedService();
 void gameevent::EntranceServices::wipeTime(std::int32_t) { unsupportedService(); }
 void gameevent::EntranceServices::warp(std::int32_t) { unsupportedService(); }
 bool gameevent::EntranceServices::acknowledgeMessage() { unsupportedService(); return false; }
+void gameevent::EntranceServices::controllerInstructions() { unsupportedService(); }
 void gameevent::EntranceServices::cameraTarget(std::string_view, std::int32_t) { unsupportedService(); }
 
 gameevent::EntranceScript::EntranceScript(std::string source) : source(std::move(source)) {}
@@ -163,6 +164,7 @@ bool gameevent::EntranceScript::update(EntranceServices& services) {
             const auto resource = token('"', '"');
             services.effect(placement, resource);
         }
+        else if (command == "CONTEXP") services.controllerInstructions();
         else if (command == "BGM") services.music(number() & 255);
         else if (command == "WIPEKIND") services.wipeKind(integer());
         else if (command == "WIPETIME") services.wipeTime(integer());

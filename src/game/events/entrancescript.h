@@ -55,6 +55,7 @@ namespace gameevent {
         virtual void wipeTime(std::int32_t ticks);
         virtual void warp(std::int32_t destination);
         virtual bool acknowledgeMessage();
+        virtual void controllerInstructions();
         virtual void cameraTarget(std::string_view actor, std::int32_t height);
     };
 

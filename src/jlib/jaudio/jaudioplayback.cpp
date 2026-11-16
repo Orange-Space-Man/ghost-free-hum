@@ -88,7 +88,7 @@ bool jaudio::Playback::loadEffects(gameassets::Package& package, const Resources
     entryPoint = 0;
     tempo = 120;
     timebase = 48;
-    if (!readSequence(resources, 0x80000800, sequence, error) || !bank.load(package, resources, error, 0, 0, {1, 2}, {1, 4, 5}) ||
+    if (!readSequence(resources, 0x80000800, sequence, error) || !bank.load(package, resources, error, 0, 0, {1, 2, 8}, {1, 4, 5, 8}) ||
         !mixer.configure(resources.effects, error)) return false;
     const auto* info = soundInfo(resources, 0x80000800);
     if (!info) { error = "Missing effect master metadata."; return false; }

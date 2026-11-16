@@ -146,6 +146,7 @@ modelrenderer::MaterialShader& particlerenderer::Renderer::material(const partic
     program.coordinates.push_back({0, 1, 4, 60, -1});
     modelrenderer::PipelineState state;
     modelrenderer::initializeModelState(state);
+    state.targetHasAlpha = false;
     state.cull = particle.cull;
     state.sourceBlend = particle.blend & 15;
     state.destinationBlend = particle.blend >> 4;
