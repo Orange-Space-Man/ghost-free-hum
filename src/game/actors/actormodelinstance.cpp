@@ -1,4 +1,5 @@
 #include "game/actors/actormodelinstance.h"
+#include "game/models/modeldrawmatrices.h"
 
 #include <stdexcept>
 
@@ -31,6 +32,16 @@ actormodel::Instance::Instance(ResourceRef resource, unsigned capacity) : model(
 unsigned actormodel::Instance::capacity() const {
     return count;
 }
+
+void actormodel::Instance::prepareView(const Matrix& modelView) {
+    for (unsigned i = 0; i < count; ++i) {
+        matrix(1, i) = dooranimation::concatenate(modelView, matrix(0, i));
+        modeldraw::normalMatrix(matrix(1, i), matrix(2, i));
+    }
+    prepared = true;
+}
+
+bool actormodel::Instance::viewPrepared() const { return prepared; }
 
 void actormodel::Instance::bindKey(ResourceRef resource) {
     if (key == resource) {

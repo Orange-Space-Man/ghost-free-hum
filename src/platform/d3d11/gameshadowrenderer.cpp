@@ -24,6 +24,7 @@ namespace {
     ComPtr<ID3D11SamplerState> samplers[2];
     std::size_t capacity = 0;
     bool active = false;
+    DirectX::XMFLOAT4X4 lightView{}, lightPerspective{};
     struct Constants {
         DirectX::XMFLOAT4X4 projection{};
         std::array<float, 4> color{};
@@ -152,6 +153,8 @@ void gameshadowrenderer::begin(const s3dshadow::Projection& projection, float as
         const auto perspective = DirectX::XMMatrixPerspectiveFovRH(projection.fieldOfView * DirectX::XM_PI / 180,
             aspect, projection.nearPlane, projection.farPlane);
         DirectX::XMStoreFloat4x4(&values.projection, view * perspective);
+        DirectX::XMStoreFloat4x4(&lightView, view);
+        DirectX::XMStoreFloat4x4(&lightPerspective, perspective);
     }
     ID3D11ShaderResourceView* empty[10]{};
     context->PSSetShaderResources(0, 10, empty);
@@ -171,11 +174,23 @@ void gameshadowrenderer::begin(const s3dshadow::Projection& projection, float as
     context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 }
 
-void gameshadowrenderer::draw(const std::vector<s3dmodel::Batch>& batches, bool twoSided) {
+s3dmodel::Matrix gameshadowrenderer::viewMatrix() {
+    s3dmodel::Matrix result;
+    for (unsigned row = 0; row < 3; ++row) for (unsigned column = 0; column < 4; ++column)
+        result[row * 4 + column] = lightView.m[column][row];
+    return result;
+}
+
+void gameshadowrenderer::draw(const std::vector<s3dmodel::Batch>& batches, bool twoSided, bool viewSpace) {
     if (!active) return;
     std::size_t count = 0;
     for (const auto& batch : batches) if (batch.cull == 1 || batch.cull == 2 || (twoSided && batch.cull == 0)) count += batch.vertices.size();
     if (!count) return;
+    if (viewSpace) {
+        auto cameraValues = values;
+        cameraValues.projection = lightPerspective;
+        context->UpdateSubresource(constants.Get(), 0, nullptr, &cameraValues, 0, 0);
+    }
     reserve(count);
     D3D11_MAPPED_SUBRESOURCE mapped{};
     check(context->Map(vertices.Get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped), "Could not upload shadow vertices.");
@@ -191,6 +206,7 @@ void gameshadowrenderer::draw(const std::vector<s3dmodel::Batch>& batches, bool 
         context->Draw(static_cast<UINT>(batch.vertices.size()), first);
         first += static_cast<UINT>(batch.vertices.size());
     }
+    if (viewSpace) context->UpdateSubresource(constants.Get(), 0, nullptr, &values, 0, 0);
 }
 
 void gameshadowrenderer::finish() {

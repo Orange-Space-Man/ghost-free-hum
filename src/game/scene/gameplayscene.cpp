@@ -431,8 +431,8 @@ void gameplay::Scene::drawShadows() {
     }
     for (unsigned i = 0; i < actors.size(); ++i) {
         const auto& actor = *actors[i];
-        if ((actor.flags & 0x400) || (!(actor.flags & 0x200) &&
-            (actor.room() >> 24 == 255 || !resources.visibility().marked(actor.room() >> 24, 2, 0)))) continue;
+        if (!(actor.flags & 0x200) &&
+            (actor.room() >> 24 == 255 || !resources.visibility().marked(actor.room() >> 24, 2, 0))) continue;
         auto world = actor.matrix;
         if (const auto* player = dynamic_cast<const playeractor::Player*>(&actor)) {
             world = playerorientation::toMatrix(player->state.quaternion);
@@ -441,11 +441,14 @@ void gameplay::Scene::drawShadows() {
                 world[row * 4 + 3] = actor.position[row];
             }
         }
+        if (!(actor.flags & 0x4000))
+            actor.model->prepareView(dooranimation::concatenate(gameshadowrenderer::viewMatrix(), world));
+        if (!actor.model->viewPrepared() || !(actor.model->color & 255) || (actor.flags & 0x400)) continue;
         auto batches = actorModels[i].shadowBatches;
         for (auto& batch : batches) for (auto& vertex : batch.vertices)
-            vertex.position = transform(dooranimation::concatenate(world, actor.model->matrix(0, vertex.matrix)),
+            vertex.position = transform(actor.model->matrix(1, vertex.matrix),
                 actor.surface().positions.at(vertex.positionIndex), true);
-        gameshadowrenderer::draw(batches);
+        gameshadowrenderer::draw(batches, false, true);
     }
     gameshadowrenderer::finish();
     resources.managers().doors().restorePresentation(0);
@@ -599,7 +602,7 @@ void gameplay::Scene::refreshActorModels() {
 void gameplay::Scene::drawActors(unsigned stage, const s3denvironment::Camera& camera, unsigned visibilityBuffer) {
     for (unsigned i = 0; i < actors.size(); ++i) {
         const auto& actor = *actors[i];
-        if ((actor.flags & 0x6100) || !(actor.model->color & 255) || actor.room() >> 24 == 255 ||
+        if (actor.room() >> 24 == 255 ||
             !resources.visibility().marked(actor.room() >> 24, visibilityBuffer, 0)) continue;
         const auto* player = dynamic_cast<const playeractor::Player*>(&actor);
         auto world = actor.matrix;
@@ -610,6 +613,9 @@ void gameplay::Scene::drawActors(unsigned stage, const s3denvironment::Camera& c
                 world[row * 4 + 3] = actor.position[row];
             }
         }
+        if (!stage && !(actor.flags & 0x4000))
+            actor.model->prepareView(dooranimation::concatenate(view, world));
+        if ((actor.flags & 0x6100) || !(actor.model->color & 255)) continue;
         const auto& surface = actor.surface();
         actorModels[i].materials = surface.materials;
         for (auto& material : actorModels[i].materials) {

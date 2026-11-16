@@ -1,3 +1,4 @@
+#include "platform/d3d11/shadowtexturesampling.h"
 #include "platform/d3d11/modelmaterialrenderer.h"
 
 #include <d3dcompiler.h>
@@ -81,6 +82,7 @@ void modelrenderer::MaterialShader::load(ID3D11Device* device, const modelmateri
     if (state.earlyDepth && device->GetFeatureLevel() < D3D_FEATURE_LEVEL_11_0)
         throw std::runtime_error("Original early depth ordering requires Direct3D feature level 11.");
     std::ostringstream source;
+    if (shadow) source << shadowtexturesampling::shader;
     source << R"(
 cbuffer Combiner : register(b1) { int4 initial[4]; int4 konst[4]; };
 struct Input {
@@ -115,8 +117,8 @@ SamplerState lookupFiltering : register(s9);
     if (shadow) source << R"(
     float4 shadowPosition = mul(float4(input.viewPosition, 1), shadowProjection);
     float3 projected = shadowPosition.xyz / shadowPosition.w;
-    int2 reference = int2(round(shadowLookup.Sample(lookupFiltering, float2(projected.z, projected.z * 256)).rg * 255));
-    int2 stored = int2(round(shadowImage.Sample(shadowFiltering, projected.xy * float2(0.5, -0.5) + 0.5).rg * 255));
+    int2 reference = int2(sampleShadowBytes(shadowLookup, float2(projected.z, projected.z * 256), int2(256, 256), true));
+    int2 stored = int2(sampleShadowBytes(shadowImage, projected.xy * float2(0.5, -0.5) + 0.5, int2(640, 480), false));
     r[1].a = reference.x + reference.y * 256 > stored.x + stored.y * 256 ? konst[3].a : 0;
 )";
     unsigned expected = 0;

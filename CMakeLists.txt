@@ -5,6 +5,9 @@ if(NOT WIN32)
     message(FATAL_ERROR "The current platform implementation requires Windows and Direct3D 11.")
 endif()
 set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+if(MSVC)
+    string(REPLACE "/Zi" "/Z7" CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG}")
+endif()
 
 add_library(ResourceIO STATIC
     src/resources/dolresources.cpp

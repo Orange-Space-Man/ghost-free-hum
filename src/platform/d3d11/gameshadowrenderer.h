@@ -7,7 +7,8 @@ namespace gameshadowrenderer {
     void open(ID3D11Device* device, ID3D11DeviceContext* context);
     void reserve(std::size_t vertices);
     void begin(const s3dshadow::Projection& projection, float aspect);
-    void draw(const std::vector<s3dmodel::Batch>& batches, bool twoSided = false);
+    void draw(const std::vector<s3dmodel::Batch>& batches, bool twoSided = false, bool viewSpace = false);
+    s3dmodel::Matrix viewMatrix();
     void bindModel(const s3dmodel::Matrix& view);
     std::array<int, 4> color();
     std::array<float, 16> worldProjection();

@@ -1,3 +1,4 @@
+#include "platform/d3d11/shadowtexturesampling.h"
 #include "platform/windows/debugoverlay.h"
 #include "platform/d3d11/gamerenderer.h"
 #include "platform/d3d11/gameshadowrenderer.h"
@@ -238,8 +239,8 @@ float4 pixelMain(float4 position : SV_POSITION, float4 color : COLOR0, float2 co
         }
         if (shadowState.x != 0) {
             float3 projected = shadowCoordinate.xyz / shadowCoordinate.w;
-            float2 reference = round(shadowLookup.Sample(lookupFiltering, float2(projected.z, projected.z * 256)).rg * 255);
-            float2 stored = round(shadowImage.Sample(shadowFiltering, projected.xy * float2(0.5, -0.5) + 0.5).rg * 255);
+            float2 reference = sampleShadowBytes(shadowLookup, float2(projected.z, projected.z * 256), int2(256, 256), true);
+            float2 stored = sampleShadowBytes(shadowImage, projected.xy * float2(0.5, -0.5) + 0.5, int2(640, 480), false);
             float amount = dot(reference, float2(1, 256)) > dot(stored, float2(1, 256)) ? shadowColor.a * color.a * shadowMask : 0;
             result.rgb = lerp(result.rgb, shadowColor.rgb, amount);
             result.a *= shadowState.y;
@@ -277,13 +278,14 @@ float4 pixelEarly(float4 position : SV_POSITION, float4 color : COLOR0, float2 c
 )";
         ComPtr<ID3DBlob> code;
         ComPtr<ID3DBlob> errors;
-        const auto result = D3DCompile(source, sizeof(source), nullptr, nullptr, nullptr, "pixelMain", "ps_4_0", 0, 0, &code, &errors);
+        const std::string pixelSource = std::string(shadowtexturesampling::shader) + source;
+        const auto result = D3DCompile(pixelSource.data(), pixelSource.size(), nullptr, nullptr, nullptr, "pixelMain", "ps_4_0", 0, 0, &code, &errors);
         if (FAILED(result) && errors) throw std::runtime_error(static_cast<const char*>(errors->GetBufferPointer()));
         check(result, "Could not compile interface shader");
         check(device->CreatePixelShader(code->GetBufferPointer(), code->GetBufferSize(), nullptr, &interfaceShader), "Could not create interface shader");
         code.Reset();
         errors.Reset();
-        const auto earlyResult = D3DCompile(source, sizeof(source), nullptr, nullptr, nullptr, "pixelEarly", "ps_5_0", 0, 0, &code, &errors);
+        const auto earlyResult = D3DCompile(pixelSource.data(), pixelSource.size(), nullptr, nullptr, nullptr, "pixelEarly", "ps_5_0", 0, 0, &code, &errors);
         if (FAILED(earlyResult) && errors) throw std::runtime_error(static_cast<const char*>(errors->GetBufferPointer()));
         check(earlyResult, "Could not compile opaque material shader");
         check(device->CreatePixelShader(code->GetBufferPointer(), code->GetBufferSize(), nullptr, &opaqueShader), "Could not create opaque material shader");

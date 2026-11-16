@@ -33,6 +33,8 @@ namespace actormodel {
         Attachment& attachment(unsigned index);
         void bindKey(ResourceRef resource);
         void resetCursors();
+        void prepareView(const Matrix& modelView);
+        bool viewPrepared() const;
         ResourceRef model;
         ResourceRef key;
         std::uint32_t field0 = 0;
@@ -47,6 +49,7 @@ namespace actormodel {
 
     private:
         unsigned count;
+        bool prepared = false;
         std::unique_ptr<Matrix[]> matrices;
         std::unique_ptr<Attachment[]> attachments;
     };
