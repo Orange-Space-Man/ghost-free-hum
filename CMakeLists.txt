@@ -205,6 +205,10 @@ add_library(Game STATIC
     src/game/enemies/enemycapturestrategy.cpp
     src/game/enemies/enemyghostcaptureparent.cpp
     src/game/enemies/enemyghostdisappearance.cpp
+    src/game/enemies/enemyghostparenthelpers.cpp
+    src/game/enemies/enemyghostparentselection.cpp
+    src/game/enemies/enemyghostchakasu.cpp
+    src/game/enemies/enemyghostparent.cpp
     src/game/enemies/enemycapturesteering.cpp
     src/game/enemies/enemyscarenotification.cpp
     src/game/enemies/enemysearchstrategy.cpp
