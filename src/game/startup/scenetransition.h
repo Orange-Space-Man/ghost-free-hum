@@ -1,6 +1,27 @@
 #pragma once
 
+#include <array>
+#include <cstdint>
+
 namespace scenetransition {
+    class ParlorWipe {
+    public:
+        void beginOutgoing(const std::array<std::uint8_t, 3>& retainedColor = {0, 0, 0});
+        void beginIncoming();
+        bool update(unsigned viTicks);
+        unsigned alpha() const;
+        bool active() const;
+        bool drawsCapturedFrame() const;
+        std::array<std::uint8_t, 4> overlay() const;
+
+    private:
+        enum class Phase { Idle, Outgoing, Covered, Incoming };
+        Phase phase = Phase::Idle;
+        std::array<std::uint8_t, 3> color{};
+        unsigned ticks = 0;
+        unsigned delay = 0;
+    };
+
     class OutgoingFade {
     public:
         void reset();

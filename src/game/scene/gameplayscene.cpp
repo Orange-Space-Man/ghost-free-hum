@@ -194,14 +194,13 @@ void gameplay::Scene::prepareRoomGraphics(ID3D11Device* device, const roomreside
 
 bool gameplay::Scene::updateRoomResources() {
     auto* device = gamerenderer::modelDevice();
-    if (!device) throw std::runtime_error("Room graphics updates require an initialized renderer.");
     const bool changed = resources.updateRooms([&](const roomresidency::Resident& resident) {
         models.erase(&resident.drawing);
         for (const auto& model : resident.furniture.models()) models.erase(&model);
     }, [&](const roomresidency::Resident& resident) {
-        prepareRoomGraphics(device, resident);
+        if (device) prepareRoomGraphics(device, resident);
     });
-    if (changed) {
+    if (changed && device) {
         gamerenderer::setInterfaceTextures(resources.interfaceTextures());
         textures = gamerenderer::loadPreviews(actorModels, 640, 480);
         gamerenderer::cacheScene("gameplay");
@@ -235,6 +234,7 @@ void gameplay::Scene::update(const playerinput::PadStatus& pad, std::int16_t por
         else managers.updateOwner(i);
     }
     managers.updateContacts();
+    updateRoomResources();
     resources.updateCamera();
     publishCamera();
     rooms = resources.prepareVisibility(visibilityProjection, fullBounds);
