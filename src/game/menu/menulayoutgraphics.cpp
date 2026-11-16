@@ -56,6 +56,24 @@ void menulayout::Graphics::setFont(const gamefont::Font& value) {
 
 bool menulayout::Graphics::load(const std::vector<std::uint8_t>& archive, const Layout& layout, std::string& error,
     const std::vector<std::string>& additionalTextures) {
+    return loadTextures(layout, error, additionalTextures, [&](const auto& path, auto& data, auto& message) {
+        return roomarchive::read(archive, path, data, message);
+    });
+}
+
+bool menulayout::Graphics::load(const gamearchive::Archive& archive, const Layout& layout, std::string& error,
+    const std::vector<std::string>& additionalTextures) {
+    return loadTextures(layout, error, additionalTextures, [&](const auto& path, auto& data, auto& message) {
+        const int index = archive.findPathResource("/kawano/base/" + path);
+        if (index < 0) { message = "Missing Game Boy counter resource: " + path; return false; }
+        data = archive.resource(index);
+        return true;
+    });
+}
+
+bool menulayout::Graphics::loadTextures(const Layout& layout, std::string& error,
+    const std::vector<std::string>& additionalTextures,
+    const std::function<bool(const std::string&, std::vector<std::uint8_t>&, std::string&)>& read) {
     error.clear();
     try {
         Graphics result;
@@ -74,7 +92,7 @@ bool menulayout::Graphics::load(const std::vector<std::uint8_t>& archive, const 
             for (auto& character : path) if (character >= 'A' && character <= 'Z') character += 'a' - 'A';
             std::vector<std::uint8_t> data;
             roommaterials::Texture texture;
-            if (!roomarchive::read(archive, path, data, error) || !startupresources::decodeTexture(data, texture, error)) {
+            if (!read(path, data, error) || !startupresources::decodeTexture(data, texture, error)) {
                 throw std::runtime_error(path + ": " + error);
             }
             result.names[name] = result.textures.size();

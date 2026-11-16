@@ -176,14 +176,17 @@ void openingscene::Scene::update(bool flag55) {
 
 void openingscene::Scene::draw(bool present) { drawModels(present, nullptr); }
 
-void openingscene::Scene::drawOverlay(const std::string& target) {
+// Mode one retains the gameplay buffer and uses the viewport published by the Game Boy HUD (80115474).
+void openingscene::Scene::drawOverlay(const std::string& target, const std::array<int, 4>& viewport) {
     if (resources.mode != 1) throw std::runtime_error("Overlay drawing requires a mode-one demo.");
     if (timeline.flags & 16) return;
-    drawModels(false, &target);
+    drawModels(false, &target, &viewport);
     if (!gamerenderer::useScene(target)) throw std::runtime_error("Demo overlay lost its gameplay target.");
 }
 
-void openingscene::Scene::drawModels(bool present, const std::string* overlayTarget) {
+void openingscene::Scene::drawModels(bool present, const std::string* overlayTarget, const std::array<int, 4>* viewport) {
+    const D3D11_VIEWPORT demoViewport = viewport ? D3D11_VIEWPORT{float((*viewport)[0]), float((*viewport)[1]),
+        float((*viewport)[2]), float((*viewport)[3]), 0, 1} : D3D11_VIEWPORT{};
     if (graphicsReady && !gamerenderer::useScene(graphicsKey(loadedSegment))) graphicsReady = false;
     if (!graphicsReady) {
         if (!gamerenderer::useScene(graphicsKey(loadedSegment))) {
@@ -226,7 +229,7 @@ void openingscene::Scene::drawModels(bool present, const std::string* overlayTar
     const std::vector<s3dmodel::Batch> empty;
     for (unsigned pass = 0; pass < 2; ++pass) for (unsigned i = 0; i < models.size(); ++i) {
         const bool visible = (animations[i].flags & 1) && !(timeline.flags & 16);
-        gamerenderer::drawPreview(i, models[i], visible ? batches[i] : empty, lighting, &view, clear, 1U << pass, !overlayTarget && (animations[i].flags & 4) != 0, trigonometry, &fog, nullptr, false, overlayTarget);
+        gamerenderer::drawPreview(i, models[i], visible ? batches[i] : empty, lighting, &view, clear, 1U << pass, !overlayTarget && (animations[i].flags & 4) != 0, trigonometry, &fog, viewport ? &demoViewport : nullptr, false, overlayTarget);
         clear = false;
     }
     for (unsigned i = 0; i < models.size(); ++i) models[i].materials = std::move(materials[i]);

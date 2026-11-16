@@ -25,6 +25,7 @@ namespace runningdust {
         bool impact(float speed, float radius, const std::array<float, 3>& position,
             const std::array<float, 3>& velocity, const std::array<float, 3>& normal, unsigned level,
             particles::SceneContext& player, const std::function<std::array<float, 3>()>& direction);
+        bool release(const std::array<float, 3>& position, unsigned count, particles::SceneContext& player);
         std::vector<particles::Billboard> prepare(const std::array<float, 12>& view) const;
         particles::Billboard material() const;
         unsigned particleCount() const;

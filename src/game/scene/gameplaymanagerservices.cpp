@@ -1,3 +1,4 @@
+#include "game/actors/actorcapturepose.h"
 #include "game/actors/charactercaptureservices.h"
 #include "resources/dolresources.h"
 #include "game/scene/gameplaymanagerservices.h"
@@ -343,6 +344,8 @@ struct gameplay::ManagerServices::State : playerpresentation::Services {
         players->bindActors(*enemies, *actors, dependencies.records, &dependencies.pad, &dependencies.camera, dependencies.audioLife);
         players->initializeAuxiliary(dependencies.executable);
         particles->refresh(nullptr);
+        const auto dustOffsetBits = word(0x804db584);
+        std::memcpy(&dustBlowOffset, &dustOffsetBits, sizeof(dustBlowOffset));
         elementDuration = static_cast<std::int32_t>(word(glme01::playerElementDuration));
         suctionAudio = std::make_unique<SuctionAudio>(audio->playback);
         itemCreation = std::make_unique<characteritems::Creation>(dependencies.mission, dependencies.actors.parameters,
@@ -481,6 +484,7 @@ struct gameplay::ManagerServices::State : playerpresentation::Services {
     std::array<std::uint8_t, 4> ambient{};
     std::unique_ptr<enemystrategy::BarrierEnvironment> barrierServices;
     std::unique_ptr<enemystrategy::FireGeneratorEnvironment> fireServices;
+    float dustBlowOffset = 0;
     std::unique_ptr<enemystrategy::TrainingEnvironment> trainingServices;
     std::unique_ptr<ghostparent::Environment> ghostServices;
     dooranimation::PoseTables ghostTrigonometry;
@@ -560,6 +564,7 @@ struct gameplay::ManagerServices::State : playerpresentation::Services {
     std::unique_ptr<playerevents::Dispatcher> events;
     std::unique_ptr<playerevents::LifeEnvironment> life;
     std::unique_ptr<actorcapture::Motion> capture;
+    actormodel::Matrix capturePoseTransform{1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0};
     std::unique_ptr<characterowner::NativeCaptureServices> captureServices;
     std::unique_ptr<characterowner::UpdateServices> updates;
     actors::RotatingSurfaces rotatingSurfaces;
@@ -718,10 +723,10 @@ void gameplay::ManagerServices::updateOwner(unsigned slot) { state->enemies->upd
 
 void gameplay::ManagerServices::updatePoses() {
     state->actors->updatePoses([&] {
-        for (const auto* actor : state->actors->entries()) {
-            if (actor && (actor->flags & 0x80000))
-                throw std::runtime_error("Live captured-actor poses require the original capture path binding.");
-        }
+        // The original suction direction is player 0's vacuum direction (view +0x98, native field8A8).
+        auto* player = state->events->player(0);
+        actorcapture::updateCapturedActors(*state->actors, *state->capture, *state->players->entries,
+            [&] { return player ? player->view.field8A8 : nullptr; }, state->capturePoseTransform);
     }, [&](actors::MoveActor& actor) {
         actor.updateAnimationSound(state->audio->playback.animationServices(actor.position));
     });
@@ -838,6 +843,18 @@ void gameplay::ManagerServices::updatePlayerMain(unsigned index, const PlayerMai
         updatePlayerMotion(index, {*state->life, services.timers.doubledDamage, services.timers.frame, services.platforms, globalSound});
     };
     frame.sound = [this](unsigned id, const auto& position) { state->audio->playback.play(id, position); };
+    frame.elemental = [this](playeractor::Player& target) {
+        const float offset = state->dustBlowOffset;
+        const auto& weapon = *target.components->weapon->first;
+        std::array<float, 3> position;
+        for (unsigned axis = 0; axis < 3; ++axis)
+            position[axis] = target.velocity[axis] + (weapon.position[axis] + offset * weapon.field610[axis]);
+        if (state->particles->runningDust().release(position, 10, state->particles->contexts().player)) {
+            auto& count = target.state.fields11D8[0];
+            count = count > 10 ? count - 10 : 0;
+        }
+        state->audio->playback.play(0x1039, target.position);
+    };
     frame.vacuum = [this, index](playeractor::Player& target) {
         auto& vacuum = state->vacuumFor(index, target);
         vacuumcapture::PlayerFrameServices vacuumServices{vacuum, state->playerGlobals.vacuum,
@@ -925,8 +942,13 @@ void gameplay::ManagerServices::updatePlacement(std::int32_t elapsedSeconds, boo
     if (!force && !roomChanged) return;
     try {
         state->placement->update();
-        if (state->dependencies.updateActorResources)
-            state->dependencies.updateActorResources(state->enemies->resourceMask());
+        if (state->dependencies.updateActorResources) {
+            // Generated actors (the training ghosts) are not placed yet: their generators report the models they will need.
+            auto mask = state->enemies->resourceMask();
+            const auto generated = state->generators->requiredModels();
+            for (unsigned i = 0; i < mask.size(); ++i) mask[i] |= generated[i];
+            state->dependencies.updateActorResources(mask);
+        }
     } catch (...) {
         state->placementFailed = true;
         throw;
@@ -1070,9 +1092,24 @@ void gameplay::ManagerServices::updateFurniture(unsigned frame) {
     if (!state->furniture) throw std::logic_error("Furniture update requires its room-owned pool.");
     auto* player = state->events->player(0);
     if (!player) throw std::logic_error("Furniture update requires player zero.");
-    if (player->view.field89E == 1 && player->view.field8A0 == 1)
-        throw std::runtime_error("Active furniture suction requires its original vacuum and animated-trigger services.");
+    // 80032FDC and its siblings: the handlers see the vacuum as active while the player's suction is on (+0x92 and +0x94 are 1).
+    const bool vacuumActive = player->view.field89E == 1 && player->view.field8A0 == 1;
     roomfurniture::ResponseServices services;
+    // 8014573C: the player's suction strength at a point (the nozzle volume must reach it; falls off linearly over 480 units).
+    services.suctionStrength = [this, player](float radius, const std::array<float, 3>& position) -> float {
+        const auto& view = player->view;
+        if (view.field8A0 != 1 || !view.field8B4) return 0;
+        std::array<float, 3> direction;
+        if (!view.field8B4->intersects(radius, direction, position)) return 0;
+        const auto& context = state->particles->contexts().player.suction;
+        if (!context.position) throw std::logic_error("Furniture suction requires the retained player context.");
+        const float x = position[0] - (*context.position)[0];
+        const float y = position[1] - (*context.position)[1];
+        const float z = position[2] - (*context.position)[2];
+        constexpr float attractionDistance = 480;
+        const float fraction = static_cast<float>(double(std::sqrt(std::fma(z, z, x * x) + y * y)) / attractionDistance);
+        return (1 - (fraction > 1 ? 1 : fraction)) * context.strength;
+    };
     services.roomCleared = [this](unsigned room) { return roomCleared(room); };
     services.selectItem = [this, player](unsigned table) {
         auto item = characteritems::select(state->dependencies.mission, static_cast<std::int32_t>(table),
@@ -1121,25 +1158,25 @@ void gameplay::ManagerServices::updateFurniture(unsigned frame) {
                 state->dependencies.entry.inventory.at(0x1a0 + rowIndex / 8) |= static_cast<std::uint8_t>(0x80 >> (rowIndex & 7));
         };
         if (object.behavior == 3) {
-            state->furnitureResponse.chair(object, row, visible, false, frame, services);
+            state->furnitureResponse.chair(object, row, visible, vacuumActive, frame, services);
             return true;
         }
         if (object.behavior == 14) {
-            state->furnitureResponse.portrait(object, row, visible, false,
+            state->furnitureResponse.portrait(object, row, visible, vacuumActive,
                 state->dependencies.flags.value(94) && state->messageSpeaking, frame, services);
             return true;
         }
         if (object.behavior == 38) {
-            state->furnitureResponse.cabinet(object, row, visible, false,
+            state->furnitureResponse.cabinet(object, row, visible, vacuumActive,
                 static_cast<unsigned>(object.animations.size()), frame, player->position, services);
             return true;
         }
         if (object.behavior == 17) {
-            state->furnitureResponse.rotating(object, row, visible, false, services);
+            state->furnitureResponse.rotating(object, row, visible, vacuumActive, services);
             return true;
         }
         if (object.behavior != 0 && object.behavior != 15 && object.behavior != 22) return false;
-        state->furnitureResponse.basic(object, row, visible, false, static_cast<unsigned>(object.animations.size()), frame, services);
+        state->furnitureResponse.basic(object, row, visible, vacuumActive, static_cast<unsigned>(object.animations.size()), frame, services);
         return true;
     });
 }

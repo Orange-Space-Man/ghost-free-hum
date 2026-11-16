@@ -25,6 +25,7 @@ namespace gamerenderer {
     void waitForFrame();
     ID3D11Device* modelDevice();
     ID3D11DeviceContext* modelContext();
+    void prepareDemoScreen(const std::string& target, const std::array<int, 4>& viewport);
     void bindSceneTarget(bool clear, const D3D11_VIEWPORT* viewport = nullptr);
     ID3D11ShaderResourceView* sceneTexture();
     std::vector<std::size_t> loadPreviews(const std::vector<s3dmodel::Model>& models, unsigned width = 148, unsigned height = 116);

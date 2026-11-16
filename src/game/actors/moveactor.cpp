@@ -21,7 +21,8 @@ void actors::MoveActor::selectPath(std::string_view name) {
 }
 
 void actors::MoveActor::lookAt(const MoveActor& target) {
-    rotation[1] = static_cast<std::int16_t>(construction.pose.angle(
+    // 80062EE8 case 0x12 writes the yaw target (+0x8A); 80069A70 then turns the actor toward it.
+    previousRotation[1] = static_cast<std::int16_t>(construction.pose.angle(
         target.position[2] - position[2], target.position[0] - position[0]));
 }
 

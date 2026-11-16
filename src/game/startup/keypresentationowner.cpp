@@ -59,9 +59,11 @@ void keypresentation::Owner::advanceDraw(unsigned pressed) {
         movie->reset();
         if (movie->clearsEventFlag()) flags.setOff(0x55);
         retained.initialized(bindings);
+        if (retained.mode == 1) control.demoDisplay = true;
         break;
     case Action::Update:
         movie->update(flags.value(0x55));
+        if (retained.mode == 1 && flag56) control.demoDisplay = false;
         if (movie->clearsEventFlag()) flags.setOff(0x55);
         if (retained.completeUpdate(movie->finished(), pressed, bindings)) release();
         break;
@@ -74,8 +76,8 @@ void keypresentation::Owner::draw(bool present) {
     if (movie && retained.phase == Phase::Playing && retained.updated) movie->draw(present);
 }
 
-void keypresentation::Owner::drawOverlay(const std::string& target) {
-    if (movie && retained.phase == Phase::Playing && retained.updated) movie->drawOverlay(target);
+void keypresentation::Owner::drawOverlay(const std::string& target, const std::array<int, 4>& viewport) {
+    if (movie && retained.phase == Phase::Playing && retained.updated) movie->drawOverlay(target, viewport);
 }
 
 void keypresentation::Owner::release() {

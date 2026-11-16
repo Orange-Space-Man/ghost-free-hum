@@ -17,6 +17,7 @@ namespace jaudio {
         bool loadMenu(gameassets::Package& package, const Resources& resources, std::string& error);
         bool loadLab(gameassets::Package& package, const Resources& resources, std::string& error);
         bool loadTraining(gameassets::Package& package, const Resources& resources, std::string& error);
+        bool loadSequence(gameassets::Package& package, const Resources& resources, unsigned id, std::string& error);
         bool loadMansion(gameassets::Package& package, const Resources& resources, std::string& error);
         bool loadDeath(gameassets::Package& package, const Resources& resources, std::string& error);
         bool loadEntrance(gameassets::Package& package, const Resources& resources, std::string& error);

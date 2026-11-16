@@ -4,6 +4,7 @@
 #include <array>
 #include <string>
 #include <string_view>
+#include <vector>
 
 namespace gameevent {
     enum class ActorOperation {
@@ -59,6 +60,14 @@ namespace gameevent {
         virtual void playerLight(bool enabled);
         virtual void playerDemo(std::string_view name);
         virtual void cameraTarget(std::string_view actor, std::int32_t height);
+        virtual void clearFlag(unsigned index);
+        virtual void generator(std::string_view name, bool start);
+        virtual std::uint32_t random();
+        virtual void releaseNamedActor(std::string_view actor);
+        virtual void setActorLife(std::string_view actor, unsigned value);
+        virtual void beginChoice(const std::vector<unsigned>& lines);
+        virtual int choiceResult();
+        virtual void endChoice();
     };
 
     class EntranceScript {
@@ -73,10 +82,13 @@ namespace gameevent {
         std::uint32_t wait = 0;
         unsigned state = 1;
         std::uint8_t messageWindow = 0;
+        std::uint8_t waitFlag = 0;
         bool completed = false;
+        std::vector<std::string_view> choiceLabels;
         std::string_view token(char begin, char end);
         unsigned number();
         std::int32_t integer();
         void actor(EntranceServices& services);
+        void skipToCase(std::string_view label);
     };
 }

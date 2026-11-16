@@ -12,6 +12,7 @@ namespace keypresentation {
     struct SceneControl {
         unsigned state = 0, doorTransition = 0;
         bool gameplayEnabled = true;
+        bool demoDisplay = false;
     };
 
     class Owner {
@@ -24,7 +25,7 @@ namespace keypresentation {
         bool request(bool missingKey, bool front, unsigned doorType);
         bool requestNamed(std::string_view name);
         void advanceDraw(unsigned pressed);
-        void drawOverlay(const std::string& target);
+        void drawOverlay(const std::string& target, const std::array<int, 4>& viewport);
         void draw(bool present);
         void release();
         const State& state() const;

@@ -59,6 +59,8 @@ gameplaycamera::Follow::Follow(const std::vector<std::uint8_t>& executable, unsi
     targetHeight = scalar(executable, 0x804d9d48);
     targetMinimumDepth = scalar(executable, 0x804d9d58);
     targetRate = scalar(executable, 0x804d9d14);
+    captureFarDistance = scalar(executable, 0x804d9d6c);
+    captureLookDistance = scalar(executable, 0x804d9da0);
     roomId = 0xffffffff;
     roomFlags = 0;
     for (unsigned mode = 0; mode < presets.size(); ++mode)
@@ -104,9 +106,7 @@ void gameplaycamera::Follow::approach(std::array<float, 3>& value, const std::ar
     }
 }
 
-void gameplaycamera::Follow::update(CameraOwner& camera, const playeractor::View& player, unsigned room, unsigned playerIndex) {
-    if (!player.position) throw std::runtime_error("Camera follow requires the published player position.");
-    if (playerIndex >= leadX.size()) throw std::out_of_range("Camera player index exceeds the original subject table.");
+void gameplaycamera::Follow::refreshRoom(unsigned room) {
     if (room != roomId && (room >> 24) != 255) {
         const auto& record = rooms.at(room >> 24);
         if (record.id != room) throw std::runtime_error("Camera follow requires a resolved room descriptor.");
@@ -117,8 +117,49 @@ void gameplaycamera::Follow::update(CameraOwner& camera, const playeractor::View
         minimum = record.minimum;
         extent = record.extent;
     }
-    if ((camera.flags & 5) || player.field895 || player.field894 || player.field8C9)
+}
+
+// 80020FAC: the aim point for a subject position (lead is the subject's current horizontal lead).
+std::array<float, 3> gameplaycamera::Follow::aimFor(const std::array<float, 3>& subject, float lead, bool inverted) const {
+    const float minimumX = minimum[0] + parameters[1];
+    const float maximumX = (minimum[0] + extent[0]) - parameters[1];
+    float x = subject[0] + lead;
+    if (x < minimumX) x = minimumX;
+    else if (maximumX < x) x = maximumX;
+    float y = minimum[1] + parameters[2];
+    if (inverted) y = (parameters[2] + minimum[1]) + extent[1];
+    else if (heightThreshold < subject[1] - y) y = subject[1] + parameters[2];
+    const float back = minimum[2] + extent[2];
+    float z = back - inset;
+    if (subject[2] < z) z = subject[2];
+    return {x, y, z};
+}
+
+// 80020E8C: the eye for a subject position (cameraTargetY is the camera's current aim height).
+std::array<float, 3> gameplaycamera::Follow::eyeFor(const std::array<float, 3>& subject, float lead, float cameraTargetY,
+    float height, float depth) const {
+    const float minimumX = minimum[0] + parameters[1];
+    const float maximumX = (minimum[0] + extent[0]) - parameters[1];
+    float x = subject[0] + lead;
+    if (x < minimumX) x = minimumX;
+    else if (maximumX < x) x = maximumX;
+    const float back = minimum[2] + extent[2];
+    float eyeZ = back + parameters[0];
+    if (subject[2] < back - inset) eyeZ -= (back - inset) - subject[2];
+    return {x, (height + cameraTargetY) + parameters[3], depth + eyeZ};
+}
+
+void gameplaycamera::Follow::update(CameraOwner& camera, const playeractor::View& player, unsigned room, unsigned playerIndex) {
+    if (!player.position) throw std::runtime_error("Camera follow requires the published player position.");
+    if (playerIndex >= leadX.size()) throw std::out_of_range("Camera player index exceeds the original subject table.");
+    refreshRoom(room);
+    const bool capturing = (camera.flags & 1) && camera.callback == captureCallback;
+    if (((camera.flags & 5) && !capturing) || (capturing && (camera.flags & 4)) || player.field895 || player.field894)
         throw std::runtime_error("Camera follow requires the selected original scanner, ladder or override callback.");
+    if (capturing) {
+        updateCapture(camera, player, room, playerIndex);
+        return;
+    }
     camera.aspect = static_cast<float>(camera.viewport[2] - camera.viewport[0]) /
         static_cast<float>(camera.viewport[3] - camera.viewport[1]);
     camera.visibilityMode = 0;
@@ -141,26 +182,56 @@ void gameplaycamera::Follow::update(CameraOwner& camera, const playeractor::View
         else if (far) select(1, 0);
         else if (player.field89E && player.field8AC < nearThreshold && !(roomFlags & 3)) select(2, nearDelay);
         else select(0, normalDelay);
-        const float minimumX = minimum[0] + parameters[1];
-        const float maximumX = (minimum[0] + extent[0]) - parameters[1];
-        float x = (*player.position)[0] + leadX[playerIndex];
-        if (x < minimumX) x = minimumX;
-        else if (maximumX < x) x = maximumX;
-        float y = minimum[1] + parameters[2];
-        if (player.field834 == 1) y = (parameters[2] + minimum[1]) + extent[1];
-        else if (heightThreshold < (*player.position)[1] - y) y = (*player.position)[1] + parameters[2];
-        const float back = minimum[2] + extent[2];
-        float z = back - inset;
-        if ((*player.position)[2] < z) z = (*player.position)[2];
-        const std::array<float, 3> target{x, y, z};
-        float eyeZ = back + parameters[0];
-        if ((*player.position)[2] < back - inset) eyeZ -= (back - inset) - (*player.position)[2];
-        const float height = player.field89C == 1 ? reactionHeight : 0;
-        const float depth = player.field89C == 1 ? reactionDepth : 0;
-        const std::array<float, 3> eye{x, (height + camera.target[1]) + parameters[3], depth + eyeZ};
+        // 8002134C stores the reaction offsets in globals (804D8278/804D8274) that the capture camera reuses.
+        eyeHeight = player.field89C == 1 ? reactionHeight : 0;
+        eyeDepth = player.field89C == 1 ? reactionDepth : 0;
+        const std::array<float, 3> target = aimFor(*player.position, leadX[playerIndex], player.field834 == 1);
+        const std::array<float, 3> eye = eyeFor(*player.position, leadX[playerIndex], camera.target[1], eyeHeight, eyeDepth);
         approach(camera.target, target, followRate);
         approach(camera.position, eye, followRate);
+        // 8002134C: a capture target installs the capture camera override after the ordinary smoothing (8001FEBC).
+        if (player.field8C9) {
+            camera.flags |= 1;
+            camera.callback = captureCallback;
+            camera.visibilityMode = 0;
+            camera.fieldE0 = 0;
+        }
     }
+    if (camera.target == camera.position) camera.target[2] = camera.position[2] + coincidentOffset;
+}
+
+// 80022BC4 with 80022950 (the 804D827C flag is never written, so the 30-tick approach branch 800222C4 is unreachable).
+void gameplaycamera::Follow::updateCapture(CameraOwner& camera, const playeractor::View& player, unsigned room,
+    unsigned playerIndex) {
+    if ((room >> 24) == 255) throw std::runtime_error("The capture camera requires a resolved room descriptor.");
+    if (!player.field8C9) {
+        camera.flags &= 0xfff6; // 8001FF64(camera, 1): releases without restoring the saved view
+        camera.callback = 0;
+        if (camera.target == camera.position) camera.target[2] = camera.position[2] + coincidentOffset;
+        return;
+    }
+    if (!player.field8CC) throw std::runtime_error("The capture camera requires the published capture target.");
+    if (player.field834 == 1) select(0xb, 0);
+    else select(2, 0);
+    const auto& subject = *player.position;
+    const auto& focus = *player.field8CC;
+    const std::array<float, 3> offset{focus[0] - subject[0], focus[1] - subject[1], focus[2] - subject[2]};
+    const float squared = offset[2] * offset[2] + offset[0] * offset[0] + offset[1] * offset[1];
+    const float distance = squared > 0 ? std::sqrt(squared) : squared;
+    const float inverse = 1 / std::sqrt(squared);
+    const std::array<float, 3> direction{offset[0] * inverse, offset[1] * inverse, offset[2] * inverse};
+    std::array<float, 3> look;
+    if (captureFarDistance <= distance)
+        for (unsigned axis = 0; axis < 3; ++axis) look[axis] = captureLookDistance * direction[axis] + subject[axis];
+    else
+        for (unsigned axis = 0; axis < 3; ++axis) look[axis] = (subject[axis] + focus[axis]) * followRate;
+    leadX[playerIndex] = 0;
+    leadZ[playerIndex] = 0;
+    const std::array<float, 3> aim = aimFor(look, 0, player.field834 == 1);
+    const std::array<float, 3> eye = eyeFor(look, 0, camera.target[1], eyeHeight, eyeDepth);
+    approach(camera.target, aim, absentRoomRate);
+    approach(camera.position, eye, absentRoomRate);
+    ++camera.fieldE0;
     if (camera.target == camera.position) camera.target[2] = camera.position[2] + coincidentOffset;
 }
 

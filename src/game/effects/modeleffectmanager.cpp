@@ -153,5 +153,9 @@ std::vector<j3dmodel::ModelInstance*> modeleffects::Manager::prepare(const rooml
             result.insert(result.end(), instances.begin(), instances.end());
         }
     }
+    for (auto& pool : ordinary) {
+        auto instances = pool->prepare(rooms, visibility, view, tables, lightMask, drawBuffers);
+        result.insert(result.end(), instances.begin(), instances.end());
+    }
     return result;
 }

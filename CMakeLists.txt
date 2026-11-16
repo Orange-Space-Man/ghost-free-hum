@@ -85,6 +85,7 @@ add_library(Game STATIC
     src/game/actors/actorcapturedeformation.cpp
     src/game/actors/actorcapturemotion.cpp
     src/game/actors/actorcaptureownership.cpp
+    src/game/actors/actorcapturepose.cpp
     src/game/actors/actorcaptureupdate.cpp
     src/game/actors/actorchildattachment.cpp
     src/game/actors/actorcollisionowner.cpp

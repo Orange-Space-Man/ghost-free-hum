@@ -52,7 +52,10 @@ namespace {
         std::size_t capacity = 0, textureStart = 0;
     };
     std::map<std::string, SceneResources> sceneResources;
-    ComPtr<ID3D11DepthStencilState> modelDepth[4];
+    ComPtr<ID3D11DepthStencilState> modelDepth[4], screenClearDepth;
+    ComPtr<ID3D11BlendState> screenClearBlend;
+    ComPtr<ID3D11VertexShader> screenClearVertex;
+    ComPtr<ID3D11PixelShader> screenClearPixel;
     ComPtr<ID3D11SamplerState> modelSamplers[9];
     ComPtr<ID3D11RasterizerState> modelRasterizers[3];
     int width = 1;
@@ -705,6 +708,51 @@ ID3D11Device* gamerenderer::modelDevice() { return device.Get(); }
 ID3D11DeviceContext* gamerenderer::modelContext() { return context.Get(); }
 ID3D11ShaderResourceView* gamerenderer::sceneTexture() { return interfaceTextures.at(previewTextureStart).Get(); }
 
+void gamerenderer::prepareDemoScreen(const std::string& target, const std::array<int, 4>& rectangle) {
+    // 800115F8 -> 8000B228: the secondary screen clears RGB/depth and preserves EFB alpha.
+    if (!screenClearVertex) {
+        constexpr char source[] = R"(
+float4 vs(uint id : SV_VertexID) : SV_POSITION {
+    return float4(id == 2 ? 3 : -1, id == 1 ? -3 : 1, 1, 1);
+}
+float4 ps() : SV_TARGET { return float4(0, 0, 0, 1); }
+)";
+        ComPtr<ID3DBlob> vertex, pixel, errors;
+        check(D3DCompile(source, sizeof(source), nullptr, nullptr, nullptr, "vs", "vs_5_0", 0, 0, &vertex, &errors),
+            "Could not compile screen clear vertex shader");
+        check(D3DCompile(source, sizeof(source), nullptr, nullptr, nullptr, "ps", "ps_5_0", 0, 0, &pixel, &errors),
+            "Could not compile screen clear pixel shader");
+        check(device->CreateVertexShader(vertex->GetBufferPointer(), vertex->GetBufferSize(), nullptr, &screenClearVertex),
+            "Could not create screen clear vertex shader");
+        check(device->CreatePixelShader(pixel->GetBufferPointer(), pixel->GetBufferSize(), nullptr, &screenClearPixel),
+            "Could not create screen clear pixel shader");
+        D3D11_DEPTH_STENCIL_DESC depth{};
+        depth.DepthEnable = TRUE;
+        depth.DepthWriteMask = D3D11_DEPTH_WRITE_MASK_ALL;
+        depth.DepthFunc = D3D11_COMPARISON_ALWAYS;
+        check(device->CreateDepthStencilState(&depth, &screenClearDepth), "Could not create screen clear depth state");
+        D3D11_BLEND_DESC blend{};
+        blend.RenderTarget[0].RenderTargetWriteMask = D3D11_COLOR_WRITE_ENABLE_RED |
+            D3D11_COLOR_WRITE_ENABLE_GREEN | D3D11_COLOR_WRITE_ENABLE_BLUE;
+        check(device->CreateBlendState(&blend, &screenClearBlend), "Could not create screen clear blend state");
+    }
+    auto& surface = sceneResources.at(target).previews.at(0);
+    ID3D11ShaderResourceView* empty = nullptr;
+    context->PSSetShaderResources(0, 1, &empty);
+    context->OMSetRenderTargets(1, surface.target.GetAddressOf(), surface.depth.Get());
+    const D3D11_VIEWPORT viewport{float(rectangle[0]), float(rectangle[1] + 1),
+        float(rectangle[2]), float(rectangle[3]), 0, 1};
+    context->RSSetViewports(1, &viewport);
+    context->RSSetState(solidState.Get());
+    context->OMSetDepthStencilState(screenClearDepth.Get(), 0);
+    context->OMSetBlendState(screenClearBlend.Get(), nullptr, 0xffffffff);
+    context->IASetInputLayout(nullptr);
+    context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+    context->VSSetShader(screenClearVertex.Get(), nullptr, 0);
+    context->PSSetShader(screenClearPixel.Get(), nullptr, 0);
+    context->Draw(3, 0);
+}
+
 void gamerenderer::bindSceneTarget(bool clear, const D3D11_VIEWPORT* sceneViewport) {
     auto& surface = previews.at(0);
     ID3D11ShaderResourceView* empty = nullptr;
@@ -744,6 +792,10 @@ void gamerenderer::close() {
     interfaceTextures.clear();
     previews.clear();
     sceneResources.clear();
+    screenClearVertex.Reset();
+    screenClearPixel.Reset();
+    screenClearDepth.Reset();
+    screenClearBlend.Reset();
     modelVertices.Reset();
     for (auto& state : modelDepth) state.Reset();
     for (auto& sampler : modelSamplers) sampler.Reset();

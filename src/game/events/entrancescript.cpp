@@ -34,6 +34,14 @@ void gameevent::EntranceServices::playerLight(bool) { unsupportedService(); }
 void gameevent::EntranceServices::playerDemo(std::string_view) { unsupportedService(); }
 void gameevent::EntranceServices::controllerInstructions() { unsupportedService(); }
 void gameevent::EntranceServices::cameraTarget(std::string_view, std::int32_t) { unsupportedService(); }
+void gameevent::EntranceServices::clearFlag(unsigned) { unsupportedService(); }
+void gameevent::EntranceServices::generator(std::string_view, bool) { unsupportedService(); }
+std::uint32_t gameevent::EntranceServices::random() { unsupportedService(); return 0; }
+void gameevent::EntranceServices::releaseNamedActor(std::string_view) { unsupportedService(); }
+void gameevent::EntranceServices::setActorLife(std::string_view, unsigned) { unsupportedService(); }
+void gameevent::EntranceServices::beginChoice(const std::vector<unsigned>&) { unsupportedService(); }
+int gameevent::EntranceServices::choiceResult() { unsupportedService(); return -1; }
+void gameevent::EntranceServices::endChoice() { unsupportedService(); }
 
 gameevent::EntranceScript::EntranceScript(std::string source) : source(std::move(source)) {}
 
@@ -64,6 +72,14 @@ void gameevent::EntranceScript::actor(EntranceServices& services) {
     if (!services.actorExists(name)) return;
     if (command == "SHADOWOFF") {
         services.shadowOff(name);
+        return;
+    }
+    if (command == "FREE") {
+        services.releaseNamedActor(name);
+        return;
+    }
+    if (command == "HP") {
+        services.setActorLife(name, number());
         return;
     }
     ActorCommand call{};
@@ -111,6 +127,13 @@ bool gameevent::EntranceScript::update(EntranceServices& services) {
         return false;
     }
     if (state == 3 && !services.acknowledgeMessage()) return false;
+    if (state == 6 && services.flag(waitFlag)) return false;
+    if (state == 7) {
+        const int selected = services.choiceResult();
+        if (selected < 0) return false;
+        services.endChoice();
+        skipToCase(choiceLabels.at(static_cast<std::size_t>(selected)));
+    }
     if (state == 4 && --wait != 0) return false;
     state = 1;
     bool grouped = false;
@@ -121,19 +144,41 @@ bool gameevent::EntranceScript::update(EntranceServices& services) {
             const auto threshold = number();
             const auto enough = token('"', '"');
             const auto below = token('"', '"');
-            const auto selected = count >= threshold ? enough : below;
-            for (;;) {
-                if (token('<', '>') == "CASE" && token('"', '"') == selected) break;
-            }
+            skipToCase(count >= threshold ? enough : below);
         } else if (command == "CHECKFLAG") {
             const auto index = number();
             const auto on = token('"', '"');
             const auto off = token('"', '"');
-            const auto selected = services.flag(index) ? on : off;
-            for (;;) {
-                if (token('<', '>') == "CASE" && token('"', '"') == selected) break;
-            }
+            skipToCase(services.flag(index) ? on : off);
         } else if (command == "MENUOFF") services.menu(false);
+        else if (command == "FLAGOFF") services.clearFlag(number() & 255);
+        else if (command == "GENON") services.generator(token('"', '"'), true);
+        else if (command == "GENOFF") services.generator(token('"', '"'), false);
+        else if (command == "EVENTWAIT") {
+            // 800648C8: raises the flag, then waits (state 6) until the game logic clears it.
+            waitFlag = static_cast<std::uint8_t>(number());
+            services.setFlag(waitFlag);
+            state = 6;
+        }
+        else if (command == "RAMDOMJMP") {
+            // 800649E4: a random forward jump to one of the listed CASE labels (event RNG, unsigned modulo).
+            std::vector<std::string_view> labels;
+            while (cursor < source.size() && source[cursor] == '"') labels.push_back(token('"', '"'));
+            if (labels.empty()) throw std::runtime_error("Random event jump has no labels.");
+            skipToCase(labels[services.random() % labels.size()]);
+        }
+        else if (command == "CHOICE") {
+            // 80064978: label/text-line pairs up to the next tag, then the list waits for a selection (state 7).
+            choiceLabels.clear();
+            std::vector<unsigned> lines;
+            while (cursor < source.size() && source[cursor] != '<') {
+                choiceLabels.push_back(token('"', '"'));
+                lines.push_back(number());
+            }
+            services.beginChoice(lines);
+            state = 7;
+        }
+        else if (command == "CASE" || command == "LISTEND") {}
         else if (command == "MENUON") services.menu(true);
         else if (command == "LUIGISTOP2") services.stopPlayerMotion();
         else if (command == "LUIGISTOP3") services.stopPlayer();
@@ -196,6 +241,12 @@ bool gameevent::EntranceScript::update(EntranceServices& services) {
         } else throw std::runtime_error("Unsupported entrance command: " + std::string(command));
     } while (grouped);
     return false;
+}
+
+void gameevent::EntranceScript::skipToCase(std::string_view label) {
+    for (;;) {
+        if (token('<', '>') == "CASE" && token('"', '"') == label) break;
+    }
 }
 
 bool gameevent::EntranceScript::finished() const { return completed; }

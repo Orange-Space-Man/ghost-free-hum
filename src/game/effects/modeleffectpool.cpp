@@ -3,6 +3,12 @@
 #include "game/startup/startupresources.h"
 
 #include <stdexcept>
+#include <algorithm>
+#include <type_traits>
+#include "jlib/j3d/j3dkeyanimation.h"
+#include "jlib/j3d/j3dmaterialcalculation.h"
+#include "jlib/j3d/j3dmaterialdisplaylist.h"
+#include "jlib/j3d/j3dtextureanimation.h"
 
 namespace {
     std::vector<std::uint8_t> range(const std::vector<std::uint8_t>& executable, unsigned address, unsigned size) {
@@ -41,7 +47,7 @@ std::vector<modeleffects::Definition> modeleffects::readDefinitions(const std::v
     for (unsigned i = 0; i < count; ++i) {
         Definition definition;
         const auto names = word(table, i * 12);
-        const auto parameters = range(executable, word(table, i * 12 + 4), 28);
+        const auto parameters = range(executable, word(table, i * 12 + 4), 32);
         definition.capacity = word(table, i * 12 + 8);
         definition.lifetime = static_cast<std::int32_t>(word(parameters, 0));
         definition.transformAnimation = parameters[4] != 0;
@@ -53,6 +59,7 @@ std::vector<modeleffects::Definition> modeleffects::readDefinitions(const std::v
         }
         definition.resourceType = word(parameters, 20);
         definition.type = word(parameters, 24);
+        definition.lighting = word(parameters, 28) != 0;
         const auto pointers = range(executable, names, nameCount * 4);
         for (unsigned j = 0; j < nameCount; ++j) definition.names.push_back(name(executable, word(pointers, j * 4)));
         result.push_back(std::move(definition));
@@ -94,6 +101,7 @@ void modeleffects::Pool::load(particles::ArchiveResources& resources, const j3dm
     if (definition.counts[0] + definition.counts[1] + definition.counts[2]) {
         j3dmodel::prepareMaterialAnimations(*model);
     }
+    if (transform) j3dmodel::bindAnimation(*model, transform);
     for (auto& group : animations) for (auto& entry : group) j3dmodel::bindAnimation(*model, entry);
     for (auto& owner : owners) owner->model = std::make_unique<j3dmodel::ModelInstance>(model, 0x10000);
 }
@@ -170,4 +178,83 @@ modeleffects::Owner* modeleffects::Factory::create(unsigned type, const j3dmodel
 
 modeleffects::Owner* modeleffects::Factory::create(unsigned type, const std::array<float, 3>& position) {
     return create(type, j3dmodel::Matrix{1, 0, 0, position[0], 0, 1, 0, position[1], 0, 0, 1, position[2]});
+}
+
+std::vector<j3dmodel::ModelInstance*> modeleffects::Pool::prepare(const roomlocation::Rooms& rooms,
+    const roomtraversal::State& visibility, const j3dmodel::Matrix& view,
+    const j3dmodel::TransformTables& tables, unsigned lightMask,
+    const std::array<std::unique_ptr<j3dmodel::DrawBuffer>, 2>& buffers) {
+    std::vector<j3dmodel::ModelInstance*> result;
+    const auto submit = [&](j3dmodel::ModelInstance& instance) {
+        j3dmodel::calculateAnimated(instance, tables);
+        for (auto& entry : instance.model->materials.entries) {
+            auto& material = *entry;
+            if (definition.lighting && !(material.identityFlags & 0xc0000000) && material.original) {
+                material.identityFlags |= 0x80000000;
+                material.mode = material.original->mode;
+                material.fieldE = material.original->fieldE;
+                material.animation.reset();
+            }
+            auto& channel = material.color->channels[0];
+            if (definition.lighting) {
+                channel = static_cast<std::uint16_t>((channel & 0xffc3) | ((lightMask << 2) & 0x3c));
+                channel = static_cast<std::uint16_t>((channel & 0x87ff) | ((lightMask << 7) & 0x1800));
+            }
+            if (material.animation) {
+                const auto animate = [&](const auto& bindings, auto& colors, unsigned section, int minimum, int maximum) {
+                    for (unsigned slot = 0; slot < bindings.size(); ++slot) {
+                        if (!bindings[slot]) continue;
+                        const auto& binding = *bindings[slot];
+                        const auto& animation = *binding.animation;
+                        const auto& group = animation.groups[section];
+                        for (unsigned component = 0; component < 4; ++component) {
+                            const auto value = j3dmodel::sampleAnimationKey(animation, group,
+                                group.table + binding.index * 28 + component * 6, component, true, 0);
+                            using Color = typename std::decay_t<decltype(colors[slot])>::value_type;
+                            colors[slot][component] = static_cast<Color>(std::clamp<int>(int(value), minimum, maximum));
+                        }
+                    }
+                };
+                animate(material.animation->tevColors, material.tev->colors, 0, -1024, 1023);
+                animate(material.animation->tevConstants, material.tev->constants, 1, 0, 255);
+            }
+        }
+        const auto& geometry = instance.model->geometry;
+        std::vector<int> pending;
+        if (geometry.hierarchy.root >= 0) pending.push_back(geometry.hierarchy.root);
+        while (!pending.empty()) {
+            const int joint = pending.back();
+            pending.pop_back();
+            const auto& links = geometry.hierarchy.joints[joint];
+            if (links.sibling >= 0) pending.push_back(links.sibling);
+            if (links.child >= 0) pending.push_back(links.child);
+            for (int index = links.material; index >= 0; index = geometry.hierarchy.materials[index].next) {
+                auto& packet = instance.materials.at(index);
+                auto& material = *packet.material;
+                j3dmodel::animateTextureMatrices(material);
+                j3dmodel::calculateMaterial(material, instance.jointMatrices[geometry.joints[joint].index], view,
+                    instance.field8 & 12, tables);
+                auto& buffer = *buffers[(material.mode & 3) ? 0 : 1];
+                if (buffer.sortType != 0) throw std::runtime_error("Original model effect requires material-sort drawing.");
+                packet.materialIdentity = material.identity;
+                packet.identityFlags = material.identityFlags;
+                if (buffer.entryMaterial(packet, geometry.textureOffset)) j3dmodel::updateMaterialPacket(packet);
+            }
+        }
+        j3dmodel::calculateViewMatrices(instance, view);
+        result.push_back(&instance);
+    };
+    for (auto& entry : owners) {
+        auto& owner = *entry;
+        if ((owner.flags & 5) != 5) continue;
+        const auto& matrix = owner.model->matrix;
+        const auto room = rooms.resolve({matrix[3], matrix[7], matrix[11]}, 0xffffffff);
+        if ((visibility.record(room, 0).flags & 3) != 1) continue;
+        if (transform) transform->frame = float(owner.frame);
+        for (unsigned group = 0; group < animations.size(); ++group)
+            for (unsigned index = 0; index < animations[group].size(); ++index)
+                animations[group][index]->frame = float(owner.frames[group][index]);
+        submit(*owner.model);
+    }
+    return result;
 }

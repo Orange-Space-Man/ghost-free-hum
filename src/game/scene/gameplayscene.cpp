@@ -175,7 +175,7 @@ void gameplay::Scene::prepareModelGraphics(ID3D11Device* device) {
     }
     lightRenderer.load(device, resources.managers().players().models->model(playermodels::SharedModel::Light));
     for (auto* pool : resources.managers().modelEffects().registered()) {
-        if (!dynamic_cast<modeleffects::BarrierPool*>(pool) && !dynamic_cast<modeleffects::CobwebPool*>(pool)) continue;
+        if (typeid(*pool) != typeid(modeleffects::Pool) && !dynamic_cast<modeleffects::BarrierPool*>(pool) && !dynamic_cast<modeleffects::CobwebPool*>(pool)) continue;
         for (const auto& owner : pool->owners) {
             const auto& model = owner->model->model;
             if (!effectRenderers.count(model.get())) effectRenderers[model.get()].load(device, model);
@@ -311,6 +311,7 @@ void gameplay::Scene::update(const playerinput::PadStatus& pad, std::int16_t por
         moneyCamera.target[1] - moneyCamera.position[1], moneyCamera.target[2] - moneyCamera.position[2]});
     managers.particles().update();
     resources.hud().update(player->view, resources.fullscreen(), managers.roomCleared(player->room() >> 24));
+    resources.hud().updateDemoPanel(player->view, sceneControl.demoDisplay, resources.messages().visible());
     resources.updateMessages();
     ++ticks;
 }
@@ -403,7 +404,10 @@ void gameplay::Scene::draw(bool present) {
     const bool movieReady = keyPresentation.state().owned && keyPresentation.state().updated;
     if (movieReady && keyPresentation.state().mode != 1) keyPresentation.draw(present);
     else {
-        if (movieReady) keyPresentation.drawOverlay("gameplay");
+        if (movieReady) {
+            gamerenderer::prepareDemoScreen("gameplay", resources.hud().demoViewport());
+            keyPresentation.drawOverlay("gameplay", resources.hud().demoViewport());
+        }
         startupscene::Picture picture;
         if (!gameplayDrawn && !gamerenderer::useScene("gameplay"))
             throw std::runtime_error("Retained gameplay graphics ownership is unavailable.");

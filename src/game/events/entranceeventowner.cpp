@@ -86,7 +86,8 @@ void gameevent::EntranceOwner::update(unsigned elapsedSeconds, std::uint32_t fra
         for (const auto& condition : managers.missionEvents().conditions()) {
             const auto event = static_cast<unsigned>(condition.eventNumber);
             if ((event == entranceEvent || event == firstKeyEvent || (entry.map == 2 && event == 1) ||
-                (entry.map == 1 && event == 8 && !flag(7) && !flag(73))) && eligible(event, elapsedSeconds)) {
+                (entry.map == 1 && event == 8 && !flag(7) && !flag(73)) ||
+                (entry.map == 3 && (event == 9 || event == 10))) && eligible(event, elapsedSeconds)) {
                 currentEvent = event;
                 break;
             }
@@ -101,6 +102,7 @@ void gameevent::EntranceOwner::update(unsigned elapsedSeconds, std::uint32_t fra
         const auto text = resource("event" + number + ".txt");
         auto messageIndex = archive.findNameResource("message" + number + ".csv");
         if (messageIndex < 0) messageIndex = archive.findNameResource("message" + std::to_string(currentEvent) + ".csv");
+        if (messageIndex < 0) messageIndex = archive.findNameResource("massage" + std::to_string(currentEvent) + ".csv"); // the training archives misspell the resource name
         if (messageIndex >= 0) {
             messageText = std::make_unique<MessageText>(executable, archive.resource(messageIndex));
         }
@@ -146,6 +148,10 @@ void gameevent::EntranceOwner::music(unsigned index) {
     if (index == 10) managers.music().requestEntrance(audioFrame);
     else if (index == 0) managers.music().requestFirstKey(audioFrame);
     else if (index == 1) managers.music().requestParlor(audioFrame);
+    else if (index == 8 || index == 13 || index == 14) {
+        // Table 8038EAB4: 8 -> 0x80000008, 13 -> 0x80000027, 14 -> 0x80000026.
+        managers.music().requestSequence(index == 8 ? 0x80000008u : index == 13 ? 0x80000027u : 0x80000026u, audioFrame);
+    }
     else throw std::runtime_error("Unsupported entrance music request.");
 }
 
@@ -302,7 +308,8 @@ void gameevent::EntranceOwner::wipeTime(std::int32_t duration) { requestedTransi
 void gameevent::EntranceOwner::warp(std::int32_t destination) {
     const bool parlor = entry.map == 2 && destination == 1 && requestedTransition.kind == 1 && requestedTransition.duration == 126;
     const bool training = entry.map == 1 && destination == 3 && requestedTransition.kind == 2 && requestedTransition.duration == 30;
-    if (!parlor && !training)
+    const bool trainingExit = entry.map == 3 && (destination == 1 || destination == 6) && requestedTransition.kind == 2 && requestedTransition.duration == 60;
+    if (!parlor && !training && !trainingExit)
         throw std::runtime_error("Scene transition requires its original destination and wipe lifecycle.");
     requestedTransition.destination = destination;
 }
@@ -327,4 +334,70 @@ void gameevent::EntranceOwner::cameraTarget(std::string_view name, std::int32_t 
     cameraSubject[1] += static_cast<float>(height);
     follow.beginTarget(cameraOwner);
     targetCameraActive = true;
+}
+
+void gameevent::EntranceOwner::bindRandom(std::function<std::uint32_t()> value) { eventRandom = std::move(value); }
+
+void gameevent::EntranceOwner::clearFlag(unsigned index) { managers.flags().setOff(static_cast<std::uint8_t>(index)); }
+
+// 800EAA00 (GENON/GENOFF): the first placement row whose CodeName matches receives "start"/"stop" through the message
+// sender, the same path as the EFFECT command.
+void gameevent::EntranceOwner::generator(std::string_view name, bool start) {
+    managers.eventEffect(name, start ? "start" : "stop");
+}
+std::uint32_t gameevent::EntranceOwner::random() {
+    if (!eventRandom) throw std::runtime_error("Random event jumps require the gameplay random state.");
+    return eventRandom();
+}
+
+// ACTOR <FREE> (80062EE8 case 0x15): clears the 0x10 stop bit and zeroes the velocity.
+void gameevent::EntranceOwner::releaseNamedActor(std::string_view name) {
+    if (auto* actor = find(name)) {
+        actor->flags &= ~0x10u;
+        actor->setVelocity({});
+    }
+}
+
+// ACTOR <HP> (80062EE8 case 8): the actor's life halfword (+0xFC).
+void gameevent::EntranceOwner::setActorLife(std::string_view name, unsigned value) {
+    if (auto* actor = find(name)) actor->life = static_cast<std::uint16_t>(value);
+}
+
+// CHOICE (80064978/80043F14, 800441C4, 80043F88). Provisional presentation: the original choice windows are not traced, so the
+// options are listed in message window 2 with a cursor; A selects (sound 0x380B), up/down moves.
+void gameevent::EntranceOwner::beginChoice(const std::vector<unsigned>& lines) {
+    if (!messageText) throw std::runtime_error("Event choices require their original message resource.");
+    choiceLines = lines;
+    choiceCursor = 0;
+    choiceActive = true;
+    showChoice();
+}
+
+void gameevent::EntranceOwner::showChoice() {
+    std::string text;
+    for (unsigned i = 0; i < choiceLines.size(); ++i) {
+        text += i == choiceCursor ? "> " : "  ";
+        text += messageText->line(choiceLines[i]);
+        if (i + 1 < choiceLines.size()) text += "\n";
+    }
+    messages.speak(2, text);
+}
+
+int gameevent::EntranceOwner::choiceResult() {
+    if (!choiceActive) return -1;
+    const auto pressed = managers.controller().pressed;
+    const auto previous = choiceCursor;
+    if ((pressed & 0x8) && choiceCursor > 0) --choiceCursor;
+    if ((pressed & 0x4) && choiceCursor + 1 < choiceLines.size()) ++choiceCursor;
+    if (previous != choiceCursor) showChoice();
+    if (pressed & 0x300) {
+        managers.playback()->playGlobal(0x380b);
+        return static_cast<int>(choiceCursor);
+    }
+    return -1;
+}
+
+void gameevent::EntranceOwner::endChoice() {
+    choiceActive = false;
+    messages.close(2);
 }

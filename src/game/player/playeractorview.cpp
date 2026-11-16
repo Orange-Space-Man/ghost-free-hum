@@ -114,7 +114,8 @@ void playeractor::View::refresh(actors::MoveActor& actor, State& state, Componen
     field8C9 = state.field11A0 != nullptr;
     field8CA = state.field11A0 && (state.field11A0->flags & 0x10) != 0;
     field8CC = state.field11A0 ? &state.field11A4 : nullptr;
-    field8D0 = state.field11A0 ? (*state.field11A0->actor)->life : 0xffff;
+    // A cleared vacuum target (expired entry, null actor slot) has no life to publish; the original would read low memory.
+    field8D0 = state.field11A0 && state.field11A0->actor && *state.field11A0->actor ? (*state.field11A0->actor)->life : 0xffff;
     field8D4 = state.field11A0 ? &state.fields11B0 : nullptr;
     fieldF15 = state.field106C != 0;
     fieldF16 = state.field1070 > 3;

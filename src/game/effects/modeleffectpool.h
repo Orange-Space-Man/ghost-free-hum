@@ -6,11 +6,14 @@
 #include "game/world/roomtraversalstate.h"
 
 #include <string>
+#include "jlib/j3d/j3ddrawbuffer.h"
+#include "jlib/j3d/j3dmodelcalculation.h"
 
 namespace modeleffects {
     struct Definition {
         std::int32_t lifetime = 0;
         bool transformAnimation = false;
+        bool lighting = false;
         std::array<unsigned, 3> counts{};
         unsigned resourceType = 0, type = 0, capacity = 0;
         std::vector<std::string> names;
@@ -28,6 +31,10 @@ namespace modeleffects {
         virtual void advance(Owner& owner, bool visible);
         virtual void update(const roomlocation::Rooms& rooms, const roomtraversal::State& visibility);
         void setPaused(bool paused);
+        std::vector<j3dmodel::ModelInstance*> prepare(const roomlocation::Rooms& rooms,
+            const roomtraversal::State& visibility, const j3dmodel::Matrix& view,
+            const j3dmodel::TransformTables& tables, unsigned lightMask,
+            const std::array<std::unique_ptr<j3dmodel::DrawBuffer>, 2>& buffers);
         const Definition definition;
         std::vector<std::unique_ptr<Owner>> owners;
         std::shared_ptr<j3dmodel::Animation> transform;

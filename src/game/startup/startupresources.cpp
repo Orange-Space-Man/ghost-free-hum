@@ -40,7 +40,8 @@ bool startupresources::decodeTexture(const std::vector<std::uint8_t>& data, room
     try {
         range(data, 0, 32);
         require(data[8] == 0, "Paletted startup textures are not implemented.");
-        const auto offset = dword(data, 28);
+        const auto storedOffset = dword(data, 28);
+        const auto offset = storedOffset ? storedOffset : 32; // 801D5804: legacy TIM images follow the header.
         require(offset >= 32 && offset <= data.size(), "Invalid startup texture offset.");
         std::vector<std::uint8_t> pixels(data.begin() + offset, data.end());
         if (!roommaterials::decodeTexture(pixels, word(data, 2), word(data, 4), data[0], texture, error)) return false;

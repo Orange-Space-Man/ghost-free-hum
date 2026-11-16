@@ -74,7 +74,7 @@ void enemystrategy::Light::updateSpin() {
     const auto angle = static_cast<std::uint32_t>(litCount & 0xff) * 0x9000u;
     const auto value = static_cast<std::int16_t>(static_cast<std::int32_t>(
         spinAmplitude * services.trigonometry.sineAngle(angle)));
-    services.actor.previousRotation[1] = value;
+    services.actor.rotation[2] = value;
     services.actor.previousRotation[2] = value;
 }
 

@@ -45,8 +45,36 @@ gameplay::Hud::Hud(const gamearchive::Archive& archive, const std::vector<std::u
     for (unsigned i = 0; i < floors.size(); ++i) floors[i] = load(archive, name(executable, floorNameTable, i));
     hearts = {load(archive, "/kawano/lifemeter/heartD.bti"), load(archive, "/kawano/lifemeter/heartD2.bti"),
         load(archive, "/kawano/lifemeter/heartD_KAGE.bti")};
+    demoPanelImages = {load(archive, "/kawano/base/cgbh.bti"),
+        load(archive, "/kawano/base/cgbk_kage.tim"), load(archive, "/kawano/base/ledcover.tim")};
+    std::string moneyError;
+    const int moneyResource = archive.findPathResource("/kawano/list/blo/sgb_1.blo");
+    if (moneyResource < 0 || !menulayout::read(archive.resource(moneyResource), moneyLayout, moneyError))
+        throw std::runtime_error("Game Boy counter layout: " + moneyError);
+    auto* backdrop = moneyLayout.find("BACK");
+    backdrop->visible = false;
+    backdrop->textures.fill({});
+    auto* noise = moneyLayout.find("nois");
+    noise->visible = false;
+    moneyNoisePane = *noise;
+    moneyNoiseColor = noise->white;
+    moneyNoise = load(archive, "/kawano/base/timg/sgb_noise.bti");
+    std::vector<std::string> extraDigits;
+    for (unsigned i = 0; i < moneyDigits.size(); ++i) {
+        const auto path = name(executable, 0x80338950, i);
+        moneyDigits[i] = path.substr(path.find_last_of('/') + 1);
+        extraDigits.push_back(moneyDigits[i]);
+    }
+    if (!moneyGraphics.load(archive, moneyLayout, moneyError, extraDigits)) throw std::runtime_error(moneyError);
+    moneyGraphics.textureOffset = images.size();
+    images.insert(images.end(), moneyGraphics.textures.begin(), moneyGraphics.textures.end());
+    const auto panelPositions = read(executable, 0x804d0524, 10);
+    for (unsigned i = 0; i < demoPanelPositions.size(); ++i)
+        demoPanelPositions[i] = static_cast<std::int16_t>((panelPositions[i * 2] << 8) | panelPositions[i * 2 + 1]);
+    demoPanelY = demoPanelPositions[1];
     const auto constants = read(executable, 0x804d052e, 14);
     healthAlpha = constants[0];
+    demoPanelMinimumAlpha = constants[1];
     const auto bits = word(constants, 10);
     std::memcpy(&digitScale, &bits, 4);
     const auto step = read(executable, 0x804d04e0, 2);
@@ -147,8 +175,81 @@ startupscene::Picture gameplay::Hud::picture(std::size_t texture, int x, int y, 
     return result;
 }
 
+void gameplay::Hud::updateDemoPanel(const playeractor::View& player, bool active, bool messageVisible) {
+    demoConversation = active;
+    demoPanelActive = player.field861 || demoPanelY < demoPanelPositions[1];
+    ++moneyFrame;
+    for (unsigned row = 0; row < 3; ++row) {
+        const unsigned places = row == 2 ? 3 : 4;
+        auto value = static_cast<unsigned>(std::clamp<std::int32_t>(static_cast<std::int32_t>(player.fieldsED4[row]), 0, row == 2 ? 999 : 9999));
+        for (unsigned digit = 1; digit <= places; ++digit) {
+            for (char shadow : {'a', 'b'}) {
+                const auto tag = std::to_string(row + 1) + "n" + std::to_string(digit) + shadow;
+                auto* pane = moneyLayout.find(tag);
+                pane->textures[0] = moneyDigits[value % 10];
+                pane->visible = digit == 1 || value != 0;
+            }
+            value /= 10;
+        }
+    }
+    // Normal counters and conversation use the same sliding panel in 8003CFC0.
+    const int target = !player.field861 || player.field895 ? demoPanelPositions[1] :
+        messageVisible ? demoPanelPositions[3] : demoPanelPositions[2];
+    if (player.field895) demoPanelY = target;
+    else {
+        const int delta = demoPanelY - target;
+        if (delta) demoPanelY -= delta / 4 + (delta < 0 ? -1 : 1);
+    }
+    demoPanelAlpha = demoPanelY > demoPanelPositions[2] ? demoPanelMinimumAlpha :
+        demoPanelY > demoPanelPositions[3] ? demoPanelMinimumAlpha +
+            (255 - demoPanelMinimumAlpha) * (demoPanelPositions[2] - demoPanelY) /
+            (demoPanelPositions[2] - demoPanelPositions[3]) : 255;
+}
+
+std::array<int, 4> gameplay::Hud::demoViewport() const {
+    // 8003CFC0 -> 80115474, including the original one-pixel viewport Y offset.
+    return {demoPanelPositions[0] + 24, demoPanelY + 21, 110, 84};
+}
+
 std::vector<startupscene::Picture> gameplay::Hud::pictures() const {
     std::vector<startupscene::Picture> result;
+    if (demoPanelActive) {
+        const int x = demoPanelPositions[0];
+        const float opacity = demoPanelAlpha / 255.0f;
+        result.push_back(picture(demoPanelImages[1], x + 134, demoPanelY + 8, 1, false, {0, 0, 0, opacity}));
+        result.push_back(picture(demoPanelImages[2], x + 24, demoPanelY - 27, 1, false, {1, 1, 1, opacity}));
+        result.push_back(picture(demoPanelImages[0], x, demoPanelY, 1, false, {1, 1, 1, opacity}));
+        if (!demoConversation) {
+            const int screenX = x + 24, screenY = demoPanelY + 22;
+            const auto* noise = &moneyNoisePane;
+            const auto tint = std::array<float, 4>{((moneyNoiseColor >> 24) & 255) / 255.0f,
+                ((moneyNoiseColor >> 16) & 255) / 255.0f, ((moneyNoiseColor >> 8) & 255) / 255.0f, 1};
+            for (int y = 0; y < noise->height; y += 32) for (int column = 0; column < noise->width; column += 32) {
+                auto image = picture(moneyNoise, screenX + noise->x + column, screenY + noise->y + y, 1, false, tint);
+                image.width = float(std::min(32, noise->width - column));
+                image.height = float(std::min(32, noise->height - y));
+                const float u = image.width / 32, v = image.height / 32;
+                const bool mirror = (moneyFrame / 2) % 2 == 0;
+                const bool rotate = moneyFrame % 2 == 0;
+                if (rotate) {
+                    image.coordinates = mirror ? std::array<std::array<float, 2>, 4>{{{0, 0}, {0, u}, {v, 0}, {v, u}}} :
+                        std::array<std::array<float, 2>, 4>{{{0, 1}, {0, 1 - u}, {v, 1}, {v, 1 - u}}};
+                } else {
+                    image.coordinates = mirror ? std::array<std::array<float, 2>, 4>{{{0, 1}, {u, 1}, {0, 1 - v}, {u, 1 - v}}} :
+                        std::array<std::array<float, 2>, 4>{{{0, 0}, {u, 0}, {0, v}, {u, v}}};
+                }
+                image.alpha = opacity;
+                result.push_back(image);
+            }
+            for (auto image : moneyGraphics.pictures(moneyLayout)) {
+                image.transform[4] += float(screenX);
+                image.transform[5] += float(screenY);
+                image.alpha *= opacity;
+                result.push_back(image);
+            }
+        }
+
+    }
     const float alpha = healthAlpha / 255.0f;
     const float pulse = std::abs(sine[(pulseAngle >> 4) & 4095]);
     const float maximum = 1 - pulse * (100 - maximumLife) / 100.0f;

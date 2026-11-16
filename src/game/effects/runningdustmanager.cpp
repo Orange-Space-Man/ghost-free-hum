@@ -7,6 +7,7 @@
 #include <cmath>
 #include <cstring>
 #include <list>
+#include <optional>
 #include <stdexcept>
 
 namespace {
@@ -83,6 +84,7 @@ namespace {
         particles::Ring<Particle> particles;
         particles::SceneContext* context = nullptr;
         const Parameters* parameters = nullptr;
+        std::optional<Parameters> localParameters;
         Vector origin{};
         float floor = 0, logarithmInput = 0, growthThreshold = 0, collisionRadius = 0;
         unsigned room = 0, level = 0;
@@ -372,6 +374,41 @@ bool runningdust::Manager::impact(float speed, float radius, const Vector& posit
         sorted.push_back(particle);
     std::stable_sort(sorted.begin(), sorted.end(), [](const auto* left, const auto* right) { return left->position[2] < right->position[2]; });
     for (auto* particle : sorted) { emitter->particles.remove(*particle); emitter->particles.append(*particle); }
+    return true;
+}
+
+bool runningdust::Manager::release(const std::array<float, 3>& position, unsigned count, particles::SceneContext& player) {
+    auto* emitter = takeLast(state->emitters.free);
+    if (!emitter) return false;
+    state->active.append(*emitter);
+    emitter->room = state->rooms.resolve(position);
+    emitter->floor = float(state->rooms.entries().at(emitter->room >> 24).bounds[1]);
+    emitter->context = &player;
+    emitter->localParameters = state->parameters[1];
+    auto& p = *emitter->localParameters;
+    p.radialSpread = p.upwardSpread = 0;
+    p.captureDelay = 0;
+    emitter->parameters = &p;
+    emitter->level = 1;
+    emitter->visible = true;
+    emitter->origin = position;
+    emitter->logarithmInput = 1;
+    emitter->growthThreshold = p.maximumSize * p.growthFraction;
+    emitter->collisionRadius = 0;
+    for (unsigned i = 0; i < std::min(count & 255u, 36u); ++i) {
+        auto* particle = takeLast(state->particles.free);
+        if (!particle) continue;
+        *particle = Particle{};
+        emitter->particles.append(*particle);
+        particle->position = position;
+        state->random();
+        state->random();
+        particle->lifetime = static_cast<std::int16_t>(p.lifetime);
+        particle->pulse = static_cast<std::uint16_t>(int(65535 * state->random()));
+        particle->rotationSpeed = p.rotationSpeed * (1 - 2 * state->random());
+        particle->rotation = 360 * state->random();
+        particle->driftSign = 1 - 2 * state->random() < 0 ? -1.0f : 1.0f;
+    }
     return true;
 }
 

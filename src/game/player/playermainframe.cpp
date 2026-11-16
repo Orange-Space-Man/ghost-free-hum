@@ -41,8 +41,11 @@ void playeractor::MainFrame::run(Player& player, MainFrameServices& services) co
     }
     energy.run(player, services.environment.catalog, vacuumUpdated);
     if (state.field1180 == 6 && actions.query74968()) {
-        if (!services.elemental) throw std::runtime_error("Elemental equipment requires its original emission update.");
-        services.elemental(player);
+        if (static_cast<std::int32_t>(state.fields11D8[0]) > 0) {
+            if (!services.elemental) throw std::runtime_error("Collected dust requires its original emission update.");
+            services.elemental(player);
+        }
+        services.sound(0x22, player.position);
     }
     if ((state.flags792 & 8) && input.flags30[1]) {
         if (!services.elementalShot) throw std::runtime_error("Elemental input requires its original shot update.");

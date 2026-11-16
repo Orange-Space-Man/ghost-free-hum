@@ -203,6 +203,7 @@ void gameplaymusic::Owner::updateRequests(std::uint32_t audioFrame, bool enabled
     case 0x8000001a: requestParlor(audioFrame); break;
     case 0x8000001b: requestFirstKey(audioFrame); break;
     case 0x8000000e: requestItem(audioFrame); break;
+    case 0x80000008: case 0x80000026: case 0x80000027: requestSequence(pending, audioFrame); break;
     default: throw std::logic_error("Pending music request has no recovered route.");
     }
 }
@@ -267,6 +268,28 @@ bool gameplaymusic::Owner::requestLab(std::uint32_t audioFrame) {
         throw std::runtime_error(error);
     }
     preparedSound = activeSound = 0x8000000c;
+    sequence.start();
+    soundState = 4;
+    lastRequestFrame = audioFrame;
+    return true;
+}
+
+// Event BGM requests (8018A470 through table 8038EAB4) for sequences without a dedicated request above; same flow as 8018A470's
+// 801889FC route for a plain JaiInit-routed sequence.
+bool gameplaymusic::Owner::requestSequence(std::uint32_t id, std::uint32_t audioFrame) {
+    std::lock_guard<std::recursive_mutex> lock(mutex);
+    if (deferRequest(id)) return true;
+    if (lastRequestFrame == audioFrame) return false;
+    const auto* info = jaudio::soundInfo(resources, id);
+    if (!info || (*info)[0] || (*info)[1] || (*info)[2] || (*info)[3])
+        throw std::runtime_error("Unsupported original event sequence routing metadata.");
+    stop();
+    std::string error;
+    if (!sequence.loadSequence(package, resources, id, error)) {
+        preparedSound = 0;
+        throw std::runtime_error(error);
+    }
+    preparedSound = activeSound = id;
     sequence.start();
     soundState = 4;
     lastRequestFrame = audioFrame;

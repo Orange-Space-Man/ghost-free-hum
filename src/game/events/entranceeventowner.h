@@ -20,6 +20,7 @@ namespace gameevent {
         void bindRoomLight(std::function<void(bool)> change);
         void bindControllerInstructions(std::function<void()> request);
         void bindPlayerDemo(std::function<void(std::string_view)> request);
+        void bindRandom(std::function<std::uint32_t()> value);
         void playerDemo(std::string_view name) override;
         void update(unsigned elapsedSeconds, std::uint32_t audioFrame);
         bool updateCamera();
@@ -74,6 +75,15 @@ namespace gameevent {
         void stopPlayerMotion() override;
         std::uint32_t ghostTotal() const override;
         void blendCamera() override;
+        void clearFlag(unsigned index) override;
+        void generator(std::string_view name, bool start) override;
+        std::uint32_t random() override;
+        void releaseNamedActor(std::string_view actor) override;
+        void setActorLife(std::string_view actor, unsigned value) override;
+        void beginChoice(const std::vector<unsigned>& lines) override;
+        int choiceResult() override;
+        void endChoice() override;
+        void showChoice();
         std::vector<std::uint8_t> resource(std::string_view name) const;
         bool eligible(unsigned event, unsigned elapsedSeconds) const;
         gameassets::Package& package;
@@ -86,6 +96,10 @@ namespace gameevent {
         MessageWindows& messages;
         gameplaycamera::Follow& follow;
         std::function<void(std::string_view)> requestDemo;
+        std::function<std::uint32_t()> eventRandom;
+        std::vector<unsigned> choiceLines;
+        unsigned choiceCursor = 0;
+        bool choiceActive = false;
         bool targetCameraActive = false;
         std::array<float, 3> cameraSubject{};
         std::unique_ptr<MessageText> messageText;

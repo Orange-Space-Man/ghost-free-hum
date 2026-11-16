@@ -316,8 +316,19 @@ std::uint32_t ghostparent::Parent::playerEnteredRoom(characterevent::Event&) {
     return 1;
 }
 
-std::uint32_t ghostparent::Parent::replacement(characterevent::Event&) {
-    throw std::runtime_error("Original ghost replacement event (800C7974) needs the unported placement access-name check (800C90D4).");
+std::uint32_t ghostparent::Parent::replacement(characterevent::Event& event) {
+    // 800C7974: the hold (+0x5A1) ends unless the placement row names an access (800C90D4: its access_name column is
+    // present and differs from "(null)") and the search has not fired (+0x5A2); the attack child then sees the event.
+    bool access = false;
+    std::string_view accessName;
+    if (owner && owner->source.table && owner->source.row >= 0 &&
+        owner->source.table->getValue(owner->source.row, "access_name", accessName))
+        access = accessName != "(null)";
+    if (!access || fields.field5A2) fields.holding = false;
+    if (state == 5) {
+        if (auto* observer = dynamic_cast<characterevent::Observer*>(children.attack)) observer->replacement(event);
+    }
+    return 1;
 }
 
 std::uint32_t ghostparent::Parent::sprayedWithFire(characterevent::Event&) {

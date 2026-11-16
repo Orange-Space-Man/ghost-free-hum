@@ -70,10 +70,12 @@ void actors::Registry::updateContacts(enemies::Manager& manager, const actorcoll
     const actorcollision::Catalog& catalog, gameflags::State& flags, const std::function<void()>& afterPaths) {
     for (unsigned i = 0; i < used; ++i) {
         auto& actor = *objects[i];
-        if (!(actor.flags & 0x60) && actor.fieldF4) {
-            actor.followPath();
-            actor.approachRotation();
-        }
+        // 80069A70: every admitted actor (flags 0x60 clear) turns its three rotation halfwords toward their targets
+        // (+0x86/+0x8A/+0x8E, native previousRotation) by 800692E8 after its path or main update; the main update itself
+        // runs earlier in the native scheduler.
+        if (actor.flags & 0x60) continue;
+        if (actor.fieldF4) actor.followPath();
+        actor.approachRotation();
     }
     if (afterPaths) afterPaths(); // 800829FC runs between the two actor passes of 800612AC
     for (unsigned i = 0; i < used; ++i) objects[i]->field9C = -1;

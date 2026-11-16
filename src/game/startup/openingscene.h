@@ -16,7 +16,7 @@ namespace openingscene {
         void update(bool flag55 = false);
         bool clearsEventFlag() const;
         void draw(bool present);
-        void drawOverlay(const std::string& target);
+        void drawOverlay(const std::string& target, const std::array<int, 4>& viewport);
         void drawFrozen(bool present, unsigned fadeAlpha);
         bool finished() const;
 
@@ -57,7 +57,7 @@ namespace openingscene {
         std::size_t texture = 0;
         bool graphicsReady = false, stepped = false;
         void loadSegment();
-        void drawModels(bool present, const std::string* overlayTarget);
+        void drawModels(bool present, const std::string* overlayTarget, const std::array<int, 4>* viewport = nullptr);
         std::string graphicsKey(unsigned segment) const;
     };
 }
