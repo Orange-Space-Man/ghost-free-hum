@@ -92,6 +92,7 @@ namespace gameplay {
         void updateAuxiliaryEquipment();
         void refreshParticles();
         playerevents::Dispatcher& playerEvents();
+        unsigned frightenPlayer(const actors::MoveActor& source, unsigned player);
         playerevents::LifeEnvironment& playerLife();
         particles::Scene& particles();
         modeleffects::Manager& modelEffects();

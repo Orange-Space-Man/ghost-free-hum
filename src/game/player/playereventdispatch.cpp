@@ -131,6 +131,11 @@ playeractor::Player* playerevents::Dispatcher::player(std::int32_t index) const 
 
 unsigned playerevents::Dispatcher::send(std::int32_t index, unsigned message, const Payload* payload) const {
     auto* recipient = player(index);
+    if (recipient && message == 2) {
+        if (!scare) throw std::logic_error("Player scare dispatch requires its original response services.");
+        const Payload defaults;
+        return scare(*recipient, payload ? *payload : defaults);
+    }
     if (recipient && message == 3) {
         if (!damage) throw std::logic_error("Player damage dispatch requires its bound life services.");
         const Payload defaults;
@@ -168,4 +173,8 @@ unsigned playerevents::Dispatcher::send(std::int32_t index, unsigned message, co
 
 void playerevents::Dispatcher::bindDamage(std::function<bool(playeractor::Player&, const Payload&, bool)> handler) {
     damage = std::move(handler);
+}
+
+void playerevents::Dispatcher::bindScare(std::function<unsigned(playeractor::Player&, const Payload&)> handler) {
+    scare = std::move(handler);
 }

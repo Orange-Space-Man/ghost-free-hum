@@ -19,6 +19,7 @@ namespace mapcollision {
         int soundMaterialField() const;
         int soundEchoField() const;
         const jmp::ToolData* polygonInfo() const;
+        float ceilingHeight(const std::array<float, 3>& position) const;
         float floorHeight(const std::array<float, 3>& position) const;
         std::array<std::uint16_t, 4> floorPolygons(const std::array<float, 3>& position, float distance) const;
         bool projectFloor(std::array<float, 3>& position) const;

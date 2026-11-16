@@ -196,6 +196,13 @@ add_library(Game STATIC
     src/game/enemies/enemylabprofessorstrategy.cpp
     src/game/enemies/enemytraininggeneratorstrategy.cpp
     src/game/enemies/enemytrainingservices.cpp
+    src/game/enemies/enemyappearancestrategy.cpp
+    src/game/enemies/enemyghostmovement.cpp
+    src/game/enemies/enemycapturemotion.cpp
+    src/game/enemies/enemycapturesteering.cpp
+    src/game/enemies/enemyscarenotification.cpp
+    src/game/enemies/enemysearchstrategy.cpp
+    src/game/enemies/enemyfrightstrategy.cpp
     src/game/enemies/enemykeystrategy.cpp
     src/game/enemies/enemymanager.cpp
     src/game/enemies/enemymanagerruntime.cpp
@@ -348,6 +355,7 @@ add_library(Game STATIC
     src/game/player/playerdoorapproach.cpp
     src/game/player/playerdoorinteraction.cpp
     src/game/player/playerdamageframe.cpp
+    src/game/player/playerscareresponse.cpp
     src/game/player/playerdoorframe.cpp
     src/game/player/playervelocityupdate.cpp
     src/game/player/playerweaponowner.cpp

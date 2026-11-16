@@ -18,12 +18,14 @@ namespace playerevents {
             CollectionSound collectionSound = {}, const SuctionEnvironment* suction = nullptr);
         playeractor::Player* player(std::int32_t index) const;
         unsigned send(std::int32_t player, unsigned message, const Payload* payload = nullptr) const;
+        void bindScare(std::function<unsigned(playeractor::Player&, const Payload&)> handler);
         void bindDamage(std::function<bool(playeractor::Player&, const Payload&, bool)> handler);
 
     private:
         enemies::Manager& manager;
         actors::Registry& actors;
         playeractor::Player* alternate;
+        std::function<unsigned(playeractor::Player&, const Payload&)> scare;
         CollectionSound collectionSound;
         const SuctionEnvironment* suction;
         std::function<bool(playeractor::Player&, const Payload&, bool)> damage;

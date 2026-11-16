@@ -43,6 +43,7 @@ namespace characterowner {
         bool field924 = false;
         std::array<float, 4> fields93c{};
         std::uint16_t field94c = 0;
+        std::uint8_t field94e = 0;
         std::uint32_t field950 = 0, field954 = 0, field958 = 0;
     };
 

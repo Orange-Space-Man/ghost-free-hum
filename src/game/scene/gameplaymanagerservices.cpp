@@ -1,6 +1,7 @@
 #include "resources/dolresources.h"
 #include "game/scene/gameplaymanagerservices.h"
 #include "game/enemies/enemytrainingservices.h"
+#include "game/enemies/enemyscarenotification.h"
 #include "game/actors/charactereffectresources.h"
 #include "game/enemies/enemymanagerruntime.h"
 #include "game/actors/characterplacementruntime.h"
@@ -16,6 +17,7 @@
 #include "game/player/playercaptureframe.h"
 #include "game/player/playersuctioncompletion.h"
 #include "game/player/playerdamageframe.h"
+#include "game/player/playerscareresponse.h"
 #include "game/player/playerinputrouting.h"
 #include "game/player/playerorientationframe.h"
 #include "game/player/playerlightframe.h"
@@ -115,6 +117,7 @@ struct gameplay::ManagerServices::State : playerpresentation::Services {
         actionContext(dependencies.executable), actorCollision(dependencies.collisions, dependencies.actors.catalog),
         padSampler(dependencies.executable), playerDecoder(dependencies.executable),
         playerCapture(dependencies.executable), playerDamage(dependencies.executable),
+        playerScare(dependencies.executable, dependencies.actors.catalog),
         playerOrientation(dependencies.executable, dependencies.actors.pose),
         playerFinish(dependencies.executable, dependencies.actors.pose), playerLight(dependencies.executable),
         lightContacts(dependencies.executable, dependencies.actors.catalog), playerAudio(dependencies.executable),
@@ -297,6 +300,9 @@ struct gameplay::ManagerServices::State : playerpresentation::Services {
             dependencies.audioLife, particles->effects(),
             [this](unsigned id, const auto& position) { audio->playback.play(id, position); },
             [this](const auto& position) { audio->playback.playDeathEffects(position); }, {}});
+        events->bindScare([this](auto& recipient, const auto& payload) {
+            return playerScare.run(recipient, payload, *actors);
+        });
         events->bindDamage([this](auto& recipient, const auto& payload, bool behind) {
             return playerDamage.run(recipient, payload, behind, *actors, dependencies.actors.catalog, false, *life);
         });
@@ -420,6 +426,7 @@ struct gameplay::ManagerServices::State : playerpresentation::Services {
     playerinput::Decoder playerDecoder;
     playeractor::CaptureFrame playerCapture;
     playerevents::DamageFrame playerDamage;
+    playerevents::ScareResponse playerScare;
     playerorientation::Frame playerOrientation;
     playeractor::FinishFrame playerFinish;
     playeractor::LightFrame playerLight;
@@ -1094,3 +1101,8 @@ std::vector<j3dmodel::ModelInstance*> gameplay::ManagerServices::moneyModels() {
     return result;
 }
 
+
+unsigned gameplay::ManagerServices::frightenPlayer(const actors::MoveActor& source, unsigned player) {
+    return enemystrategy::notifyScare(source, player, state->dependencies.actors.rooms,
+        state->dependencies.visibility, *state->events);
+}

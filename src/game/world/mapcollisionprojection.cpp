@@ -273,3 +273,33 @@ mapcollision::SphereContact mapcollision::State::sweepSphere(const std::array<fl
     }
     return sphereContact(position, radius);
 }
+
+float mapcollision::State::ceilingHeight(const std::array<float, 3>& position) const {
+    std::array<float, 3> local;
+    for (unsigned axis = 0; axis < 3; ++axis) {
+        local[axis] = position[axis] - number(collision, 12 + axis * 4);
+        if (local[axis] < 0 || number(collision, 24 + axis * 4) <= local[axis]) return 32000;
+    }
+    const auto width = integer(number(collision, 24) / number(collision, 0)) + 1;
+    const auto height = integer(number(collision, 28) / number(collision, 4)) + 1;
+    const auto x = integer(local[0] / number(collision, 0));
+    const auto z = integer(local[2] / number(collision, 8));
+    float result = 32000;
+    while (local[1] < number(collision, 28)) {
+        const auto y = integer(local[1] / number(collision, 4));
+        const auto cell = word(collision, 0x38) + x * 8 + width * y * 8 + height * width * z * 8;
+        auto list = std::size_t(word(collision, 0x30)) + std::size_t(word(collision, cell)) * 2;
+        bool found = false;
+        for (auto index = half(collision, list); index != 0xffff; index = half(collision, list += 2)) {
+            const auto polygon = std::size_t(word(collision, 0x2c)) + std::size_t(index) * 24;
+            const auto value = polygonHeight(collision, position, polygon);
+            if (position[1] < value && value < result) {
+                result = value;
+                found = true;
+            }
+        }
+        if (found) return result;
+        local[1] += number(collision, 4);
+    }
+    return result;
+}
