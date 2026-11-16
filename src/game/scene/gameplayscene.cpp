@@ -335,16 +335,16 @@ void gameplay::Scene::draw(bool present) {
     if (keyPresentation.state().owned && keyPresentation.state().updated) keyPresentation.draw(present);
     else {
         startupscene::Picture picture;
-        picture.texture = gameplayDrawn ? textures[0] : 0;
+        if (!gameplayDrawn && !gamerenderer::useScene("gameplay"))
+            throw std::runtime_error("Retained gameplay graphics ownership is unavailable.");
+        picture.texture = textures.at(0);
         picture.width = 640;
         picture.height = 480;
         std::vector<startupscene::Picture> pictures{picture};
-        if (gameplayDrawn) {
-            const auto hud = resources.hud().pictures();
-            pictures.insert(pictures.end(), hud.begin(), hud.end());
-            const auto messages = resources.messagePictures();
-            pictures.insert(pictures.end(), messages.begin(), messages.end());
-        }
+        const auto hud = resources.hud().pictures();
+        pictures.insert(pictures.end(), hud.begin(), hud.end());
+        const auto messages = resources.messagePictures();
+        pictures.insert(pictures.end(), messages.begin(), messages.end());
         gamerenderer::drawInterface(pictures, present);
     }
 }
