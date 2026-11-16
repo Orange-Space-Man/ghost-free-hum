@@ -19,6 +19,8 @@ namespace {
     constexpr unsigned reciprocalsAddress = 0x80217e3c;
     constexpr unsigned logarithmConstantsAddress = 0x804dd918;
     constexpr unsigned degreesToRadiansAddress = 0x804dc338;
+    constexpr unsigned impactSpeedScaleAddress = 0x804dc33c;
+    constexpr unsigned impactRadiusAddress = 0x804d5a00;
     constexpr unsigned particleCapacity = 1500, emitterCapacity = 80;
     using Vector = std::array<float, 3>;
 
@@ -107,6 +109,10 @@ struct runningdust::Manager::State {
         std::string error;
         if (!trig.read(executable, error)) throw std::runtime_error(error);
         radiansPerDegree = read<float>(range(executable, degreesToRadiansAddress, 4), 0);
+        impactSpeedScale = read<float>(range(executable, impactSpeedScaleAddress, 4), 0);
+        const auto impact = range(executable, impactRadiusAddress, 8);
+        impactRadius = read<float>(impact, 0);
+        impactDensity = read<float>(impact, 4);
         for (unsigned level = 0; level < 6; ++level)
             parameters.emplace_back(range(executable, parameterAddress + level * 168, 168));
         if (const auto* table = mission.getJmpResource("RoomInfo")) {
@@ -286,6 +292,7 @@ struct runningdust::Manager::State {
     std::array<float, 4096> sine{};
     std::array<float, 129> logarithms{}, reciprocals{};
     float logQuadratic = 0, logCubic = 0, logTwo = 0, radiansPerDegree = 0;
+    float impactSpeedScale = 0, impactRadius = 0, impactDensity = 0;
     originalmath::FloatTrig trig;
     std::array<Vector, 4> corners{};
     std::array<std::array<float, 2>, 4> coordinates{};
@@ -298,6 +305,66 @@ runningdust::Manager::Manager(const std::vector<std::uint8_t>& executable, const
     const roomlocation::Rooms& rooms, const roomtraversal::State& visibility, std::uint32_t& randomState) :
     state(std::make_unique<State>(executable, mission, rooms, visibility, randomState)) {}
 runningdust::Manager::~Manager() = default;
+
+bool runningdust::Manager::impact(float speed, float radius, const Vector& position,
+    const Vector& velocity, const Vector& normal, unsigned level, particles::SceneContext& player,
+    const std::function<Vector()>& direction) {
+    auto* emitter = takeLast(state->emitters.free);
+    if (!emitter) return false;
+    state->active.append(*emitter);
+    emitter->room = state->rooms.resolve(position);
+    emitter->floor = float(state->rooms.entries().at(emitter->room >> 24).bounds[1]);
+    level &= 255;
+    if (!level) return false;
+    if (level >= state->parameters.size()) throw std::runtime_error("Impact dust requires an original dust-level parameter record.");
+    const auto& p = state->parameters[level];
+    emitter->context = &player;
+    emitter->parameters = &p;
+    emitter->visible = true;
+    emitter->origin = position;
+    emitter->logarithmInput = 1;
+    emitter->growthThreshold = p.maximumSize * p.growthFraction;
+    emitter->collisionRadius = 0;
+    radius = std::min(radius, state->impactRadius);
+    const int side = static_cast<int>(radius * state->impactDensity);
+    const float count = float(side) * float(side);
+    const float scaledSpeed = float(double(state->impactSpeedScale) * double(speed));
+    // The original overwrites the X-derived radial speed with the Z-derived value.
+    const float radial = velocity[2] * float(double(p.radialScale) * double(scaledSpeed));
+    const float upward = p.upwardBase + velocity[1] * float(double(p.upwardScale) * double(scaledSpeed));
+    for (unsigned i = 0; float(i) < count; ++i) {
+        if (!direction) throw std::runtime_error("Impact dust requires the original direction random stream.");
+        const auto random = direction();
+        const Vector cross{random[1] * normal[2] - random[2] * normal[1],
+            random[2] * normal[0] - random[0] * normal[2], random[0] * normal[1] - random[1] * normal[0]};
+        Vector source;
+        for (unsigned axis = 0; axis < 3; ++axis) source[axis] = position[axis] + cross[axis] * radius;
+        auto* particle = takeLast(state->particles.free);
+        if (!particle) continue;
+        *particle = Particle{};
+        emitter->particles.append(*particle);
+        particle->position = source;
+        Vector offset;
+        for (unsigned axis = 0; axis < 3; ++axis) offset[axis] = source[axis] - position[axis];
+        const float length = magnitude(offset);
+        if (!(length > 0)) throw std::runtime_error("Impact dust reached the original uninitialized zero-displacement direction.");
+        for (auto& value : offset) value /= length;
+        const float outward = radial + p.radialSpread * (1 - 2 * state->random());
+        for (unsigned axis = 0; axis < 3; ++axis) particle->velocity[axis] = offset[axis] * outward;
+        particle->velocity[1] = upward + p.upwardSpread * state->random();
+        particle->lifetime = static_cast<std::int16_t>(p.lifetime);
+        particle->pulse = static_cast<std::uint16_t>(int(65535 * state->random()));
+        particle->rotationSpeed = p.rotationSpeed * (1 - 2 * state->random());
+        particle->rotation = 360 * state->random();
+        particle->driftSign = 1 - 2 * state->random() < 0 ? -1.0f : 1.0f;
+    }
+    std::vector<Particle*> sorted;
+    for (auto* particle = emitter->particles.sentinel.next; particle != &emitter->particles.sentinel; particle = particle->next)
+        sorted.push_back(particle);
+    std::stable_sort(sorted.begin(), sorted.end(), [](const auto* left, const auto* right) { return left->position[2] < right->position[2]; });
+    for (auto* particle : sorted) { emitter->particles.remove(*particle); emitter->particles.append(*particle); }
+    return true;
+}
 
 bool runningdust::Manager::create(jmp::ToolDataRef& entry) {
     std::string_view name;

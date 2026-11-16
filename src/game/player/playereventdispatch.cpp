@@ -37,6 +37,19 @@ unsigned playerevents::dispatch(playeractor::Player& player, unsigned message, c
         player.state.field106C = static_cast<float>(frames);
         return 1;
     }
+    if (message == 0x19 || message == 0x1a) {
+        auto& flag = player.state.flags1330[2];
+        const bool enabled = message == 0x19;
+        if ((flag != 0) == enabled) return 0;
+        flag = enabled ? 1 : 0;
+        return 1;
+    }
+    if (message == 0x20) {
+        constexpr unsigned equipment = 8 | 4;
+        if (!(player.state.flags792 & equipment)) return 0;
+        player.state.flags792 &= ~equipment;
+        return 1;
+    }
     if (message >= 0x1b && message <= 0x1e) {
         auto& flag = message <= 0x1c ? player.state.flags1330[3] : player.state.field1334;
         const bool enabled = message == 0x1b || message == 0x1d;

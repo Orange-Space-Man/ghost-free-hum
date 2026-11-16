@@ -24,7 +24,7 @@ struct particles::Scene::Binding {
 
 particles::Scene::Scene(const std::vector<std::uint8_t>& executable, ArchiveResources& resources,
     std::uint32_t& randomState) : randomState(randomState), emitters(128, 1024, 1024),
-    factory(executable, resources, emitters), simulation(executable, randomState), executable(executable), resources(resources) {
+    factory(executable, resources, emitters), simulation(executable, particleRandomState), executable(executable), resources(resources) {
 }
 
 particles::Scene::~Scene() = default;
@@ -59,8 +59,24 @@ runningdust::Manager& particles::Scene::runningDust() {
     return *dust;
 }
 
+std::uint32_t& particles::Scene::effectRandomState() { return particleRandomState; }
+
+void particles::Scene::beamImpact(float speed, float radius, const std::array<float, 3>& position,
+    const std::array<float, 3>& velocity, const std::array<float, 3>& normal, unsigned level) {
+    if (!binding || !binding->refreshed || !dust) throw std::runtime_error("Beam impact requires the initialized particle scene.");
+    if (binding->player.state.flags792 & 8)
+        throw std::runtime_error("Beam impact dust requires the equipped-player dust force callbacks.");
+    dust->impact(speed, radius, position, velocity, normal, level, shared.player, [this] {
+        particleRandomState = particleRandomState * 0x5eedf715u + 0x1b0cb173u;
+        const auto first = binding->pose.horizontalDirection(static_cast<std::uint16_t>((particleRandomState & 4095) << 4));
+        particleRandomState = particleRandomState * 0x5eedf715u + 0x1b0cb173u;
+        const auto second = binding->pose.horizontalDirection(static_cast<std::uint16_t>((particleRandomState & 4095) << 4));
+        return std::array<float, 3>{first[0] * second[2], first[0] * second[0], first[2]};
+    });
+}
+
 std::vector<particles::Billboard> particles::Scene::prepareGlows(GlowPool& glows, const std::array<float, 12>& view) {
-    return particles::prepareGlows(glows, resources.get(0x4b485f45, "ps_ball.bti"), randomState, view);
+    return particles::prepareGlows(glows, resources.get(0x4b485f45, "ps_ball.bti"), particleRandomState, view);
 }
 
 void particles::Scene::initializeElements() {

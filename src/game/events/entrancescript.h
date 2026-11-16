@@ -43,6 +43,7 @@ namespace gameevent {
         virtual void fullscreen(bool enabled);
         virtual void playerEvent(unsigned event);
         virtual void releaseActor();
+        virtual void stopActor();
         virtual void blendCamera();
         virtual void speak(unsigned window, unsigned line);
         virtual void messageColor(unsigned window, int color);

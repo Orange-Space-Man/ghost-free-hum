@@ -142,6 +142,8 @@ add_library(Game STATIC
     src/game/effects/particlenodestate.cpp
     src/game/effects/particleparameters.cpp
     src/game/effects/runningdustmanager.cpp
+    src/game/effects/dustsuctionmotion.cpp
+    src/game/effects/dustinteraction.cpp
     src/game/effects/particlescene.cpp
     src/game/effects/particlescenecontext.cpp
     src/game/effects/particlesimulation.cpp

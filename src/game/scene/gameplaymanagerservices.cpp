@@ -241,7 +241,7 @@ struct gameplay::ManagerServices::State : playerpresentation::Services {
         auto& elements = particles->elemental();
         models = std::make_unique<modeleffects::Manager>(modeleffects::Environment{commonResources, particles->pool(),
             particles->effects(), player->view, elements.pool, elements.ice, elements.water, dependencies.flags,
-            collision, dependencies.randomState, sound, {}});
+            collision, particles->effectRandomState(), sound, {}});
         models->initialize(dependencies.executable, mapMode, mapResources, dependencies.materials);
         effects->bindModels(models->factory);
         players->bindActors(*enemies, *actors, dependencies.records, &dependencies.pad, &dependencies.camera, dependencies.audioLife);
@@ -301,7 +301,7 @@ struct gameplay::ManagerServices::State : playerpresentation::Services {
             dependencies.strategies, *strategies, *enemies, *runtime, dependencies.mission);
         webs = std::make_unique<modeleffects::CobwebPlacements>(models->factory, dependencies.actors.pose);
         candles = std::make_unique<particles::CandlePlacements>(commonResources, particles->pool(), glows, player->view,
-            dependencies.actors.rooms, dependencies.visibility, dependencies.randomState,
+            dependencies.actors.rooms, dependencies.visibility, particles->effectRandomState(),
             [this](unsigned room) { return runtime->roomCleared(room); },
             [this](unsigned id, const auto& position) { audio->playback.play(id, position); });
         sender = std::make_unique<jmp::MessageSender>();
@@ -838,6 +838,7 @@ void gameplay::ManagerServices::completePlayerFrame(const playeractor::LateFrame
         updatePlayerLate(index, services);
         state->playerLight.publishShadow(*state->events->player(static_cast<std::int32_t>(index)), state->lights, state->playerFinish);
     }
+    updateAuxiliaryEquipment();
     state->players->state->update(state->lights);
     state->players->points->update(state->players->pointSettings, [this](const auto& position, const auto& previous) {
         return state->collision.pointContact(position, previous);
@@ -847,6 +848,40 @@ void gameplay::ManagerServices::completePlayerFrame(const playeractor::LateFrame
 
 void gameplay::ManagerServices::stopAuxiliaryBeam() {
     state->players->stopAuxiliaryBeam(state->dependencies.actors.pose, [this] { return state->runtime->random(); });
+}
+
+void gameplay::ManagerServices::updateAuxiliaryEquipment() {
+    auto& auxiliary = state->players->auxiliary;
+    if (!auxiliary || !auxiliary->field3C) return;
+    playermodels::PathCollision collision = [this](const auto& position, const auto& previous) {
+        const auto contact = state->collision.pointContact(position, previous);
+        playermodels::PathContact result;
+        const int polygon = contact.floor >= 0 ? contact.floor : contact.wall;
+        if (polygon >= 0) {
+            result.surface = static_cast<unsigned>(polygon) + 1;
+            result.normal = contact.floor >= 0 ? contact.floorNormal : contact.wallNormal;
+            result.correction = contact.correction;
+        }
+        return result;
+    };
+    playermodels::VacuumFeedback feedback;
+    feedback.roomState = [this](unsigned room) {
+        return static_cast<std::int8_t>(state->particles->runningDust().level(room));
+    };
+    feedback.random = [this] { return state->runtime->random(); };
+    feedback.impact = [this](const auto& point, float speed, float radius, int level) {
+        std::array<float, 3> normal;
+        if (!point.field18 || !state->collision.polygonNormal(static_cast<int>(point.field18 - 1), normal))
+            throw std::runtime_error("Beam impact requires its retained collision polygon normal.");
+        state->particles->beamImpact(speed, radius, point.position, point.previous, normal, static_cast<unsigned>(level));
+    };
+    auxiliary->update({state->dependencies.actors, state->dependencies.strategies,
+        state->playerGlobals.pipe, state->playerGlobals.effects, collision, feedback,
+        [this] { return state->runtime->random(); },
+        [this](unsigned id, const auto& position) { state->particles->effects().create(id, position, state->furnitureDirection); },
+        [this](unsigned id, const auto& position, float speed) {
+            if (auto* sound = state->audio->playback.play(id, position)) state->audio->playback.setInteractionVolume(*sound, speed);
+        }});
 }
 
 void gameplay::ManagerServices::updatePlayerFurniture(unsigned index) {

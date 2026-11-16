@@ -214,6 +214,12 @@ void gameevent::EntranceOwner::effect(std::string_view placement, std::string_vi
 void gameevent::EntranceOwner::fullscreen(bool enabled) { fullscreenEnabled = enabled; }
 void gameevent::EntranceOwner::playerEvent(unsigned event) { managers.playerEvents().send(0, event); }
 void gameevent::EntranceOwner::releaseActor() { managers.playerEvents().player(0)->flags &= ~0x10u; }
+void gameevent::EntranceOwner::stopActor() {
+    auto& player = *managers.playerEvents().player(0);
+    player.flags |= 0x10;
+    player.setVelocity({});
+    player.selectAnimation(0u);
+}
 
 void gameevent::EntranceOwner::blendCamera() {
     if (!cameraPath) return;

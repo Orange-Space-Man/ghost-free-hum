@@ -27,6 +27,9 @@ namespace particles {
         void initializeElements();
         void initializeRunningDust(const mission::Resources& mission, const roomlocation::Rooms& rooms);
         runningdust::Manager& runningDust();
+        std::uint32_t& effectRandomState();
+        void beamImpact(float speed, float radius, const std::array<float, 3>& position,
+            const std::array<float, 3>& velocity, const std::array<float, 3>& normal, unsigned level);
         void initializeEffectBatches();
         void updateElements();
         elements::Scene& elemental();
@@ -39,6 +42,7 @@ namespace particles {
     private:
         struct Binding;
         std::uint32_t& randomState;
+        std::uint32_t particleRandomState = 0;
         SceneContexts shared;
         std::unique_ptr<Binding> binding;
         EmitterPool emitters;

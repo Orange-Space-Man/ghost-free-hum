@@ -18,6 +18,7 @@ void gameevent::EntranceServices::effect(std::string_view, std::string_view) { u
 void gameevent::EntranceServices::fullscreen(bool) { unsupportedService(); }
 void gameevent::EntranceServices::playerEvent(unsigned) { unsupportedService(); }
 void gameevent::EntranceServices::releaseActor() { unsupportedService(); }
+void gameevent::EntranceServices::stopActor() { unsupportedService(); }
 void gameevent::EntranceServices::blendCamera() { unsupportedService(); }
 void gameevent::EntranceServices::speak(unsigned, unsigned) { unsupportedService(); }
 void gameevent::EntranceServices::messageColor(unsigned, int) { unsupportedService(); }
@@ -114,6 +115,7 @@ bool gameevent::EntranceScript::update(EntranceServices& services) {
         } else if (command == "MENUOFF") services.menu(false);
         else if (command == "MENUON") services.menu(true);
         else if (command == "LUIGISTOP3") services.stopPlayer();
+        else if (command == "LUIGISTOP") services.stopActor();
         else if (command == "LUIGIFREE2") services.releasePlayer();
         else if (command == "LUIGIFREE") services.releaseActor();
         else if (command == "FLAGON") services.setFlag(number() & 255);
@@ -121,6 +123,9 @@ bool gameevent::EntranceScript::update(EntranceServices& services) {
         else if (command == "FULLSCREEN") services.fullscreen(true);
         else if (command == "NORMALSCREEN") services.fullscreen(false);
         else if (command == "HLIGHTOFF") services.playerEvent(0x1e);
+        else if (command == "HLIGHTON") services.playerEvent(0x1d);
+        else if (command == "LUIGELTON") services.playerEvent(0x19);
+        else if (command == "NOWEAPON") services.playerEvent(0x20);
         else if (command == "LLIGHTOFF") services.playerEvent(0x1b);
         else if (command == "LLIGHTON") services.playerEvent(0x1c);
         else if (command == "EFFECT") {
