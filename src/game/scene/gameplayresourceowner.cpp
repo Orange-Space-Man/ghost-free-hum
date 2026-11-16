@@ -42,7 +42,7 @@ struct gameplay::ResourceOwner::State {
         roomFlags.resize(rooms->entries().size());
         for (unsigned i = 0; i < rooms->entries().size(); ++i) {
             if (entry.map == 1) {
-                roomFlags[i] = 8;
+                roomFlags[i] = 0x8008;
                 continue;
             }
             const auto number = rooms->entries()[i].id & 255;

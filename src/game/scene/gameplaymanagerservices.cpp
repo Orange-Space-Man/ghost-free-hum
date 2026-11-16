@@ -125,6 +125,35 @@ struct gameplay::ManagerServices::State : playerpresentation::Services {
         storm(dependencies.executable, dependencies.mission, dependencies.actors.pose), shadow(dependencies.executable) {
         std::vector<std::uint8_t> bytes;
         std::string error;
+        if (dependencies.entry.map == 1) {
+            const auto& rooms = dependencies.actors.rooms.entries();
+            roomLights.resize(rooms.size());
+            roomBrightness.assign(rooms.size(), 2);
+            const auto* table = dependencies.mission.getJmpResource("RoomInfo");
+            if (!table) throw std::runtime_error("Lit rooms require their original RoomInfo parameters.");
+            if (!dolresources::read(dependencies.executable, 0x804d9bb8, 12, bytes, error)) throw std::runtime_error(error);
+            std::array<float, 3> positionConstants{};
+            for (unsigned i = 0; i < 3; ++i) {
+                const unsigned bits = (unsigned(bytes[i * 4]) << 24) | (unsigned(bytes[i * 4 + 1]) << 16) |
+                    (unsigned(bytes[i * 4 + 2]) << 8) | bytes[i * 4 + 3];
+                std::memcpy(&positionConstants[i], &bits, 4);
+            }
+            for (unsigned row = 0; row < table->count(); ++row) {
+                std::uint32_t number, red, green, blue, distance;
+                if (!table->getValue(row, "RoomNo", number) || !table->getValue(row, "LightColorR", red) ||
+                    !table->getValue(row, "LightColorG", green) || !table->getValue(row, "LightColorB", blue) ||
+                    !table->getValue(row, "Distance", distance)) throw std::runtime_error("Missing original room light parameters.");
+                for (unsigned i = 0; i < rooms.size(); ++i) if ((rooms[i].id & 255) == number) {
+                    const auto& bounds = rooms[i].bounds;
+                    auto& light = roomLights[i];
+                    light.color = {static_cast<std::uint8_t>(red), static_cast<std::uint8_t>(green), static_cast<std::uint8_t>(blue), 255};
+                    light.referenceDistance = static_cast<std::uint16_t>(distance);
+                    light.position = {positionConstants[0] * float(bounds[0] + bounds[3]),
+                        float(bounds[4]) - positionConstants[1],
+                        positionConstants[2] + positionConstants[0] * float(bounds[2] + bounds[5])};
+                }
+            }
+        }
         constexpr unsigned furnitureEffectDirection = 0x8021da40;
         if (!dolresources::read(dependencies.executable, furnitureEffectDirection, 12, bytes, error))
             throw std::runtime_error(error);
@@ -419,6 +448,8 @@ struct gameplay::ManagerServices::State : playerpresentation::Services {
     std::uint8_t moneyBlink = 2;
     std::unique_ptr<playerevents::SuctionEnvironment> suction;
     roomlighting::Pool lights;
+    std::vector<modellighting::RoomLight> roomLights;
+    std::vector<std::uint8_t> roomBrightness;
     roomlighting::Storm storm;
     roomshadow::Projector shadow;
     players::Globals playerGlobals;
@@ -730,6 +761,30 @@ void gameplay::ManagerServices::updateStorm() {
         dependencies.roomFlags.at(player->room() >> 24), dependencies.camera, player->position[1], state->lights,
         [this] { return state->runtime->random(); }, [this] { state->audio->playback.playThunder(); });
     if (state->storm.strikes() != strikes) state->shadow.strike(state->storm.setting(player->room()), dependencies.actors.pose);
+}
+
+void gameplay::ManagerServices::updateRoomLights() {
+    const auto& dependencies = state->dependencies;
+    if (dependencies.entry.map != 1) return;
+    const auto* player = state->events->player(0);
+    for (unsigned i = 0; i < state->roomLights.size(); ++i) {
+        if (!dependencies.visibility.marked(i, 0, 0) || (dependencies.roomFlags.at(i) & 0x380)) continue;
+        auto& brightness = state->roomBrightness[i];
+        auto light = state->roomLights[i];
+        if (!roomCleared(i)) {
+            if (brightness <= 20) continue;
+            brightness -= 10;
+            light.brightnessPercent = brightness;
+        } else if (dependencies.actors.rooms.entries()[i].id == player->room()) {
+            brightness = static_cast<std::uint8_t>(std::min<unsigned>(brightness + 5, 95));
+            light.brightnessPercent = brightness;
+        } else {
+            if (brightness <= 4) continue;
+            light.brightnessPercent = brightness;
+            brightness -= 2;
+        }
+        state->lights.add(5, light);
+    }
 }
 
 void gameplay::ManagerServices::setAudioInterfaceFrame(std::uint32_t frame) { state->audioInterfaceFrame = frame; }

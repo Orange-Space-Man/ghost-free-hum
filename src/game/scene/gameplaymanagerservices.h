@@ -100,6 +100,7 @@ namespace gameplay {
         s3dshadow::Projection shadowProjection() const;
         void updateShadow();
         void updateStorm();
+        void updateRoomLights();
         std::shared_ptr<jaudio::PositionalPlayback> playback();
         const gameplayaudio::Context& audioContext() const;
         gameplaymusic::Owner& music();

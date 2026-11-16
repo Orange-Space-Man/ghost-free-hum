@@ -260,6 +260,7 @@ void gameplay::Scene::update(const playerinput::PadStatus& pad, std::int16_t por
     updateOpacity();
     if (useRoomLights) managers.updateStorm();
     else managers.updateShadow();
+    managers.updateRoomLights();
     managers.updatePoses();
     managers.completePlayerFrame({}, false);
     managers.refreshParticles();
@@ -740,7 +741,8 @@ void gameplay::Scene::drawActors(unsigned stage, const s3denvironment::Camera& c
             }
         }
         gamerenderer::drawPreview(i, actorModels[i], batches, lighting, &camera, false, 1U << stage, !(actor.flags & 0x800),
-            textureTrigonometry, nullptr, &drawViewport);
+            textureTrigonometry, nullptr, &drawViewport,
+            (constant<std::uint16_t>(resources.executable(), 0x8033b598 + actor.type() * 0x1c) & 8) != 0);
     }
 }
 
