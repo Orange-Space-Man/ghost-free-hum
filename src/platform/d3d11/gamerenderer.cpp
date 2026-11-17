@@ -58,6 +58,13 @@ namespace {
     ComPtr<ID3D11PixelShader> screenClearPixel;
     ComPtr<ID3D11SamplerState> modelSamplers[9];
     ComPtr<ID3D11RasterizerState> modelRasterizers[3];
+    ComPtr<ID3D11RenderTargetView> ghostTarget, ghostHalfTarget;
+    ComPtr<ID3D11ShaderResourceView> ghostImage, ghostHalfImage;
+    ComPtr<ID3D11VertexShader> ghostCopyVertex;
+    ComPtr<ID3D11PixelShader> ghostCopyPixel, ghostPixel;
+    ComPtr<ID3D11BlendState> ghostBlend, ghostAddBlend;
+    ComPtr<ID3D11Buffer> ghostConstants;
+    bool ghostPass = false;
     int width = 1;
     int height = 1;
 
@@ -222,6 +229,7 @@ void gamerenderer::setInterfaceTextures(const std::vector<roommaterials::Texture
     if (!interfaceShader) {
         constexpr char source[] = R"(
 cbuffer Colors : register(b1) { float4 black; float4 white; float4 opacity; };
+cbuffer Ghost : register(b4) { float4 ghostOpacity; };
 cbuffer Fog : register(b3) { float4 fogColor; float4 fogParameters; uint4 fogControl; float4 fogRanges[3]; };
 cbuffer Shadow : register(b2) { row_major float4x4 shadowProjection; float4 shadowColor; float4 shadowState; };
 Texture2D image : register(t0);
@@ -277,6 +285,14 @@ float4 pixelMain(float4 position : SV_POSITION, float4 color : COLOR0, float2 co
         }
         return result;
 }
+struct GhostOutput { float4 color : SV_TARGET0; float4 blend : SV_TARGET1; };
+GhostOutput pixelGhost(float4 position : SV_POSITION, float4 color : COLOR0, float2 coordinate : TEXCOORD0, float4 shadowCoordinate : TEXCOORD1, float4 secondary : COLOR1, float2 secondCoordinate : TEXCOORD2, float2 bumpCoordinate : TEXCOORD3, float shadowMask : TEXCOORD4) {
+    GhostOutput output;
+    output.color = pixelMain(position, color, coordinate, shadowCoordinate, secondary, secondCoordinate, bumpCoordinate, shadowMask);
+    output.blend = output.color;
+    output.color.a = ghostOpacity.x;
+    return output;
+}
 [earlydepthstencil]
 float4 pixelEarly(float4 position : SV_POSITION, float4 color : COLOR0, float2 coordinate : TEXCOORD0, float4 shadowCoordinate : TEXCOORD1, float4 secondary : COLOR1, float2 secondCoordinate : TEXCOORD2, float2 bumpCoordinate : TEXCOORD3, float shadowMask : TEXCOORD4) : SV_TARGET {
     return pixelMain(position, color, coordinate, shadowCoordinate, secondary, secondCoordinate, bumpCoordinate, shadowMask);
@@ -295,6 +311,14 @@ float4 pixelEarly(float4 position : SV_POSITION, float4 color : COLOR0, float2 c
         if (FAILED(earlyResult) && errors) throw std::runtime_error(static_cast<const char*>(errors->GetBufferPointer()));
         check(earlyResult, "Could not compile opaque material shader");
         check(device->CreatePixelShader(code->GetBufferPointer(), code->GetBufferSize(), nullptr, &opaqueShader), "Could not create opaque material shader");
+        code.Reset(); errors.Reset();
+        check(D3DCompile(pixelSource.data(), pixelSource.size(), nullptr, nullptr, nullptr, "pixelGhost", "ps_5_0", 0, 0, &code, &errors),
+            "Could not compile ghost material shader");
+        check(device->CreatePixelShader(code->GetBufferPointer(), code->GetBufferSize(), nullptr, &ghostPixel), "Could not create ghost material shader");
+        D3D11_BUFFER_DESC ghostBuffer{};
+        ghostBuffer.ByteWidth = 16;
+        ghostBuffer.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
+        check(device->CreateBuffer(&ghostBuffer, nullptr, &ghostConstants), "Could not create ghost opacity buffer");
         D3D11_BUFFER_DESC buffer{};
         buffer.ByteWidth = sizeof(Vertex) * 6;
         buffer.Usage = D3D11_USAGE_DEFAULT;
@@ -565,12 +589,12 @@ std::vector<std::size_t> gamerenderer::loadPreviews(const std::vector<s3dmodel::
 
 void gamerenderer::drawPreview(std::size_t index, const s3dmodel::Model& model, const std::vector<s3dmodel::Batch>& batches,
     const s3denvironment::Lighting& lighting, const s3denvironment::Camera* sceneCamera, bool clearTarget, unsigned passes, bool receiver,
-    const std::vector<float>& trigonometry, const s3denvironment::Fog* fog, const D3D11_VIEWPORT* sceneViewport, bool translucentDepthWrite, const std::string* overlayTarget) {
+    const std::vector<float>& trigonometry, const s3denvironment::Fog* fog, const D3D11_VIEWPORT* sceneViewport, bool translucentDepthWrite, const std::string* overlayTarget, float ghostAlpha) {
     auto& preview = previews.at(index);
     auto& surface = overlayTarget ? sceneResources.at(*overlayTarget).previews.at(0) : (sceneCamera ? previews.at(0) : preview);
     ID3D11ShaderResourceView* empty = nullptr;
     context->PSSetShaderResources(0, 1, &empty);
-    context->OMSetRenderTargets(1, surface.target.GetAddressOf(), surface.depth.Get());
+    context->OMSetRenderTargets(1, ghostPass ? ghostTarget.GetAddressOf() : surface.target.GetAddressOf(), surface.depth.Get());
     const float clear[]{0,0,0,1};
     if (clearTarget) {
         context->ClearRenderTargetView(surface.target.Get(), clear);
@@ -679,7 +703,10 @@ void gamerenderer::drawPreview(std::size_t index, const s3dmodel::Model& model, 
         context->Unmap(modelVertices.Get(), 0);
         const std::array<std::array<float, 4>, 3> colors{{{0,0,0,0}, {1,1,1,1}, {1, 1.0f / 255.0f,0,0}}};
         context->UpdateSubresource(interfaceColors.Get(), 0, nullptr, colors.data(), 0, 0);
-        context->OMSetBlendState(overlayTarget ? overlayBlend.Get() : interfaceBlend.Get(), nullptr, 0xffffffff);
+        context->OMSetBlendState(ghostPass ? ghostBlend.Get() : (overlayTarget ? overlayBlend.Get() : interfaceBlend.Get()), nullptr, 0xffffffff);
+        const std::array<float, 4> ghostColor{ghostAlpha, 0, 0, 0};
+        context->UpdateSubresource(ghostConstants.Get(), 0, nullptr, ghostColor.data(), 0, 0);
+        context->PSSetConstantBuffers(4, 1, ghostConstants.GetAddressOf());
         for (const auto& draw : draws) {
             const auto& batch = *draw.batch;
             const auto& material = model.materials.at(batch.material);
@@ -693,7 +720,7 @@ void gamerenderer::drawPreview(std::size_t index, const s3dmodel::Model& model, 
             }
             context->UpdateSubresource(interfaceColors.Get(), 0, nullptr, stageColors.data(), 0, 0);
             context->OMSetDepthStencilState(modelDepth[(overlayTarget ? 2 : 0) + (translucentDepthWrite ? 0 : draw.pass)].Get(), 0);
-            context->PSSetShader(s3dmodel::renderMode(material) == 0 ? opaqueShader.Get() : interfaceShader.Get(), nullptr, 0);
+            context->PSSetShader(ghostPass ? ghostPixel.Get() : (s3dmodel::renderMode(material) == 0 ? opaqueShader.Get() : interfaceShader.Get()), nullptr, 0);
             gameshadowrenderer::bind(receiver, material.color[3]);
             context->RSSetState(modelRasterizers[batch.cull].Get());
             context->PSSetShaderResources(0, 1, preview.textures.at(material.texture).GetAddressOf());
@@ -767,6 +794,78 @@ void gamerenderer::bindSceneTarget(bool clear, const D3D11_VIEWPORT* sceneViewpo
     context->RSSetViewports(1, sceneViewport ? sceneViewport : &viewport);
 }
 
+void gamerenderer::beginGhostLayer() {
+    if (!ghostTarget) {
+        const auto create = [&](unsigned width, unsigned height, ComPtr<ID3D11RenderTargetView>& target,
+            ComPtr<ID3D11ShaderResourceView>& image) {
+            D3D11_TEXTURE2D_DESC description{};
+            description.Width = width; description.Height = height;
+            description.MipLevels = description.ArraySize = description.SampleDesc.Count = 1;
+            description.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+            description.BindFlags = D3D11_BIND_RENDER_TARGET | D3D11_BIND_SHADER_RESOURCE;
+            ComPtr<ID3D11Texture2D> texture;
+            check(device->CreateTexture2D(&description, nullptr, &texture), "Could not create ghost layer");
+            check(device->CreateRenderTargetView(texture.Get(), nullptr, &target), "Could not create ghost target");
+            check(device->CreateShaderResourceView(texture.Get(), nullptr, &image), "Could not create ghost image");
+        };
+        create(640, 480, ghostTarget, ghostImage);
+        create(320, 240, ghostHalfTarget, ghostHalfImage);
+        constexpr char source[] = R"(
+struct Output { float4 position : SV_POSITION; float2 uv : TEXCOORD0; };
+Output vs(uint id : SV_VertexID) {
+    Output output;
+    output.uv = float2(id == 2 ? 2 : 0, id == 1 ? 2 : 0);
+    output.position = float4(output.uv * float2(2, -2) + float2(-1, 1), 0, 1);
+    return output;
+}
+Texture2D image : register(t0); SamplerState filtering : register(s0);
+float4 ps(Output input) : SV_TARGET { return image.Sample(filtering, input.uv); }
+)";
+        ComPtr<ID3DBlob> vertex, pixel, errors;
+        check(D3DCompile(source, sizeof(source), nullptr, nullptr, nullptr, "vs", "vs_5_0", 0, 0, &vertex, &errors), "Could not compile ghost copy vertex");
+        check(D3DCompile(source, sizeof(source), nullptr, nullptr, nullptr, "ps", "ps_5_0", 0, 0, &pixel, &errors), "Could not compile ghost copy pixel");
+        check(device->CreateVertexShader(vertex->GetBufferPointer(), vertex->GetBufferSize(), nullptr, &ghostCopyVertex), "Could not create ghost copy vertex");
+        check(device->CreatePixelShader(pixel->GetBufferPointer(), pixel->GetBufferSize(), nullptr, &ghostCopyPixel), "Could not create ghost copy pixel");
+        D3D11_BLEND_DESC description{};
+        auto& blend = description.RenderTarget[0];
+        blend.BlendEnable = TRUE;
+        blend.SrcBlend = D3D11_BLEND_SRC1_ALPHA; blend.DestBlend = D3D11_BLEND_INV_SRC1_ALPHA;
+        blend.BlendOp = blend.BlendOpAlpha = D3D11_BLEND_OP_ADD;
+        blend.SrcBlendAlpha = D3D11_BLEND_ONE; blend.DestBlendAlpha = D3D11_BLEND_ZERO;
+        blend.RenderTargetWriteMask = D3D11_COLOR_WRITE_ENABLE_ALL;
+        check(device->CreateBlendState(&description, &ghostBlend), "Could not create ghost destination alpha state");
+        blend.SrcBlend = D3D11_BLEND_SRC_ALPHA; blend.DestBlend = D3D11_BLEND_ONE;
+        blend.RenderTargetWriteMask = D3D11_COLOR_WRITE_ENABLE_RED | D3D11_COLOR_WRITE_ENABLE_GREEN | D3D11_COLOR_WRITE_ENABLE_BLUE;
+        check(device->CreateBlendState(&description, &ghostAddBlend), "Could not create ghost additive state");
+    }
+    ghostPass = true;
+    const float clear[]{0, 0, 0, 0};
+    context->ClearRenderTargetView(ghostTarget.Get(), clear);
+}
+
+void gamerenderer::endGhostLayer() {
+    ghostPass = false;
+    context->OMSetRenderTargets(1, ghostHalfTarget.GetAddressOf(), nullptr);
+    context->OMSetDepthStencilState(nullptr, 0);
+    context->OMSetBlendState(nullptr, nullptr, 0xffffffff);
+    context->RSSetState(solidState.Get());
+    context->IASetInputLayout(nullptr);
+    context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+    context->VSSetShader(ghostCopyVertex.Get(), nullptr, 0);
+    context->PSSetShader(ghostCopyPixel.Get(), nullptr, 0);
+    context->PSSetSamplers(0, 1, interfaceSampler.GetAddressOf());
+    context->PSSetShaderResources(0, 1, ghostImage.GetAddressOf());
+    const D3D11_VIEWPORT half{0, 0, 320, 240, 0, 1}, full{0, 0, 640, 480, 0, 1};
+    context->RSSetViewports(1, &half);
+    context->Draw(3, 0);
+    context->OMSetRenderTargets(1, previews.at(0).target.GetAddressOf(), nullptr);
+    context->PSSetShaderResources(0, 1, ghostHalfImage.GetAddressOf());
+    context->OMSetBlendState(ghostAddBlend.Get(), nullptr, 0xffffffff);
+    context->RSSetViewports(1, &full);
+    context->Draw(3, 0);
+    bindSceneTarget(false);
+}
+
 void gamerenderer::waitForFrame() {
     if (!frameComplete) {
         const D3D11_QUERY_DESC description{D3D11_QUERY_EVENT, 0};
@@ -784,6 +883,10 @@ void gamerenderer::waitForFrame() {
 }
 
 void gamerenderer::close() {
+    ghostPass = false;
+    ghostTarget.Reset(); ghostHalfTarget.Reset(); ghostImage.Reset(); ghostHalfImage.Reset();
+    ghostCopyVertex.Reset(); ghostCopyPixel.Reset(); ghostPixel.Reset();
+    ghostBlend.Reset(); ghostAddBlend.Reset(); ghostConstants.Reset();
     debugoverlay::close();
     transitionTarget.Reset();
     transitionImage.Reset();

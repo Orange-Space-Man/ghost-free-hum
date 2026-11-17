@@ -245,7 +245,9 @@ void ghostparent::Parent::enterAfterAttack(Parameter count, Parameter action, co
     if (parameterWord(services().parameters, count) < 1) {
         afterAttack(*this, parameterWord(services().parameters, action));
     } else if (actor.selectAnimation(animation)) {
-        character.field8cc = 0;
+        // 800C8714 / 800C8824 retain the parameter in r5 for 800BFB98.
+        // Zero disables the owner's loop-completion timer.
+        character.field8cc = static_cast<std::uint32_t>(parameterWord(services().parameters, count));
         character.field8d0 = 0;
     }
 }

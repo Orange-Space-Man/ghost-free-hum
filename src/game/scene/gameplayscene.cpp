@@ -66,7 +66,8 @@ gameplay::Scene::Scene(const std::filesystem::path& package, gameentry::State& e
         actorLight.distance[1] = (1 - lightBrightness) / (lightBrightness * lightDistance);
     actorHighlight.primarySpecular = true;
     const auto highlightColor = constant<std::uint32_t>(resources.executable(), actorHighlightColorAddress);
-    std::array<float, 3> highlightDirection{poseTables.sineAngle(0x4000), lightBrightness, poseTables.sineAngle(0)};
+    std::array<float, 3> highlightDirection{constant<float>(resources.executable(), 0x8021ca38),
+        lightBrightness, constant<float>(resources.executable(), 0x8021ba38)};
     float length = 0;
     for (const auto component : highlightDirection) length += component * component;
     length = std::sqrt(length);
@@ -577,7 +578,13 @@ void gameplay::Scene::drawWorld(bool reflection, const s3denvironment::Camera& c
         resources.managers().actors(), resources.visibility(), view, visibilityBuffer), view, projection);
     drawActors(1, camera, visibilityBuffer);
     drawAuxiliary(reflection ? 1 : 3);
-    if (!reflection) drawVacuumEffects();
+    if (!reflection) {
+        gamerenderer::beginGhostLayer();
+        drawActors(2, camera, visibilityBuffer);
+        drawActors(3, camera, visibilityBuffer);
+        gamerenderer::endGhostLayer();
+        drawVacuumEffects();
+    }
     drawFurniture(1);
     drawRooms(1);
     resources.managers().doors().submitTranslucent(visibilityBuffer, false, submitDoor);
@@ -761,6 +768,8 @@ void gameplay::Scene::refreshActorModels() {
 void gameplay::Scene::drawActors(unsigned stage, const s3denvironment::Camera& camera, unsigned visibilityBuffer) {
     for (unsigned i = 0; i < actors.size(); ++i) {
         const auto& actor = *actors[i];
+        const bool ghost = (constant<std::uint16_t>(resources.executable(), 0x8033b598 + actor.type() * 0x1c) & 8) != 0;
+        if (visibilityBuffer != 5 && ghost != (stage >= 2)) continue;
         if (actor.room() >> 24 == 255 ||
             !resources.visibility().marked(actor.room() >> 24, visibilityBuffer, 0)) continue;
         const auto* player = dynamic_cast<const playeractor::Player*>(&actor);
@@ -772,7 +781,7 @@ void gameplay::Scene::drawActors(unsigned stage, const s3denvironment::Camera& c
                 world[row * 4 + 3] = actor.position[row];
             }
         }
-        if (!stage && !(actor.flags & 0x4000))
+        if (!(stage & 1) && !(actor.flags & 0x4000))
             actor.model->prepareView(dooranimation::concatenate(view, world));
         if ((actor.flags & 0x6100) || !(actor.model->color & 255)) continue;
         const auto& surface = actor.surface();
@@ -846,9 +855,9 @@ void gameplay::Scene::drawActors(unsigned stage, const s3denvironment::Camera& c
                 lighting.shadowLight.color[axis] = 1;
             }
         }
-        gamerenderer::drawPreview(i, actorModels[i], batches, lighting, &camera, false, 1U << stage, !(actor.flags & 0x800),
+        gamerenderer::drawPreview(i, actorModels[i], batches, lighting, &camera, false, 1U << (stage & 1), !(actor.flags & 0x800),
             textureTrigonometry, nullptr, &drawViewport,
-            (constant<std::uint16_t>(resources.executable(), 0x8033b598 + actor.type() * 0x1c) & 8) != 0);
+            ghost, nullptr, (actor.fieldE0 & 255) / 255.0f);
     }
 }
 

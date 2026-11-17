@@ -22,6 +22,8 @@ namespace gamerenderer {
     void captureTransition(scenetransition::FrameCapture& frame, const std::function<void()>& render);
     void drawTransition(scenetransition::FrameCapture& frame, const scenetransition::ParlorWipe& wipe,
         const std::function<void()>& render, bool present);
+    void beginGhostLayer();
+    void endGhostLayer();
     void waitForFrame();
     ID3D11Device* modelDevice();
     ID3D11DeviceContext* modelContext();
@@ -32,6 +34,6 @@ namespace gamerenderer {
     void drawPreview(std::size_t index, const s3dmodel::Model& model, const std::vector<s3dmodel::Batch>& batches,
         const s3denvironment::Lighting& lighting, const s3denvironment::Camera* camera = nullptr, bool clear = true, unsigned passes = 3, bool receiver = false,
         const std::vector<float>& trigonometry = {}, const s3denvironment::Fog* fog = nullptr,
-        const D3D11_VIEWPORT* viewport = nullptr, bool translucentDepthWrite = false, const std::string* overlayTarget = nullptr);
+        const D3D11_VIEWPORT* viewport = nullptr, bool translucentDepthWrite = false, const std::string* overlayTarget = nullptr, float ghostAlpha = 1);
     void close();
 }
