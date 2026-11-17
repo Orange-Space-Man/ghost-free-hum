@@ -72,6 +72,17 @@ elements::Scene::Scene(const std::vector<std::uint8_t>& executable) : pool(1500,
     const auto image = range(executable, word(pointer.data()), 1024);
     texture->insert(texture->end(), image.begin(), image.end());
     blowImage = texture;
+    auto breathTexture = std::make_shared<std::vector<std::uint8_t>>(32);
+    (*breathTexture)[0] = 1;
+    (*breathTexture)[3] = (*breathTexture)[5] = 32;
+    const auto breathPointer = range(executable, 0x803767a0, 4);
+    const auto breathPixels = range(executable, word(breathPointer.data()), 1024);
+    breathTexture->insert(breathTexture->end(), breathPixels.begin(), breathPixels.end());
+    breathImage = breathTexture;
+    const auto defaultBreath = range(executable, 0x80376808, 168);
+    std::copy(defaultBreath.begin(), defaultBreath.end(), breathDefaults.begin());
+    const auto breathLevels = range(executable, 0x80377330, 48);
+    std::copy(breathLevels.begin(), breathLevels.end(), breathModes.begin());
     blowThreshold = scalar(executable, 0x804d5934);
     timerScale = scalar(executable, 0x804d5930);
     timerBase = scalar(executable, 0x804dc2b0);
@@ -80,6 +91,8 @@ elements::Scene::Scene(const std::vector<std::uint8_t>& executable) : pool(1500,
     collisionScale = scalar(executable, 0x804dc288);
     radiansPerDegree = scalar(executable, 0x804dc2bc);
     particleScale = scalar(executable, 0x804dc2d4);
+    breathSpecialScale = scalar(executable, 0x804dc280);
+    breathSpecialRadius = scalar(executable, 0x804dc2ac);
     ice.field98 = 1;
     ice.fieldA8 = 0x2f;
     ice.fieldAC = 0x30;
@@ -111,6 +124,7 @@ void elements::Scene::initialize(unsigned type, const std::array<float, 3>& posi
     pool.emitters.free.remove(emitter);
     pool.active.append(emitter);
     emitter.type = type;
+    if (type == 0) breath = &emitter;
     if (type == 9) blow = &emitter;
     const auto bytes = range(executable, 0x80376808 + type * 168, 168);
     std::copy(bytes.begin(), bytes.end(), emitter.parameters.begin());
@@ -143,13 +157,12 @@ void elements::Scene::initialize(unsigned type, const std::array<float, 3>& posi
 void elements::Scene::control(Emitter& emitter, const playeractor::View& player, std::uint32_t actorFlags,
     particles::SceneContext& context, const roomtraversal::State& visibility) {
     if (emitter.type == 0) {
-        const auto bytes = range(executable, 0x80376808, 168);
-        std::copy(bytes.begin(), bytes.end(), emitter.parameters.begin());
+        std::copy(breathDefaults.begin(), breathDefaults.end(), emitter.parameters.begin());
         emitter.field38 = 0;
         emitter.field3D = 1;
         if (!context.field38) throw std::runtime_error("Elemental player emitter requires its original position source.");
         emitter.position = *context.field38;
-        if (player.field84C >= 1) throw std::runtime_error("Active player breath emission requires its original particle update.");
+        // Type zero is advanced by updateBreath in the live scene.
     } else if (emitter.type == 9 || emitter.type == 10 || emitter.type == 11) {
         if (player.fieldF15 || (actorFlags & 0x10)) return;
         const unsigned mode = emitter.type == 9 ? 6 : emitter.type == 10 ? 4 : 2;
@@ -268,6 +281,112 @@ void elements::Scene::updateBlow(const playeractor::View& player, std::uint32_t 
     }
 }
 
+void elements::Scene::updateBreath(const playeractor::View& player, particles::SceneContext& context,
+    std::uint32_t& randomState) {
+    if (paused || !breath) return;
+    auto& emitter = *breath;
+    std::copy(breathDefaults.begin(), breathDefaults.end(), emitter.parameters.begin());
+    emitter.field38 = 0;
+    emitter.field3D = 1;
+    if (!context.field38 || !context.field3C) throw std::runtime_error("Elemental player emitter requires its original mouth sources.");
+    emitter.position = *context.field38;
+    auto random = [&] {
+        randomState = randomState * 0x19660d + 0x3c6ef35f;
+        return static_cast<float>(static_cast<double>(randomState) / 4294967296.0);
+    };
+    const int level = static_cast<int>(player.field84C);
+    if (level > 0) {
+        const auto* mode = breathModes.data() + (std::min(level, 3) - 1) * 16;
+        auto modeFloat = [&](unsigned offset) {
+            const auto bits = word(mode + offset);
+            float result;
+            std::memcpy(&result, &bits, 4);
+            return result;
+        };
+        const float speed = parameter(emitter, 0x14) * (context.field5C ? breathSpecialScale : 1);
+        const float radius = parameter(emitter, 0x64);
+        for (unsigned axis = 0; axis < 3; ++axis) emitter.direction[axis] = (*context.field3C)[axis] * speed;
+        auto writeFloat = [&](unsigned offset, float value) {
+            std::uint32_t bits;
+            std::memcpy(&bits, &value, 4);
+            for (unsigned i = 0; i < 4; ++i) emitter.parameters[offset + i] = static_cast<std::uint8_t>(bits >> (24 - i * 8));
+        };
+        writeFloat(0x14, modeFloat(0));
+        writeFloat(0, modeFloat(4));
+        writeFloat(4, modeFloat(8));
+        writeFloat(8, modeFloat(4));
+        emitter.parameters[0x31] = mode[12];
+        if (context.field5C) writeFloat(0x64, radius * breathSpecialRadius);
+        unsigned count = 0;
+        if (player.field848 > 0) count = 1;
+        else if (player.field848 < 0) {
+            if (emitter.field2E <= mode[13]) count = breathDefaults[0x31];
+            if (++emitter.field2E > unsigned(mode[13]) + mode[14]) emitter.field2E = 0;
+            if (context.field5C) count = static_cast<unsigned>(float(count) * breathSpecialScale);
+        }
+        for (unsigned i = 0; i < count && pool.particles.free.count; ++i) {
+            auto& particle = *pool.particles.free.sentinel.previous;
+            pool.particles.free.remove(particle);
+            emitter.particles.append(particle);
+            particle.position = emitter.position;
+            for (unsigned axis = 0; axis < 3; ++axis)
+                particle.velocity[axis] = emitter.direction[axis] + parameter(emitter, axis * 4) * (1 - 2 * random());
+            particle.acceleration.fill(0);
+            particle.influenced = false;
+            particle.age = static_cast<std::int16_t>(half(emitter, 0x10));
+            particle.pulse = static_cast<std::uint16_t>(int(65535 * random()));
+            particle.rotationSpeed = parameter(emitter, 0x40) * (1 - 2 * random());
+            particle.rotation = 360 * random();
+            particle.timer = 0;
+            particle.size = particle.baseSize = 0;
+            particle.maximumSize = random() < 0.5f ? -1.0f : 1.0f;
+            particle.growth = 0;
+        }
+    }
+    for (auto* particle = emitter.particles.sentinel.next; particle != &emitter.particles.sentinel;) {
+        auto* next = particle->next;
+        if (particle->baseSize > parameter(emitter, 0x0c) || particle->influenced) particle->growth = 2;
+        else particle->baseSize += parameter(emitter, 0x18);
+        particle->pulse = static_cast<std::uint16_t>(int(float(particle->pulse) + parameter(emitter, 0x48)));
+        const float amplitude = parameter(emitter, 0x44);
+        particle->size = particle->baseSize * ((1 - amplitude) + amplitude * sine[particle->pulse >> 4]);
+        particle->rotation += particle->rotationSpeed;
+        particle->timer = std::min(particle->timer + 2.0f, parameter(emitter, 0x64));
+        particle->acceleration[1] -= parameter(emitter, 0x1c);
+        for (unsigned axis = 0; axis < 3; ++axis) {
+            particle->velocity[axis] = particle->velocity[axis] * parameter(emitter, 0x20) + particle->acceleration[axis];
+            particle->position[axis] += particle->velocity[axis];
+        }
+        if (context.actorPosition && particle->position[1] >= (*context.actorPosition)[1] &&
+            particle->position[1] <= context.height) {
+            const float dx = particle->position[0] - (*context.actorPosition)[0];
+            const float dz = particle->position[2] - (*context.actorPosition)[2];
+            const float distance = std::sqrt(dx * dx + dz * dz);
+            if (distance > 0 && distance <= particle->timer) {
+                const float x = dx / distance, z = dz / distance;
+                particle->position[0] = (*context.actorPosition)[0] + particle->timer * x;
+                particle->position[2] = (*context.actorPosition)[2] + particle->timer * z;
+                const float velocity = length(particle->velocity);
+                const std::array<float, 3> away{x - context.orientation[0], -context.orientation[1], z - context.orientation[2]};
+                const float force = parameter(emitter, 0x4c) * velocity + parameter(emitter, 0x50) * context.magnitude;
+                for (unsigned axis = 0; axis < 3; ++axis) particle->acceleration[axis] = force * away[axis];
+            }
+        }
+        if (--particle->age < 1) {
+            emitter.particles.remove(*particle);
+            pool.particles.free.append(*particle);
+        }
+        particle = next;
+    }
+}
+
+particles::Billboard elements::Scene::breathMaterial() const {
+    auto result = blowMaterial();
+    result.texture = breathImage;
+    for (unsigned i = 0; i < 4; ++i) result.secondary[i] = breath->parameters[0x5e + i];
+    return result;
+}
+
 particles::Billboard elements::Scene::blowMaterial() const {
     particles::Billboard result;
     result.texture = blowImage;
@@ -280,12 +399,21 @@ particles::Billboard elements::Scene::blowMaterial() const {
 }
 
 std::vector<particles::Billboard> elements::Scene::prepareBlow(const std::array<float, 12>& view) const {
+    return blow ? prepareElement(*blow, blowMaterial(), view) : std::vector<particles::Billboard>{};
+}
+
+std::vector<particles::Billboard> elements::Scene::prepareBreath(const std::array<float, 12>& view) const {
+    return breath ? prepareElement(*breath, breathMaterial(), view) : std::vector<particles::Billboard>{};
+}
+
+std::vector<particles::Billboard> elements::Scene::prepareElement(const Emitter& emitter, particles::Billboard material,
+    const std::array<float, 12>& view) const {
     std::vector<particles::Billboard> result;
-    if (!blow || !blow->field3D) return result;
-    const int fadeIn = half(*blow, 0x28), fadeOut = half(*blow, 0x2a), lifetime = half(*blow, 0x10);
-    const float opacity = parameter(*blow, 0x2c);
-    for (auto* particle = blow->particles.sentinel.next; particle != &blow->particles.sentinel; particle = particle->next) {
-        auto item = blowMaterial();
+    if (!emitter.field3D) return result;
+    const int fadeIn = half(emitter, 0x28), fadeOut = half(emitter, 0x2a), lifetime = half(emitter, 0x10);
+    const float opacity = parameter(emitter, 0x2c);
+    for (auto* particle = emitter.particles.sentinel.next; particle != &emitter.particles.sentinel; particle = particle->next) {
+        auto item = material;
         float alpha = 255 * opacity;
         if (fadeIn != 0 && particle->age > lifetime - fadeIn) alpha *= float(lifetime - particle->age) / fadeIn;
         else if (particle->age <= fadeOut) alpha = 255 * (opacity * particle->age / fadeOut);

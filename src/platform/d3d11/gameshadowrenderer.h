@@ -12,7 +12,8 @@ namespace gameshadowrenderer {
     void bindModel(const s3dmodel::Matrix& view);
     std::array<int, 4> color();
     std::array<float, 16> worldProjection();
+    void copyWithoutPlayer();
     void finish();
-    void bind(bool receiver, float alpha = 1);
+    void bind(bool receiver, float alpha = 1, bool withoutPlayer = false);
     void close();
 }

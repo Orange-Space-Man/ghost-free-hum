@@ -41,7 +41,8 @@ namespace {
 }
 
 gameplaycamera::Follow::Follow(const std::vector<std::uint8_t>& executable, unsigned map) {
-    if (map != 1 && map != 2 && map != 3) throw std::runtime_error("Unsupported camera follow map.");
+    if (map != 1 && map != 2 && map != 3 && map != 6) throw std::runtime_error("Unsupported camera follow map.");
+    gallery = map == 6;
     const auto descriptor = word(executable, mapDescriptors + map * 4);
     const auto count = word(executable, descriptor) >> 24;
     const auto records = word(executable, descriptor + 20);
@@ -73,6 +74,7 @@ gameplaycamera::Follow::Follow(const std::vector<std::uint8_t>& executable, unsi
     inset = scalar(executable, insetAddress);
     heightThreshold = scalar(executable, heightThresholdAddress);
     followRate = scalar(executable, followRateAddress);
+    corridorDepth = scalar(executable, 0x804d9cf4);
     absentRoomRate = scalar(executable, absentRoomRateAddress);
     nearThreshold = scalar(executable, nearThresholdAddress);
     farThreshold = scalar(executable, farThresholdAddress);
@@ -110,7 +112,8 @@ void gameplaycamera::Follow::refreshRoom(unsigned room) {
     if (room != roomId && (room >> 24) != 255) {
         const auto& record = rooms.at(room >> 24);
         if (record.id != room) throw std::runtime_error("Camera follow requires a resolved room descriptor.");
-        if (record.flags || (room & 255) == 0xe || (room & 255) == 0x29 || (room & 255) == 0x44)
+        if ((record.flags && !(gallery && record.flags == 1)) || (room & 255) == 0xe ||
+            (room & 255) == 0x29 || (room & 255) == 0x44)
             throw std::runtime_error("Camera follow requires the room's specialized camera dependencies.");
         roomId = room;
         roomFlags = record.flags;
@@ -185,8 +188,19 @@ void gameplaycamera::Follow::update(CameraOwner& camera, const playeractor::View
         // 8002134C stores the reaction offsets in globals (804D8278/804D8274) that the capture camera reuses.
         eyeHeight = player.field89C == 1 ? reactionHeight : 0;
         eyeDepth = player.field89C == 1 ? reactionDepth : 0;
-        const std::array<float, 3> target = aimFor(*player.position, leadX[playerIndex], player.field834 == 1);
-        const std::array<float, 3> eye = eyeFor(*player.position, leadX[playerIndex], camera.target[1], eyeHeight, eyeDepth);
+        std::array<float, 3> target, eye;
+        if (gallery && (roomFlags & 1)) {
+            // 800210E4: Gallery corridor rooms keep the camera centered across the passage
+            // and follow Luigi along its depth, rather than using the ordinary room clamp.
+            const float x = minimum[0] + extent[0] * followRate;
+            const float z = std::min((*player.position)[2], minimum[2] + extent[2] - inset);
+            target = {x, minimum[1] + parameters[2], z};
+            eye = {x, target[1] + eyeHeight,
+                (*player.position)[2] + corridorDepth + eyeDepth + leadZ[playerIndex]};
+        } else {
+            target = aimFor(*player.position, leadX[playerIndex], player.field834 == 1);
+            eye = eyeFor(*player.position, leadX[playerIndex], camera.target[1], eyeHeight, eyeDepth);
+        }
         approach(camera.target, target, followRate);
         approach(camera.position, eye, followRate);
         // 8002134C: a capture target installs the capture camera override after the ordinary smoothing (8001FEBC).

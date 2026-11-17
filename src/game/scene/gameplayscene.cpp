@@ -4,6 +4,7 @@
 #include "game/models/modeldrawmatrices.h"
 #include "game/models/modelshadowgeometry.h"
 #include "platform/d3d11/gameshadowrenderer.h"
+#include "platform/d3d11/enhancementsettings.h"
 #include "game/startup/startupresources.h"
 #include "game/effects/barriereffectpool.h"
 #include "game/effects/cobwebeffectpool.h"
@@ -168,6 +169,7 @@ void gameplay::Scene::prepareModelGraphics(ID3D11Device* device) {
     mirrorRenderer.load(device, resources.mirror());
     particleRenderer.prepare(resources.managers().particles().pool());
     particleRenderer.prepare(resources.managers().particles().runningDust().material());
+    particleRenderer.prepare(resources.managers().particles().elemental().breathMaterial());
     particleRenderer.prepare(resources.managers().particles().elemental().blowMaterial());
     for (auto kind : {playermodels::SharedModel::Coin, playermodels::SharedModel::Bill,
         playermodels::SharedModel::Bill2, playermodels::SharedModel::Bill3,
@@ -508,6 +510,7 @@ void gameplay::Scene::drawShadows() {
         for (unsigned pass = 0; pass < 2; ++pass)
             submit(*object.model, [&](unsigned node) -> const dooranimation::Matrix& { return object.matrices.at(node); }, pass, 255);
     }
+    std::vector<std::vector<s3dmodel::Batch>> playerCasters;
     for (unsigned i = 0; i < actors.size(); ++i) {
         const auto& actor = *actors[i];
         if (!(actor.flags & 0x200) &&
@@ -524,10 +527,25 @@ void gameplay::Scene::drawShadows() {
             actor.model->prepareView(dooranimation::concatenate(gameshadowrenderer::viewMatrix(), world));
         if (!actor.model->viewPrepared() || !(actor.model->color & 255) || (actor.flags & 0x400)) continue;
         auto batches = actorModels[i].shadowBatches;
+        const auto& materials = actor.surface().materials;
+        // 8005A280 skips hidden materials in the caster stream, just as the visible actor pass does.
+        // Luigi's unequipped Poltergust is hidden with this flag on material 1.
+        batches.erase(std::remove_if(batches.begin(), batches.end(), [&](const s3dmodel::Batch& batch) {
+            return (materials.at(batch.material).flags & 2) != 0;
+        }), batches.end());
         for (auto& batch : batches) for (auto& vertex : batch.vertices)
             vertex.position = transform(actor.model->matrix(1, vertex.matrix),
                 actor.surface().positions.at(vertex.positionIndex), true);
-        gameshadowrenderer::draw(batches, false, true);
+        if (enhancementsettings::disableCopyFilter() && dynamic_cast<const playeractor::Player*>(&actor))
+            playerCasters.push_back(std::move(batches));
+        else
+            gameshadowrenderer::draw(batches, false, true);
+    }
+    if (!playerCasters.empty()) {
+        // Keep Luigi's cast shadow in the scene, but use the room/other-actor map when shading him.
+        // The literal unfiltered copy alone does not remove Dolphin's character blotches in this renderer.
+        gameshadowrenderer::copyWithoutPlayer();
+        for (const auto& batches : playerCasters) gameshadowrenderer::draw(batches, false, true);
     }
     gameshadowrenderer::finish();
     resources.managers().doors().restorePresentation(0);
@@ -600,6 +618,7 @@ void gameplay::Scene::drawWorld(bool reflection, const s3denvironment::Camera& c
     particleRenderer.draw(gamerenderer::modelContext(), particleBillboards->prepare(resources.managers().particles().pool(),
         resources.rooms(), resources.visibility(), view), view, projection);
     particleRenderer.draw(gamerenderer::modelContext(), resources.managers().particles().runningDust().prepare(view), view, projection);
+    particleRenderer.draw(gamerenderer::modelContext(), resources.managers().particles().elemental().prepareBreath(view), view, projection);
     particleRenderer.draw(gamerenderer::modelContext(), resources.managers().particles().elemental().prepareBlow(view), view, projection);
 }
 
@@ -766,6 +785,8 @@ void gameplay::Scene::refreshActorModels() {
 }
 
 void gameplay::Scene::drawActors(unsigned stage, const s3denvironment::Camera& camera, unsigned visibilityBuffer) {
+    // 80060E70: 8005DD50 is skipped for every actor while 800093EC reports the camera looking against the projector.
+    const bool receiveSuppressed = s3dshadow::receiveSuppressed(camera, resources.managers().shadowProjection());
     for (unsigned i = 0; i < actors.size(); ++i) {
         const auto& actor = *actors[i];
         const bool ghost = (constant<std::uint16_t>(resources.executable(), 0x8033b598 + actor.type() * 0x1c) & 8) != 0;
@@ -786,6 +807,7 @@ void gameplay::Scene::drawActors(unsigned stage, const s3denvironment::Camera& c
         if ((actor.flags & 0x6100) || !(actor.model->color & 255)) continue;
         const auto& surface = actor.surface();
         actorModels[i].materials = surface.materials;
+        actor.applyTextureAnimations(actorModels[i]);
         for (auto& material : actorModels[i].materials) {
             for (unsigned channel = 0; channel < 4; ++channel) {
                 if (channel < 3 && !material.stages.empty()) continue;
@@ -855,9 +877,11 @@ void gameplay::Scene::drawActors(unsigned stage, const s3denvironment::Camera& c
                 lighting.shadowLight.color[axis] = 1;
             }
         }
-        gamerenderer::drawPreview(i, actorModels[i], batches, lighting, &camera, false, 1U << (stage & 1), !(actor.flags & 0x800),
+        gamerenderer::drawPreview(i, actorModels[i], batches, lighting, &camera, false, 1U << (stage & 1),
+            !(actor.flags & 0x800) && !receiveSuppressed,
             textureTrigonometry, nullptr, &drawViewport,
-            ghost, nullptr, (actor.fieldE0 & 255) / 255.0f);
+            ghost, nullptr, (actor.fieldE0 & 255) / 255.0f,
+            enhancementsettings::disableCopyFilter() && dynamic_cast<const playeractor::Player*>(&actor));
     }
 }
 

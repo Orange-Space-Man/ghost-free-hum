@@ -39,6 +39,8 @@ namespace gameplaycamera {
         float nearPlane, farPlane;
         float targetHeight, targetMinimumDepth, targetRate;
         float captureFarDistance, captureLookDistance, eyeHeight = 0, eyeDepth = 0;
+        float corridorDepth = 0;
+        bool gallery = false;
         std::array<float, 3> up;
     };
 }

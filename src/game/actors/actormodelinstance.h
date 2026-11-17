@@ -3,6 +3,7 @@
 #include "game/actors/actormodelarchive.h"
 #include "game/models/s3dmorph.h"
 #include "game/models/s3denvironment.h"
+#include <optional>
 
 namespace actormodel {
     using Matrix = std::array<float, 12>;
@@ -15,6 +16,8 @@ namespace actormodel {
     struct Channel {
         ResourceRef resource;
         float frame = 0;
+        ResourceRef decodedResource;
+        std::optional<s3denvironment::ModelEffect> animation;
     };
 
     struct Effect {

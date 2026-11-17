@@ -45,6 +45,8 @@ namespace actors {
         void copyLinkedPose();
         void updateMorph();
         void updateMaterials();
+        void updateTextureAnimations();
+        void applyTextureAnimations(s3dmodel::Model& target) const;
         bool setMaterialFlags(unsigned material, std::uint8_t mask, bool enabled);
         const s3dmodel::Model& surface() const;
         actormodel::ResourceRef glow() const;

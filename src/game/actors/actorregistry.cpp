@@ -95,6 +95,7 @@ void actors::Registry::updatePoses(const std::function<void()>& captureUpdate,
     }
     for (unsigned i = 0; i < used; ++i) objects[i]->updateMorph();
     for (unsigned i = 0; i < used; ++i) objects[i]->updateMaterials();
+    for (unsigned i = 0; i < used; ++i) objects[i]->updateTextureAnimations();
     for (unsigned i = 0; i < used; ++i) objects[i]->finishFrame();
     captureUpdate();
     for (unsigned i = 0; i < used; ++i) objects[i]->copyLinkedPose();

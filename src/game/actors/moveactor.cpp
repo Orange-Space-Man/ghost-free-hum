@@ -120,8 +120,6 @@ void actors::MoveActor::initializeType(unsigned type) {
     scale.fill(1);
     fieldsE9.fill(64);
     fieldEC = 255;
-    for (auto& channel : model->channels) channel.resource.reset();
-    if (info.texture != -1) model->channels[15].resource = auxiliary(entry, 0, static_cast<std::uint32_t>(info.texture));
     field788 = nullptr;
 }
 
@@ -136,7 +134,12 @@ void actors::MoveActor::selectAnimation(unsigned state) {
     if (fieldFA == -1) fieldF8 = static_cast<std::int16_t>(metadata[0]);
     model->field110 = metadata[4] == 0xffffffff ? nullptr : auxiliary(entry, 3, metadata[4]);
     model->materialFrame = 0;
-    for (auto& channel : model->channels) channel.resource.reset();
+    for (auto& channel : model->channels) {
+        channel.resource.reset();
+        channel.decodedResource.reset();
+        channel.animation.reset();
+        channel.frame = 0;
+    }
     if (metadata[1] != 0xffffffff) model->channels[0].resource = auxiliary(entry, 0, metadata[1]);
     if (type.texture != -1) model->channels[15].resource = auxiliary(entry, 0, static_cast<std::uint32_t>(type.texture));
     if (animation[5] & 0x800) animationClock = animationFrame = 0;

@@ -13,7 +13,8 @@ roomtraversal::Walk::Walk(const std::vector<SceneRoom>& rooms, const doordata::T
 std::vector<roomtraversal::Submission> roomtraversal::Walk::stationary(unsigned room, unsigned buffer,
     const roomportal::Matrix& projection, const Bounds& viewport, std::uint8_t clippingMode, std::uint8_t floorOpacity,
     const Transition* transition) {
-    if ((rooms.at(room).attributes & 1) && floorOpacity) throw std::runtime_error("Room traversal requires the floor-overlap branch.");
+    if (map != 6 && (rooms.at(room).attributes & 1) && floorOpacity)
+        throw std::runtime_error("Room traversal requires the floor-overlap branch.");
     visibility.reset(buffer, static_cast<std::int16_t>(rooms.size()));
     std::vector<Submission> result;
     const auto mark = [&](unsigned index, unsigned depth, const Bounds& bounds, std::uint8_t opacity = 255) {
@@ -40,7 +41,7 @@ std::vector<roomtraversal::Submission> roomtraversal::Walk::stationary(unsigned 
     };
     if (transition && transition->mode == TransitionMode::RevealCurrent) {
         const auto previous = transition->previousRoom >> 24;
-        if ((rooms.at(previous).attributes & 1) && floorOpacity)
+        if (map != 6 && (rooms.at(previous).attributes & 1) && floorOpacity)
             throw std::runtime_error("Room transition requires the floor-overlap branch.");
         flags.at(previous) &= ~1u;
         mark(previous, 0, viewport);

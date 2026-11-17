@@ -589,7 +589,8 @@ std::vector<std::size_t> gamerenderer::loadPreviews(const std::vector<s3dmodel::
 
 void gamerenderer::drawPreview(std::size_t index, const s3dmodel::Model& model, const std::vector<s3dmodel::Batch>& batches,
     const s3denvironment::Lighting& lighting, const s3denvironment::Camera* sceneCamera, bool clearTarget, unsigned passes, bool receiver,
-    const std::vector<float>& trigonometry, const s3denvironment::Fog* fog, const D3D11_VIEWPORT* sceneViewport, bool translucentDepthWrite, const std::string* overlayTarget, float ghostAlpha) {
+    const std::vector<float>& trigonometry, const s3denvironment::Fog* fog, const D3D11_VIEWPORT* sceneViewport, bool translucentDepthWrite, const std::string* overlayTarget, float ghostAlpha,
+    bool withoutPlayerShadow) {
     auto& preview = previews.at(index);
     auto& surface = overlayTarget ? sceneResources.at(*overlayTarget).previews.at(0) : (sceneCamera ? previews.at(0) : preview);
     ID3D11ShaderResourceView* empty = nullptr;
@@ -721,7 +722,7 @@ void gamerenderer::drawPreview(std::size_t index, const s3dmodel::Model& model, 
             context->UpdateSubresource(interfaceColors.Get(), 0, nullptr, stageColors.data(), 0, 0);
             context->OMSetDepthStencilState(modelDepth[(overlayTarget ? 2 : 0) + (translucentDepthWrite ? 0 : draw.pass)].Get(), 0);
             context->PSSetShader(ghostPass ? ghostPixel.Get() : (s3dmodel::renderMode(material) == 0 ? opaqueShader.Get() : interfaceShader.Get()), nullptr, 0);
-            gameshadowrenderer::bind(receiver, material.color[3]);
+            gameshadowrenderer::bind(receiver, material.color[3], withoutPlayerShadow);
             context->RSSetState(modelRasterizers[batch.cull].Get());
             context->PSSetShaderResources(0, 1, preview.textures.at(material.texture).GetAddressOf());
             context->PSSetSamplers(0, 1, modelSamplers[material.wrapS * 3 + material.wrapT].GetAddressOf());

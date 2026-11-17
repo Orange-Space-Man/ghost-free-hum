@@ -54,8 +54,10 @@ void particles::Scene::refresh(const SecondarySource* secondary) {
 
 void particles::Scene::update() {
     emitters.update(simulation);
-    if (elementalScene && binding && binding->refreshed)
+    if (elementalScene && binding && binding->refreshed) {
+        elementalScene->updateBreath(binding->player.view, shared.player, randomState);
         elementalScene->updateBlow(binding->player.view, binding->player.flags, shared.player, *collision, randomState);
+    }
     if (dust) {
         elementalScene->refreshForceRanges(shared.player);
         const auto& context = shared.player;

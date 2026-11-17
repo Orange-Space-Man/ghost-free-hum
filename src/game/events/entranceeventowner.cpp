@@ -55,7 +55,7 @@ bool gameevent::EntranceOwner::eligible(unsigned event, unsigned elapsedSeconds)
         checkTime(condition, static_cast<std::int32_t>(elapsedSeconds), 0) != 1) return false;
     const auto* player = managers.playerEvents().player(0);
     if (!player || !player->view.life) return false;
-    if (definition->trigger == 0) return true;
+    if (definition->trigger == 0 || (entry.map == 6 && event == 28 && definition->trigger == 1)) return true;
     const auto eventRoom = rooms.resolve(definition->position, 0xffffffff);
     if (definition->trigger == 4) {
         if (eventRoom != player->room() || managers.doors().activeDoor() != -1) return false;
@@ -87,7 +87,8 @@ void gameevent::EntranceOwner::update(unsigned elapsedSeconds, std::uint32_t fra
             const auto event = static_cast<unsigned>(condition.eventNumber);
             if ((event == entranceEvent || event == firstKeyEvent || (entry.map == 2 && event == 1) ||
                 (entry.map == 1 && event == 8) ||
-                (entry.map == 3 && (event == 9 || event == 10))) && eligible(event, elapsedSeconds)) {
+                (entry.map == 3 && (event == 9 || event == 10)) ||
+                (entry.map == 6 && event == 28)) && eligible(event, elapsedSeconds)) {
                 currentEvent = event;
                 break;
             }
@@ -316,7 +317,8 @@ void gameevent::EntranceOwner::warp(std::int32_t destination) {
     const bool parlor = entry.map == 2 && destination == 1 && requestedTransition.kind == 1 && requestedTransition.duration == 126;
     const bool training = entry.map == 1 && (destination == 3 || destination == 6) && requestedTransition.kind == 2 && requestedTransition.duration == 30;
     const bool trainingExit = entry.map == 3 && (destination == 1 || destination == 6) && requestedTransition.kind == 2 && requestedTransition.duration == 60;
-    if (!parlor && !training && !trainingExit)
+    const bool galleryReturn = entry.map == 6 && destination == 1 && requestedTransition.kind == 2 && requestedTransition.duration == 30;
+    if (!parlor && !training && !trainingExit && !galleryReturn)
         throw std::runtime_error("Scene transition requires its original destination and wipe lifecycle.");
     requestedTransition.destination = destination;
 }

@@ -180,7 +180,7 @@ struct gameplay::ManagerServices::State : playerpresentation::Services {
         storm(dependencies.executable, dependencies.mission, dependencies.actors.pose), shadow(dependencies.executable) {
         std::vector<std::uint8_t> bytes;
         std::string error;
-        if (dependencies.entry.map == 1 || dependencies.entry.map == 3) {
+        if (dependencies.entry.map == 1 || dependencies.entry.map == 3 || dependencies.entry.map == 6) {
             const auto& rooms = dependencies.actors.rooms.entries();
             roomLights.resize(rooms.size());
             roomBrightness.assign(rooms.size(), 2);
@@ -259,7 +259,7 @@ struct gameplay::ManagerServices::State : playerpresentation::Services {
 
     void initialize() {
         mapMode = dependencies.entry.map;
-        if (!dependencies.entry.initialized || (mapMode != 1 && mapMode != 2 && mapMode != 3)) {
+        if (!dependencies.entry.initialized || (mapMode != 1 && mapMode != 2 && mapMode != 3 && mapMode != 6)) {
             throw std::invalid_argument("Manager services require a supported selected save entry.");
         }
         if (!dependencies.playerCount || dependencies.playerCount > dependencies.records.size()) {
@@ -979,6 +979,10 @@ void gameplay::ManagerServices::updatePlacement(std::int32_t elapsedSeconds, boo
             auto mask = state->enemies->resourceMask();
             const auto generated = state->generators->requiredModels();
             for (unsigned i = 0; i < mask.size(); ++i) mask[i] |= generated[i];
+            // Placement can release a room before its actors leave the registry. Keep their
+            // shared archives alive until those actors are actually destroyed.
+            for (const auto* actor : state->actors->entries())
+                if (actor) mask.at(state->dependencies.actors.catalog.type(actor->type()).model) = 1;
             state->dependencies.updateActorResources(mask);
         }
     } catch (...) {
@@ -1049,7 +1053,7 @@ void gameplay::ManagerServices::setRoomLight(unsigned room, bool enabled) {
 
 void gameplay::ManagerServices::updateRoomLights() {
     const auto& dependencies = state->dependencies;
-    if (dependencies.entry.map != 1 && dependencies.entry.map != 3) return;
+    if (dependencies.entry.map != 1 && dependencies.entry.map != 3 && dependencies.entry.map != 6) return;
     const auto* player = state->events->player(0);
     for (unsigned i = 0; i < state->roomLights.size(); ++i) {
         if (!dependencies.visibility.marked(i, 0, 0) || (dependencies.roomFlags.at(i) & 0x380)) continue;

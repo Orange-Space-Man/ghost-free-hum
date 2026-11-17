@@ -7,6 +7,7 @@ endif()
 set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 if(MSVC)
     string(REPLACE "/Zi" "/Z7" CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG}")
+    string(REPLACE "/Zi" "/Z7" CMAKE_CXX_FLAGS_RELWITHDEBINFO "${CMAKE_CXX_FLAGS_RELWITHDEBINFO}")
 endif()
 
 add_library(ResourceIO STATIC
@@ -450,6 +451,7 @@ add_library(WindowsRuntime STATIC
     src/platform/d3d11/playerpointrenderer.cpp
     src/platform/d3d11/playersheetrenderer.cpp
     src/platform/d3d11/transitionframecapture.cpp
+    src/platform/d3d11/enhancementsettings.cpp
     src/platform/d3d11/roommirrorrenderer.cpp
     src/platform/d3d11/modelrenderstate.cpp
     src/platform/d3d11/modeltexturerenderer.cpp

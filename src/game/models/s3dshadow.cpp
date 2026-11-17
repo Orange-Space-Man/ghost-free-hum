@@ -38,6 +38,21 @@ namespace {
             if (result.keys[i * result.stride] <= result.keys[(i - 1) * result.stride]) throw std::runtime_error("Unordered shadow curve.");
         return result;
     }
+
+    std::array<float, 3> normalizedDirection(const std::array<float, 3>& from, const std::array<float, 3>& to) {
+        std::array<float, 3> result{};
+        for (unsigned axis = 0; axis < 3; ++axis) result[axis] = to[axis] - from[axis];
+        // PSVECNormalize: a zero-length direction yields non-finite components, and the original comparison then fails.
+        const float scale = 1.0f / std::sqrt(result[0] * result[0] + result[1] * result[1] + result[2] * result[2]);
+        for (auto& component : result) component *= scale;
+        return result;
+    }
+}
+
+bool s3dshadow::receiveSuppressed(const s3denvironment::Camera& camera, const Projection& shadow) {
+    const auto view = normalizedDirection(camera.position, camera.target);
+    const auto light = normalizedDirection(shadow.position, shadow.target);
+    return view[2] * light[2] + view[0] * light[0] + view[1] * light[1] < 0.17f;
 }
 
 bool s3dshadow::Animation::read(const std::vector<std::uint8_t>& scene, const std::vector<std::uint8_t>& settings, std::string& error) {

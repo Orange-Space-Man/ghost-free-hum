@@ -1,4 +1,6 @@
 #include "platform/d3d11/gameshadowrenderer.h"
+#include "platform/d3d11/enhancementsettings.h"
+#include "platform/d3d11/shadowdepthcopy.h"
 
 #include <DirectXMath.h>
 #include <d3dcompiler.h>
@@ -11,12 +13,12 @@ namespace {
     using Microsoft::WRL::ComPtr;
     ComPtr<ID3D11Device> device;
     ComPtr<ID3D11DeviceContext> context;
-    ComPtr<ID3D11Texture2D> depthTexture, packedTexture, lookupTexture;
+    ComPtr<ID3D11Texture2D> depthTexture, packedTexture, withoutPlayerTexture, lookupTexture;
     ComPtr<ID3D11DepthStencilView> depthTarget;
-    ComPtr<ID3D11RenderTargetView> packedTarget;
-    ComPtr<ID3D11ShaderResourceView> depthView, packedView, lookupView;
+    ComPtr<ID3D11RenderTargetView> packedTarget, withoutPlayerTarget;
+    ComPtr<ID3D11ShaderResourceView> depthView, packedView, withoutPlayerView, lookupView;
     ComPtr<ID3D11VertexShader> casterShader, copyVertex;
-    ComPtr<ID3D11PixelShader> copyPixel;
+    ComPtr<ID3D11PixelShader> copyPixel, copyPixelUnfiltered;
     ComPtr<ID3D11InputLayout> layout;
     ComPtr<ID3D11Buffer> vertices, constants, modelConstants;
     ComPtr<ID3D11DepthStencilState> depthState;
@@ -24,6 +26,7 @@ namespace {
     ComPtr<ID3D11SamplerState> samplers[2];
     std::size_t capacity = 0;
     bool active = false;
+    bool hasWithoutPlayerCopy = false;
     DirectX::XMFLOAT4X4 lightView{}, lightPerspective{};
     struct Constants {
         DirectX::XMFLOAT4X4 projection{};
@@ -41,20 +44,30 @@ float4 caster(float3 position : POSITION) : SV_POSITION { return mul(float4(posi
 float4 copyVertex(uint id : SV_VertexID) : SV_POSITION {
     return float4(id == 2 ? 3 : -1, id == 1 ? 3 : -1, 0, 1);
 }
-Texture2D<float> depthImage : register(t0);
-float2 copyPixel(float4 position : SV_POSITION) : SV_TARGET {
-    uint depth = (uint)round(saturate(depthImage.Load(int3(int2(position.xy), 0))) * 16777215.0);
-    return float2((depth >> 8) & 255, (depth >> 16) & 255) / 255.0;
-}
 )";
 
     ComPtr<ID3DBlob> compile(const char* entry, const char* profile) {
+        static const std::string source = std::string(shader) + shadowdepthcopy::shader;
         ComPtr<ID3DBlob> code, errors;
-        const auto result = D3DCompile(shader, sizeof(shader), nullptr, nullptr, nullptr, entry, profile,
+        const auto result = D3DCompile(source.data(), source.size(), nullptr, nullptr, nullptr, entry, profile,
             D3DCOMPILE_IEEE_STRICTNESS, 0, &code, &errors);
         if (FAILED(result) && errors) throw std::runtime_error(static_cast<const char*>(errors->GetBufferPointer()));
         check(result, "Could not compile shadow shader.");
         return code;
+    }
+
+    void copyDepth(ID3D11RenderTargetView* target) {
+        context->OMSetRenderTargets(1, &target, nullptr);
+        context->OMSetDepthStencilState(nullptr, 0);
+        context->RSSetState(rasterizers[0].Get());
+        context->IASetInputLayout(nullptr);
+        context->VSSetShader(copyVertex.Get(), nullptr, 0);
+        context->PSSetShader(enhancementsettings::disableCopyFilter() ? copyPixelUnfiltered.Get() : copyPixel.Get(), nullptr, 0);
+        context->PSSetShaderResources(0, 1, depthView.GetAddressOf());
+        context->Draw(3, 0);
+        context->OMSetRenderTargets(0, nullptr, nullptr);
+        ID3D11ShaderResourceView* empty = nullptr;
+        context->PSSetShaderResources(0, 1, &empty);
     }
 }
 
@@ -83,6 +96,9 @@ void gameshadowrenderer::open(ID3D11Device* sourceDevice, ID3D11DeviceContext* s
     check(device->CreateTexture2D(&texture, nullptr, &packedTexture), "Could not create packed shadow texture.");
     check(device->CreateRenderTargetView(packedTexture.Get(), nullptr, &packedTarget), "Could not create shadow copy target.");
     check(device->CreateShaderResourceView(packedTexture.Get(), nullptr, &packedView), "Could not create shadow copy view.");
+    check(device->CreateTexture2D(&texture, nullptr, &withoutPlayerTexture), "Could not create character shadow copy texture.");
+    check(device->CreateRenderTargetView(withoutPlayerTexture.Get(), nullptr, &withoutPlayerTarget), "Could not create character shadow copy target.");
+    check(device->CreateShaderResourceView(withoutPlayerTexture.Get(), nullptr, &withoutPlayerView), "Could not create character shadow copy view.");
     texture.Width = texture.Height = 256;
     texture.BindFlags = D3D11_BIND_SHADER_RESOURCE;
     texture.Usage = D3D11_USAGE_IMMUTABLE;
@@ -110,6 +126,8 @@ void gameshadowrenderer::open(ID3D11Device* sourceDevice, ID3D11DeviceContext* s
     check(device->CreateVertexShader(code->GetBufferPointer(), code->GetBufferSize(), nullptr, &copyVertex), "Could not create shadow copy vertex shader.");
     code = compile("copyPixel", "ps_4_0");
     check(device->CreatePixelShader(code->GetBufferPointer(), code->GetBufferSize(), nullptr, &copyPixel), "Could not create shadow copy pixel shader.");
+    code = compile("copyPixelUnfiltered", "ps_4_0");
+    check(device->CreatePixelShader(code->GetBufferPointer(), code->GetBufferSize(), nullptr, &copyPixelUnfiltered), "Could not create unfiltered shadow copy pixel shader.");
     D3D11_BUFFER_DESC buffer{};
     buffer.ByteWidth = sizeof(Constants);
     buffer.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
@@ -145,6 +163,7 @@ void gameshadowrenderer::reserve(std::size_t count) {
 
 void gameshadowrenderer::begin(const s3dshadow::Projection& projection, float aspect) {
     active = projection.nearPlane > 0 && projection.farPlane > projection.nearPlane;
+    hasWithoutPlayerCopy = false;
     values.color = projection.color;
     values.state = {};
     if (active) {
@@ -209,26 +228,26 @@ void gameshadowrenderer::draw(const std::vector<s3dmodel::Batch>& batches, bool 
     if (viewSpace) context->UpdateSubresource(constants.Get(), 0, nullptr, &values, 0, 0);
 }
 
-void gameshadowrenderer::finish() {
-    context->OMSetRenderTargets(1, packedTarget.GetAddressOf(), nullptr);
-    context->OMSetDepthStencilState(nullptr, 0);
-    context->RSSetState(rasterizers[0].Get());
-    context->IASetInputLayout(nullptr);
-    context->VSSetShader(copyVertex.Get(), nullptr, 0);
-    context->PSSetShader(copyPixel.Get(), nullptr, 0);
-    context->PSSetShaderResources(0, 1, depthView.GetAddressOf());
-    context->Draw(3, 0);
-    context->OMSetRenderTargets(0, nullptr, nullptr);
-    ID3D11ShaderResourceView* empty = nullptr;
-    context->PSSetShaderResources(0, 1, &empty);
+void gameshadowrenderer::copyWithoutPlayer() {
+    copyDepth(withoutPlayerTarget.Get());
+    hasWithoutPlayerCopy = true;
+    context->OMSetRenderTargets(0, nullptr, depthTarget.Get());
+    context->OMSetDepthStencilState(depthState.Get(), 0);
+    context->VSSetShader(casterShader.Get(), nullptr, 0);
+    context->PSSetShader(nullptr, nullptr, 0);
+    context->IASetInputLayout(layout.Get());
 }
 
-void gameshadowrenderer::bind(bool receiver, float alpha) {
+void gameshadowrenderer::finish() {
+    copyDepth(packedTarget.Get());
+}
+
+void gameshadowrenderer::bind(bool receiver, float alpha, bool withoutPlayer) {
     values.state = {active && receiver ? 1.0f : 0.0f, alpha, 0, 0};
     context->UpdateSubresource(constants.Get(), 0, nullptr, &values, 0, 0);
     context->VSSetConstantBuffers(2, 1, constants.GetAddressOf());
     context->PSSetConstantBuffers(2, 1, constants.GetAddressOf());
-    ID3D11ShaderResourceView* views[]{packedView.Get(), lookupView.Get()};
+    ID3D11ShaderResourceView* views[]{withoutPlayer && hasWithoutPlayerCopy ? withoutPlayerView.Get() : packedView.Get(), lookupView.Get()};
     ID3D11SamplerState* filters[]{samplers[0].Get(), samplers[1].Get()};
     context->PSSetShaderResources(1, 2, views);
     context->PSSetSamplers(1, 2, filters);
@@ -265,10 +284,10 @@ std::array<int, 4> gameshadowrenderer::color() {
 void gameshadowrenderer::close() {
     active = false;
     capacity = 0;
-    depthTexture.Reset(); packedTexture.Reset(); lookupTexture.Reset();
-    depthTarget.Reset(); packedTarget.Reset();
-    depthView.Reset(); packedView.Reset(); lookupView.Reset();
-    casterShader.Reset(); copyVertex.Reset(); copyPixel.Reset(); layout.Reset();
+    depthTexture.Reset(); packedTexture.Reset(); withoutPlayerTexture.Reset(); lookupTexture.Reset();
+    depthTarget.Reset(); packedTarget.Reset(); withoutPlayerTarget.Reset();
+    depthView.Reset(); packedView.Reset(); withoutPlayerView.Reset(); lookupView.Reset();
+    casterShader.Reset(); copyVertex.Reset(); copyPixel.Reset(); copyPixelUnfiltered.Reset(); layout.Reset();
     modelConstants.Reset();
     vertices.Reset(); constants.Reset(); depthState.Reset();
     for (auto& state : rasterizers) state.Reset();

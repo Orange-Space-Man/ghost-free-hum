@@ -7,11 +7,25 @@ namespace {
     unsigned half(const std::vector<std::uint8_t>& bytes, unsigned offset) {
         return (unsigned(bytes.at(offset)) << 8) | bytes.at(offset + 1);
     }
+
+    void ensureTextureAnimation(actormodel::Channel& channel, const s3dmodel::Model& surface) {
+        if (channel.decodedResource == channel.resource) return;
+        channel.animation.reset();
+        channel.decodedResource = channel.resource;
+        channel.frame = 0;
+        if (!channel.resource) return;
+        s3denvironment::ModelEffect animation;
+        std::string error;
+        if (!animation.read(channel.resource->bytes, surface, error))
+            throw std::runtime_error("Actor texture animation " + channel.resource->name + ": " + error);
+        channel.animation = std::move(animation);
+    }
 }
 
 const s3dmodel::Model& actors::MoveActor::surface() const {
     const auto& entry = construction.resources.entry(construction.catalog.type(actorType).model);
-    if (!entry.archive) throw std::runtime_error("Actor surface requires its manager-owned archive.");
+    if (!entry.archive) throw std::runtime_error("Actor type " + std::to_string(actorType) +
+        " surface requires its manager-owned archive.");
     return entry.archive->surface();
 }
 
@@ -92,4 +106,21 @@ void actors::MoveActor::updateMaterials() {
         else model->materialFrame = duration - 1;
     }
     if (reversed) model->materialFrame = previous + 1;
+}
+
+void actors::MoveActor::updateTextureAnimations() {
+    if (!model || !model->model) return;
+    const auto& source = surface();
+    for (auto& channel : model->channels) {
+        ensureTextureAnimation(channel, source);
+        if (channel.animation) channel.frame = channel.animation->advance(channel.frame, 1);
+    }
+}
+
+void actors::MoveActor::applyTextureAnimations(s3dmodel::Model& target) const {
+    if (!model) return;
+    for (auto& channel : model->channels) {
+        ensureTextureAnimation(channel, target);
+        if (channel.animation) channel.animation->apply(channel.frame, target);
+    }
 }

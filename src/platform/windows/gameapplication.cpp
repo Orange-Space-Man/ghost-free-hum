@@ -256,8 +256,10 @@ void gameapplication::Application::beginTransition() {
     }
     const bool parlor = gameEntry.map == 2 && request.destination == 1 && request.kind == 1 && request.duration == 126;
     const bool training = gameEntry.map == 1 && request.destination == 3 && request.kind == 2 && request.duration == 30;
-    const bool trainingReturn = gameEntry.map == 3 && request.destination == 1 && request.kind == 2 && request.duration == 60;
-    if (!parlor && !training && !trainingReturn)
+    const bool trainingReturn = gameEntry.map == 3 && (request.destination == 1 || request.destination == 6) &&
+        request.kind == 2 && request.duration == 60;
+    const bool galleryReturn = gameEntry.map == 6 && request.destination == 1 && request.kind == 2 && request.duration == 30;
+    if (!parlor && !training && !trainingReturn && !galleryReturn)
         throw std::runtime_error("Unsupported gameplay scene transition.");
     transitionDestination = request.destination;
     transitionFrame.load(gamerenderer::modelDevice());

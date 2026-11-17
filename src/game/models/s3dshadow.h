@@ -11,6 +11,11 @@ namespace s3dshadow {
         std::array<float, 4> color{1, 1, 1, 1};
     };
 
+    // 800093EC: actors stop receiving the projected shadow when the main camera's view direction and the shadow
+    // projector's direction point apart (dot product below 0.17, constant 804D9920). 80060E70 evaluates it from the
+    // shared camera block (main eye/target at +0/+C, projector eye/target at +24/+30) before enabling 8005DD50.
+    bool receiveSuppressed(const s3denvironment::Camera& camera, const Projection& shadow);
+
     class Animation {
     public:
         bool read(const std::vector<std::uint8_t>& scene, const std::vector<std::uint8_t>& settings, std::string& error);

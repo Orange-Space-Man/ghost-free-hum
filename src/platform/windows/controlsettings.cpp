@@ -1,5 +1,6 @@
 #include "platform/windows/controlsettings.h"
 #include "platform/windows/controlbindings.h"
+#include "platform/d3d11/enhancementsettings.h"
 #include "imgui.h"
 #include <algorithm>
 #include <cmath>
@@ -12,7 +13,7 @@ namespace {
     int listening = -1;
     double listenUntil = 0;
     controlbindings::Snapshot previous;
-    std::string notice;
+    std::string notice, enhancementNotice;
     bool saveFailed = false;
     const ImVec4 green{0.51f, 0.85f, 0.35f, 1}, muted{0.56f, 0.65f, 0.59f, 1};
 
@@ -67,7 +68,10 @@ void controlsettings::initialize(HWND window) {
     host = window; opened = false; listening = -1;
     wchar_t path[32768]{};
     const auto length = GetEnvironmentVariableW(L"LOCALAPPDATA", path, 32768);
-    if (length && length < 32768) controlbindings::initialize(std::filesystem::path(path) / L"ghost-free-hum" / L"controls.ini");
+    if (length && length < 32768) {
+        controlbindings::initialize(std::filesystem::path(path) / L"ghost-free-hum" / L"controls.ini");
+        enhancementsettings::initialize(std::filesystem::path(path) / L"ghost-free-hum" / L"enhancements.ini");
+    }
     notice = controlbindings::loadError();
     saveFailed = !notice.empty();
 
@@ -177,6 +181,24 @@ void controlsettings::draw() {
             }
             if (ImGui::Button("Reset defaults")) { config = controlbindings::defaults(); listening = -1; save(); }
             ImGui::SameLine();
+            if (ImGui::Button("Back to game")) setVisible(false);
+            ImGui::EndChild();
+            ImGui::EndTabItem();
+        }
+        if (ImGui::BeginTabItem("Enhancements")) {
+            ImGui::BeginChild("enhancementNavigation", {105, 0}, ImGuiChildFlags_Borders);
+            ImGui::Selectable("Graphics", true);
+            ImGui::EndChild();
+            ImGui::SameLine();
+            ImGui::BeginChild("enhancementContent", {0, 0});
+            bool disableCopyFilter = enhancementsettings::disableCopyFilter();
+            if (ImGui::Checkbox("Disable Copy Filter", &disableCopyFilter)) {
+                enhancementsettings::setDisableCopyFilter(disableCopyFilter);
+                std::string saveError;
+                enhancementNotice = enhancementsettings::persist(saveError) ? "Changes saved" : saveError;
+            }
+            if (ImGui::IsItemHovered()) ImGui::SetTooltip("Removes the vertical depth-copy filter and Luigi's self-shadow blotches. Off keeps the original hardware appearance.");
+            ImGui::TextDisabled("%s", enhancementNotice.empty() ? "Changes save automatically." : enhancementNotice.c_str());
             if (ImGui::Button("Back to game")) setVisible(false);
             ImGui::EndChild();
             ImGui::EndTabItem();

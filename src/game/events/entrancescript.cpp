@@ -198,7 +198,7 @@ bool gameevent::EntranceScript::update(EntranceServices& services) {
         else if (command == "NECKOFF") services.playerEvent(0x36);
         else if (command == "NECKON") services.playerEvent(0x37);
         else if (command == "ANYKEY") state = 3;
-        else if (command == "CAMTARGET") {
+        else if (command == "CAMTARGET" || command == "CAMTARGET2") {
             const auto actor = token('"', '"');
             const auto height = integer();
             services.cameraTarget(actor, height);

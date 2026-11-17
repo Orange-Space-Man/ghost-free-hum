@@ -73,8 +73,9 @@ roomfurniture::Object roomfurniture::Owner::construct(const Placement& placement
     result.row = placement.row;
     result.behavior = placement.behavior;
     switch (result.behavior) {
-    case 0: case 3: case 7: case 14: case 15: case 17: case 20: case 22: case 37: case 38: break;
-    default: throw std::runtime_error("Furniture owner requires its original initialization callback.");
+    case 0: case 3: case 7: case 14: case 15: case 17: case 20: case 22: case 37: case 38: case 43: break;
+    default: throw std::runtime_error("Furniture behavior " + std::to_string(result.behavior) +
+        " requires its original initialization callback.");
     }
     const char* positions[]{"pos_x", "pos_y", "pos_z"};
     const char* directions[]{"dir_x", "dir_y", "dir_z"};

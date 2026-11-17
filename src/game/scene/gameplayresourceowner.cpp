@@ -15,7 +15,7 @@ struct gameplay::ResourceOwner::State {
     explicit State(gameentry::State& entry) : entry(entry), motors(motorOutput) {}
 
     void initialize(const std::filesystem::path& path) {
-        if (!entry.initialized || (entry.map != 1 && entry.map != 2 && entry.map != 3)) throw std::invalid_argument("Gameplay resources require a supported selected map entry.");
+        if (!entry.initialized || (entry.map != 1 && entry.map != 2 && entry.map != 3 && entry.map != 6)) throw std::invalid_argument("Gameplay resources require a supported selected map entry.");
         std::string error;
         std::vector<std::uint8_t> compressed, commonBytes, mapBytes;
         if (!package.open(path, error) || !package.read("sys/main.dol", executable, error) ||
@@ -42,7 +42,7 @@ struct gameplay::ResourceOwner::State {
         visibility.initialize(static_cast<unsigned>(rooms->entries().size()));
         roomFlags.resize(rooms->entries().size());
         for (unsigned i = 0; i < rooms->entries().size(); ++i) {
-            if (entry.map == 1 || entry.map == 3) {
+            if (entry.map == 1 || entry.map == 3 || entry.map == 6) {
                 roomFlags[i] = 0x8008;
                 continue;
             }

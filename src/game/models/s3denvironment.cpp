@@ -370,16 +370,25 @@ bool s3denvironment::ModelEffect::read(const std::vector<std::uint8_t>& data, co
         result.frames = word(data, 6);
         require((result.kind == 1 || result.kind == 2) && (result.frames > 0 || word(data, 4) == 0), "Unsupported S3D model effect.");
         const auto table = dword(data, 8);
+        // Actor TXP tracks use 12-byte records and absolute frame tables; opening effects use 8-byte records.
+        bool actorTextureRecords = result.kind == 1 && table >= 12 + word(data, 4) * 12;
+        if (actorTextureRecords) for (unsigned i = 0; i < word(data, 4); ++i) {
+            const std::size_t record = 12 + i * 12;
+            if (word(data, record) != result.frames || word(data, record + 2) >= model.materials.size())
+                actorTextureRecords = false;
+        }
         for (unsigned i = 0; i < word(data, 4); ++i) {
-            const std::size_t record = 12 + i * (result.kind == 1 ? 8 : 28);
+            const std::size_t record = 12 + i * (result.kind == 1 ? (actorTextureRecords ? 12 : 8) : 28);
             Entry entry;
-            entry.material = word(data, record + (result.kind == 1 ? 0 : 2));
+            entry.material = word(data, record + (result.kind == 1 && !actorTextureRecords ? 0 : 2));
             require(entry.material < model.materials.size(), "Invalid S3D effect material.");
             if (result.kind == 1) {
-                require(word(data, record + 2) == 0, "Additional S3D texture stages are not implemented.");
-                const auto first = dword(data, record + 4);
+                if (!actorTextureRecords)
+                    require(word(data, record + 2) == 0, "Additional S3D texture stages are not implemented.");
+                const auto first = dword(data, record + (actorTextureRecords ? 8 : 4));
                 for (unsigned frame = 0; frame < result.frames; ++frame) {
-                    const auto texture = word(data, std::size_t(table) + (std::size_t(first) + frame) * 2);
+                    const auto texture = word(data, (actorTextureRecords ? std::size_t(first) :
+                        std::size_t(table) + std::size_t(first) * 2) + frame * 2);
                     require(texture < model.samplers.size(), "Invalid S3D effect sampler.");
                     entry.textures.push_back(texture);
                 }
@@ -417,7 +426,7 @@ float s3denvironment::ModelEffect::advance(float frame, float step) const {
     require(std::isfinite(frame) && std::isfinite(step), "Invalid S3D effect playback time.");
     frame += step;
     if (frame >= frames) {
-        if (mode == 2) frame -= frames;
+        if (mode == 0 || mode == 2) frame -= frames;
         else if (mode == 1) frame = float(frames);
     }
     return frame;
