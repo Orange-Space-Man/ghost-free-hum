@@ -1245,8 +1245,6 @@ void gameplay::ManagerServices::updateFurniture(unsigned frame) {
         state->particles->effects().create(type, position, state->furnitureDirection);
     };
     services.sound = [this](unsigned sound, const auto& position, const float* amplitude) {
-        if (amplitude && sound != 0x1868)
-            throw std::runtime_error("Furniture suction sound requires its original amplitude binding.");
         auto* handle = state->audio->playback.play(sound, position);
         if (handle && amplitude) state->audio->playback.setInteractionVolume(*handle, *amplitude);
     };
