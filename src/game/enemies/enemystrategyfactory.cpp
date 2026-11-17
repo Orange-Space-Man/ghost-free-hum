@@ -26,6 +26,7 @@
 #include "game/enemies/enemyfiregeneratorstrategy.h"
 #include "game/enemies/enemyfakedoorstrategy.h"
 #include "game/enemies/enemyroomobserverstrategy.h"
+#include "game/enemies/enemytreasurestrategy.h"
 #include "game/enemies/enemyghostparenthost.h"
 #include "game/actors/characterowner.h"
 #include "game/actors/moveactor.h"
@@ -105,6 +106,9 @@ std::unique_ptr<enemystrategy::Strategy> enemystrategy::Factory::construct(std::
     case glme01::fakeDoorFactory:
         if (!ambient) throw std::runtime_error("Original fake-door room color is not bound.");
         return std::make_unique<FakeDoor>(*ambient);
+    case 0x800ef3c0:
+        if (!treasureRooms || !treasureSound) throw std::runtime_error("Btakara1 requires its original room and audio services.");
+        return std::make_unique<Treasure>(resources, runtime, *treasureRooms, treasureSound);
     case glme01::roomObserverFactory:
         if (!catalog) throw std::runtime_error("Original observer strategy catalog is not bound.");
         return std::make_unique<RoomObserver>(*this, *catalog);
@@ -170,6 +174,11 @@ std::unique_ptr<enemystrategy::Strategy> enemystrategy::Factory::construct(std::
 }
 
 void enemystrategy::Factory::bindTraining(TrainingEnvironment& environment) { training = &environment; }
+void enemystrategy::Factory::bindTreasure(const std::vector<std::uint32_t>& rooms,
+    std::function<void(unsigned, const std::array<float, 3>&)> sound) {
+    treasureRooms = &rooms;
+    treasureSound = std::move(sound);
+}
 
 void enemystrategy::Factory::bindItems(ItemEnvironment* environment) { items = environment; }
 void enemystrategy::Factory::bindPose(const actormodel::InitialPose& value) { pose = &value; }

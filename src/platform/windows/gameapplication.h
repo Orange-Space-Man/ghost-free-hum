@@ -21,6 +21,7 @@
 #include "platform/windows/windowpadinput.h"
 #include <windows.h>
 #include <future>
+#include <optional>
 
 namespace gameapplication {
     class Application {
@@ -55,6 +56,11 @@ namespace gameapplication {
         startupscene::Scene scene;
         gamesave::State saves;
         gamesave::State checkpointSaves;
+        struct DebugCheckpointState {
+            gamesave::State saves;
+            gameentry::State entry;
+        };
+        std::array<std::optional<DebugCheckpointState>, 5> checkpointStates;
         std::uint64_t presentationFrames = 0;
         gamesave::State* gameplaySaves = &saves;
         gamecard::Storage card;

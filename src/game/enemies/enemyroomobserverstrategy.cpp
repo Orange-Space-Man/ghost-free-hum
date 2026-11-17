@@ -16,6 +16,17 @@ namespace {
     private:
         const enemystrategy::Factory& factory;
     };
+    class LightRoom final : public enemystrategy::Strategy {
+    public:
+        explicit LightRoom(const enemystrategy::Factory& factory) : factory(factory) {}
+        void initializeBehavior() override {
+            if (!owner) throw std::runtime_error("Room light action requires its original observer owner.");
+            factory.lightRoom(owner->actor().room() >> 24);
+        }
+        void behavior() override { setNextState(0x100); }
+    private:
+        const enemystrategy::Factory& factory;
+    };
     class ChangeMotion final : public enemystrategy::Strategy {
     public:
         void initializeBehavior() override {
@@ -72,10 +83,8 @@ void enemystrategy::RoomObserver::behavior() {
         condition->owner = owner;
         condition->context = context;
         actionStrategy.reset();
-        if (action == 1) {
-            factory.lightRoom(owner->actor().room() >> 24);
-        }
-        if (action == 0 || action == 1 || action == 2 || action == 4 || action == 5 || action == 6 || action > 12)
+        if (action == 1) actionStrategy = std::make_unique<LightRoom>(factory);
+        else if (action == 0 || action == 2 || action == 4 || action == 5 || action == 6 || action > 12)
             actionStrategy = std::make_unique<CompletedAction>();
         else if (action == 10) actionStrategy = std::make_unique<ChangeMotion>();
         else if (action == 12) actionStrategy = std::make_unique<ClearDoorBarrier>(factory);

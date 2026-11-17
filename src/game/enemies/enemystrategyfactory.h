@@ -22,6 +22,8 @@ namespace enemystrategy {
         std::unique_ptr<Strategy> construct(std::uint32_t constructor) const;
         void bindItems(ItemEnvironment* environment);
         void bindTraining(TrainingEnvironment& environment);
+        void bindTreasure(const std::vector<std::uint32_t>& rooms,
+            std::function<void(unsigned, const std::array<float, 3>&)> sound);
         void bindPose(const actormodel::InitialPose& pose);
         void bindGhostParent(ghostparent::Environment& environment);
         void bindRoomLight(std::function<void(unsigned)> callback);
@@ -48,5 +50,7 @@ namespace enemystrategy {
         std::function<void(unsigned)> roomLight;
         std::function<void()> globalDoorBarrierClear;
         particles::EffectFactory* kinopioEffects = nullptr;
+        const std::vector<std::uint32_t>* treasureRooms = nullptr;
+        std::function<void(unsigned, const std::array<float, 3>&)> treasureSound;
     };
 }

@@ -36,6 +36,7 @@ namespace gameplay {
         bool keyPresentationActive() const;
         bool requestPlayerDemo(std::string_view name);
         bool gameplaySuspended() const;
+        ResourceOwner& checkpointResources() { return resources; }
 
     private:
         ResourceOwner resources;

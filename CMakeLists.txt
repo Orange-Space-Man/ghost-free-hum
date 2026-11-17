@@ -227,6 +227,7 @@ add_library(Game STATIC
     src/game/enemies/enemypearlstrategy.cpp
     src/game/enemies/enemyreplacestrategy.cpp
     src/game/enemies/enemyroomobserverstrategy.cpp
+    src/game/enemies/enemytreasurestrategy.cpp
     src/game/enemies/enemystrategy.cpp
     src/game/enemies/enemystrategycatalog.cpp
     src/game/enemies/enemystrategyfactory.cpp

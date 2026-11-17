@@ -384,8 +384,7 @@ bool runningdust::Manager::impact(float speed, float radius, const Vector& posit
         Vector offset;
         for (unsigned axis = 0; axis < 3; ++axis) offset[axis] = source[axis] - position[axis];
         const float length = magnitude(offset);
-        if (!(length > 0)) throw std::runtime_error("Impact dust reached the original uninitialized zero-displacement direction.");
-        for (auto& value : offset) value /= length;
+        if (length > 0) for (auto& value : offset) value /= length;
         const float outward = radial + p.radialSpread * (1 - 2 * state->random());
         for (unsigned axis = 0; axis < 3; ++axis) particle->velocity[axis] = offset[axis] * outward;
         particle->velocity[1] = upward + p.upwardSpread * state->random();

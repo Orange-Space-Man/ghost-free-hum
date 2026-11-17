@@ -354,6 +354,9 @@ struct gameplay::ManagerServices::State : playerpresentation::Services, playersc
             dependencies.playerCount, mapMode);
         strategies = std::make_unique<enemystrategy::Factory>(*runtime, dependencies.flags, dependencies.mission);
         strategies->bindKinopioEffects(particles->effects());
+        strategies->bindTreasure(dependencies.roomFlags, [this](unsigned id, const auto& position) {
+            audio->playback.play(id, position);
+        });
         owners->bind(*enemies, *strategies);
         effects->bind(*enemies, *actors);
         runtime->bind(*enemies);

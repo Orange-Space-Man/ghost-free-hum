@@ -122,8 +122,9 @@ void debugoverlay::draw() {
         ImGui::PushStyleColor(ImGuiCol_ButtonActive, {0.30f, 0.52f, 0.34f, 1});
         if (ImGui::Begin("Go to", nullptr, ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoResize |
             ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_AlwaysAutoResize)) {
-            constexpr const char* destinations[]{"Mansion foyer", "Foyer after first key", "Training room", "Gallery"};
-            for (unsigned i = 0; i < 4; ++i) {
+            constexpr const char* destinations[]{"Mansion foyer", "Foyer after first key", "Training room", "Gallery",
+                "Foyer after training"};
+            for (unsigned i = 0; i < 5; ++i) {
                 if (ImGui::Button(destinations[i], {ImGui::GetContentRegionAvail().x, 36})) {
                     selectedCheckpoint = i + 1;
                     checkpointOpen = false;
