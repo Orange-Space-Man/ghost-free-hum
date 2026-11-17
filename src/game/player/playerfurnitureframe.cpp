@@ -53,7 +53,8 @@ bool playerinteraction::FurnitureFrame::actor(playeractor::Player& player, Furni
     for (const auto& slot : services.enemies.slots()) {
         if (slot.state != 2 || !slot.owner) continue;
         auto& target = dynamic_cast<actors::MoveActor&>(slot.owner->actor());
-        if ((target.flags & 0xc000) || !(services.catalog.type(target.actorType).flags & 0x10)) continue;
+        const bool npc = target.actorType == 39 || target.actorType == 42;
+        if ((target.flags & 0xc000) || (!npc && !(services.catalog.type(target.actorType).flags & 0x10))) continue;
         std::array<float, 3> direction;
         for (unsigned i = 0; i < 3; ++i) direction[i] = target.position[i] - player.position[i];
         const auto& facing = player.state.direction;

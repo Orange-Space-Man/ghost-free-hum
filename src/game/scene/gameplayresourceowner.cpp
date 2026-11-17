@@ -201,6 +201,16 @@ std::vector<startupscene::Picture> gameplay::ResourceOwner::messagePictures() co
 const s3denvironment::Camera& gameplay::ResourceOwner::camera() const { return state->camera; }
 const std::array<std::int32_t, 4>& gameplay::ResourceOwner::cameraViewport() const { return state->cameras.active->viewport; }
 
+std::uint8_t gameplay::ResourceOwner::galleryRoomFade() const {
+    if (state->entry.map != 6) return 0;
+    const auto& transition = state->roomTransition;
+    if (transition.mode == roomtraversal::TransitionMode::HidePrevious && (transition.currentRoom >> 24) == 3)
+        return transition.opacity;
+    if (transition.mode == roomtraversal::TransitionMode::RevealCurrent && (transition.previousRoom >> 24) == 3)
+        return static_cast<std::uint8_t>(255 - transition.opacity);
+    return 0;
+}
+
 void gameplay::ResourceOwner::updateCamera() {
     const auto* player = state->managers->playerEvents().player(0);
     if (!player) throw std::runtime_error("Camera update requires the manager-owned player.");

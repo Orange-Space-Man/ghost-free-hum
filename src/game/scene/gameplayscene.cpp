@@ -158,6 +158,7 @@ void gameplay::Scene::loadGalleryPaintings() {
     if (positions.size() != paintingCount * 16) throw std::runtime_error("Unexpected Gallery painting position table.");
     galleryPaintings.reserve(paintingCount);
     galleryPaintingBatches.reserve(paintingCount);
+    galleryPaintingRooms.reserve(paintingCount);
     for (unsigned index = 0; index < paintingCount; ++index) {
         // 80186B40 selects ge0 until the corresponding portrait has been restored.
         const auto name = "/mdld/oba" + (index + 1 < 10 ? std::string("0") : std::string()) +
@@ -170,6 +171,7 @@ void gameplay::Scene::loadGalleryPaintings() {
         const float x = galleryNumber(positions, index * 16);
         const float y = galleryNumber(positions, index * 16 + 4);
         const float z = galleryNumber(positions, index * 16 + 8);
+        galleryPaintingRooms.push_back(resources.rooms().resolve({x, y, z}));
         const float angle = galleryNumber(positions, index * 16 + 12) * 0.017453292519943295f;
         const float cosine = std::cos(angle), sine = std::sin(angle);
         for (auto& batch : batches) for (auto& vertex : batch.vertices) {
@@ -499,6 +501,15 @@ void gameplay::Scene::draw(bool present) {
         picture.width = 640;
         picture.height = 480;
         std::vector<startupscene::Picture> pictures{picture};
+        if (const auto fade = resources.galleryRoomFade()) {
+            startupscene::Picture black;
+            black.texture = textures.at(0);
+            black.width = 640;
+            black.height = 480;
+            black.alpha = float(fade) / 255.0f;
+            black.black = black.white = {0, 0, 0, 1};
+            pictures.push_back(black);
+        }
         const auto* player = resources.managers().playerEvents().player(0);
         if (player && player->state.flags1140[2]) {
             const auto sight = resources.hud().scannerPictures(player->components->scanner->state[1] != 0);
@@ -908,9 +919,12 @@ void gameplay::Scene::refreshActorModels() {
 void gameplay::Scene::drawGalleryPaintings(unsigned stage, const s3denvironment::Camera& camera) {
     if (galleryPaintings.empty()) return;
     s3denvironment::Lighting lighting;
-    for (unsigned i = 0; i < galleryPaintings.size(); ++i)
+    for (unsigned i = 0; i < galleryPaintings.size(); ++i) {
+        const auto room = galleryPaintingRooms.at(i);
+        if (room == 0xffffffff || !resources.visibility().marked(room >> 24, 0, 0)) continue;
         gamerenderer::drawPreview(actorModels.size() + i, galleryPaintings[i], galleryPaintingBatches[i],
             lighting, &camera, false, 1u << stage, false, textureTrigonometry, nullptr, &drawViewport);
+    }
 }
 
 void gameplay::Scene::drawActors(unsigned stage, const s3denvironment::Camera& camera, unsigned visibilityBuffer) {

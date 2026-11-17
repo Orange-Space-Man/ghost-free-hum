@@ -1290,6 +1290,14 @@ void gameplay::ManagerServices::updateFurniture(unsigned frame) {
             state->furnitureResponse.rotating(object, row, visible, vacuumActive, services);
             return true;
         }
+        if (object.behavior == 37) {
+            // Gallery scan targets use the furniture message counter without a physical reaction.
+            if (visible && (row.flags & 0x20)) {
+                services.scanMessage(object.counter & 255);
+                row.flags &= ~0x20u;
+            }
+            return true;
+        }
         if (object.behavior != 0 && object.behavior != 15 && object.behavior != 22 && object.behavior != 43) return false;
         state->furnitureResponse.basic(object, row, visible, vacuumActive, static_cast<unsigned>(object.animations.size()), frame, services);
         return true;

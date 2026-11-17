@@ -61,6 +61,7 @@ namespace gameplay {
         std::vector<s3dmodel::Model> actorModels;
         std::vector<s3dmodel::Model> galleryPaintings;
         std::vector<std::vector<s3dmodel::Batch>> galleryPaintingBatches;
+        std::vector<std::uint32_t> galleryPaintingRooms;
         std::vector<actormodel::ResourceRef> actorModelResources;
         std::vector<std::size_t> textures;
         modelrenderer::PipelineState pipeline;

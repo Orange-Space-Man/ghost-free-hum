@@ -195,7 +195,8 @@ void roomfurniture::Owner::update(const roomtraversal::State& visibility, unsign
             if (!handled && visible) {
                 const bool strikeResponse = object.behavior == 0 || object.behavior == 15 || object.behavior == 17 || object.behavior == 22;
                 if ((state.flags & 0x20) || (strikeResponse && ((state.flags & 1) || state.occupant != -1)))
-                    throw std::runtime_error("Furniture interaction requires its reaction and event services.");
+                    throw std::runtime_error("Furniture interaction requires its reaction and event services: behavior " +
+                        std::to_string(object.behavior) + ", row " + std::to_string(object.row) + ".");
                 if (object.behavior == 0 || object.behavior == 15 || object.behavior == 22) {
                     const auto angle = static_cast<std::int16_t>(object.angles[2]);
                     const auto distance = static_cast<std::int16_t>(-angle);
