@@ -64,6 +64,13 @@ enemystrategy::Factory::Factory(enemies::Runtime& runtime, gameflags::State& fla
     const mission::Resources& resources) : runtime(runtime), flags(flags), resources(resources) {}
 
 void enemystrategy::Factory::bindRoomLight(std::function<void(unsigned)> callback) { roomLight = std::move(callback); }
+void enemystrategy::Factory::bindGlobalDoorBarrierClear(std::function<void()> callback) {
+    globalDoorBarrierClear = std::move(callback);
+}
+void enemystrategy::Factory::clearGlobalDoorBarrier() const {
+    if (!globalDoorBarrierClear) throw std::runtime_error("Original door-lock action has no door manager binding.");
+    globalDoorBarrierClear();
+}
 void enemystrategy::Factory::bindKinopioEffects(particles::EffectFactory& effects) { kinopioEffects = &effects; }
 void enemystrategy::Factory::lightRoom(unsigned room) const {
     if (!roomLight) throw std::runtime_error("Original room light action has no scene binding.");

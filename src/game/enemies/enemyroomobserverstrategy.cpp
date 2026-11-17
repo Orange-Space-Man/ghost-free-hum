@@ -1,5 +1,6 @@
 #include "game/enemies/enemyroomobserverstrategy.h"
 #include "game/actors/moveactor.h"
+#include "game/actors/characterowner.h"
 
 #include <stdexcept>
 
@@ -7,6 +8,37 @@ namespace {
     class CompletedAction final : public enemystrategy::Strategy {
     public:
         void behavior() override { setNextState(0x100); }
+    };
+    class ClearDoorBarrier final : public enemystrategy::Strategy {
+    public:
+        explicit ClearDoorBarrier(const enemystrategy::Factory& factory) : factory(factory) {}
+        void initializeBehavior() override { factory.clearGlobalDoorBarrier(); }
+    private:
+        const enemystrategy::Factory& factory;
+    };
+    class ChangeMotion final : public enemystrategy::Strategy {
+    public:
+        void initializeBehavior() override {
+            fired = false;
+            threshold = 0;
+            name = {};
+            if (!owner || !owner->source.table || owner->source.row < 0) return;
+            const auto& source = owner->source;
+            source.table->getValue(source.row, "arg0", threshold);
+            source.table->getValue(source.row, "string_arg0", name);
+        }
+
+        void behavior() override {
+            if (fired || frames <= threshold) return;
+            if (!owner) throw std::runtime_error("Original change-motion action has no character owner.");
+            if (!name.empty()) dynamic_cast<characterowner::Owner&>(*owner).manager().activateNamed(name);
+            fired = true;
+        }
+
+    private:
+        std::uint32_t threshold = 0;
+        std::string_view name;
+        bool fired = false;
     };
 }
 
@@ -43,8 +75,11 @@ void enemystrategy::RoomObserver::behavior() {
         if (action == 1) {
             factory.lightRoom(owner->actor().room() >> 24);
         }
-        if (action == 0 || action == 1 || action == 2 || action == 4 || action == 5 || action == 6 || action > 12) {
+        if (action == 0 || action == 1 || action == 2 || action == 4 || action == 5 || action == 6 || action > 12)
             actionStrategy = std::make_unique<CompletedAction>();
+        else if (action == 10) actionStrategy = std::make_unique<ChangeMotion>();
+        else if (action == 12) actionStrategy = std::make_unique<ClearDoorBarrier>(factory);
+        if (actionStrategy) {
             actionStrategy->owner = owner;
             actionStrategy->context = context;
         }

@@ -263,21 +263,20 @@ void gameapplication::Application::saveGameplay() {
 
 void gameapplication::Application::beginTransition() {
     const auto request = gameplayScene->transition();
-    if (gameEntry.map == 1 && request.opening && request.destination == 2) {
-        startupaudio::bindPositionalPlayback({});
-        gameplayScene.reset();
-        gameEntry.map = 2;
-        gameEntry.cutscene = 0;
-        gameplayActive = false;
-        enterOpening(2, 0);
-        resetHostClock = true;
-        return;
-    }
+    const bool labMansion = gameEntry.map == 1 && request.opening && request.destination == 2;
     const bool parlor = gameEntry.map == 2 && request.destination == 1 && request.kind == 1 && request.duration == 126;
     const bool training = gameEntry.map == 1 && request.destination == 3 && request.kind == 2 && request.duration == 30;
     const bool trainingReturn = gameEntry.map == 3 && (request.destination == 1 || request.destination == 6) &&
         request.kind == 2 && request.duration == 60;
     const bool galleryReturn = gameEntry.map == 6 && request.destination == 1 && request.kind == 2 && request.duration == 30;
+    if (labMansion) {
+        gameplayActive = false;
+        startupaudio::bindPositionalPlayback({});
+        gameplayScene.reset();
+        gameEntry.map = 2;
+        enterOpening(2, 0);
+        return;
+    }
     if (!parlor && !training && !trainingReturn && !galleryReturn)
         throw std::runtime_error("Unsupported gameplay scene transition.");
     transitionDestination = request.destination;

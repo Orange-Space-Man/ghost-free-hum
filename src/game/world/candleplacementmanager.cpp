@@ -1,5 +1,7 @@
 #include "game/world/candleplacementmanager.h"
+#include "game/player/playervacuummodel.h"
 
+#include <cmath>
 #include <cstring>
 #include <stdexcept>
 
@@ -147,9 +149,13 @@ void particles::CandlePlacements::update(Candle& candle) {
     if (candle.state == 1 && !(candle.flags & 1)) {
         parameters.flags &= ~0x300000u;
         parameters.field1E4 = 0;
-        if (visible && player.field89E && player.field8A0 != 5)
-            throw std::runtime_error("Candle interaction requires the original elemental equipment path.");
-        if (distance < 90000.0f) {
+        if (visible && player.field89E && player.field8A0 == 1) {
+            disturb(candle);
+            candle.state = 3;
+        } else if (visible && player.field89E &&
+            (player.field8A0 == 4 || player.field8A0 == 6 || player.field8A0 == 3))
+            throw std::runtime_error("Elemental candle interaction requires its original equipment path.");
+        if (candle.state == 1 && distance < 90000.0f) {
             disturb(candle);
             candle.state = 2;
         }
@@ -164,6 +170,40 @@ void particles::CandlePlacements::update(Candle& candle) {
             parameters.fields1BC.fill(bits(0.25f * (strength - 0.007f)));
             parameters.fields1C8 = {2, 5, 2};
             parameters.field1E4 = 2;
+        }
+    } else if (candle.state == 3) {
+        if (!visible || !player.field89E || player.field8A0 != 1) {
+            emitter.flags = 0xe;
+            candle.state = 1;
+        } else {
+            std::array<float, 3> direction;
+            if (player.field8B4 && player.field8B4->intersects(50.0 * player.field8B0, direction, candle.position) &&
+                !(candle.flags & 16)) {
+                emitter.flags = 0xc;
+                candle.state = 4;
+            } else if (player.field8A4 && player.field8A8) {
+                const auto& nozzle = *player.field8A4;
+                const auto& aim = *player.field8A8;
+                const float dx = candle.position[0] - nozzle[0];
+                const float dy = candle.position[1] - nozzle[1];
+                const float dz = candle.position[2] - nozzle[2];
+                const float length = std::sqrt(dx * dx + dy * dy + dz * dz);
+                const float alignment = length > 0 ? (dx * aim[0] + dy * aim[1] + dz * aim[2]) / length : 0;
+                const float strength = 1000.0f / (1000.0f + length) *
+                    (0.5f * (1.0f + alignment) * player.field8B0);
+                if (strength > 0.5f && random() > 0.97f && !(candle.flags & 16)) {
+                    emitter.flags = 0xc;
+                    candle.state = 4;
+                } else {
+                    if (random() < 0.8f) disturb(candle);
+                    parameters.flags |= 0x300000;
+                    for (unsigned i = 0; i < 3; ++i) parameters.fields1AC[i] = bits(candle.disturbance[i]);
+                    parameters.fields1AC[3] = bits(strength);
+                    parameters.fields1BC.fill(bits(0.25f * strength));
+                    parameters.fields1C8 = {2, 5, 2};
+                    parameters.field1E4 = 2;
+                }
+            }
         }
     } else if (candle.state == 5 && cleared(candle.room >> 24)) {
         emitter.flags |= 2;

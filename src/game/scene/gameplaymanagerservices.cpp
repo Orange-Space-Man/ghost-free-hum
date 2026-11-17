@@ -469,6 +469,9 @@ struct gameplay::ManagerServices::State : playerpresentation::Services, playersc
         fireServices = std::make_unique<enemystrategy::FireGeneratorEnvironment>(enemystrategy::FireGeneratorEnvironment{
             commonResources, particles->pool(), glows, player->view, dependencies.actors.rooms, *runtime});
         strategies->bindPlacement(dependencies.strategies, *barrierServices, *fireServices, ambient);
+        strategies->bindGlobalDoorBarrierClear([this] {
+            if (doors.globalBarrier()) doors.setGlobalBarrier(false, *events);
+        });
         strategies->bindPose(dependencies.actors.pose);
         trainingServices = std::make_unique<enemystrategy::TrainingEnvironment>(enemystrategy::TrainingEnvironment{
             *runtime, *enemies, dependencies.types, dependencies.actors.pose, models->factory, particles->effects()});

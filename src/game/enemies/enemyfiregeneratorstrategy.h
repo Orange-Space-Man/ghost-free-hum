@@ -28,7 +28,7 @@ namespace enemystrategy {
 
     private:
         charactergenerator::Generator& generator() const;
-        void createCandle();
+        void createCandle(bool high = false);
         void createGlow();
         FireGeneratorEnvironment& environment;
         particles::Emitter* candle = nullptr;

@@ -25,6 +25,8 @@ namespace enemystrategy {
         void bindPose(const actormodel::InitialPose& pose);
         void bindGhostParent(ghostparent::Environment& environment);
         void bindRoomLight(std::function<void(unsigned)> callback);
+        void bindGlobalDoorBarrierClear(std::function<void()> callback);
+        void clearGlobalDoorBarrier() const;
         void bindKinopioEffects(particles::EffectFactory& effects);
         void lightRoom(unsigned room) const;
         void bindPlacement(const Catalog& catalog, BarrierEnvironment& barriers, FireGeneratorEnvironment& fire,
@@ -44,6 +46,7 @@ namespace enemystrategy {
         const actormodel::InitialPose* pose = nullptr;
         ghostparent::Environment* ghost = nullptr;
         std::function<void(unsigned)> roomLight;
+        std::function<void()> globalDoorBarrierClear;
         particles::EffectFactory* kinopioEffects = nullptr;
     };
 }

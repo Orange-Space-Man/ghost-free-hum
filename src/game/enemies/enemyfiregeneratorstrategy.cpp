@@ -1,4 +1,5 @@
 #include "game/enemies/enemyfiregeneratorstrategy.h"
+#include "game/player/playervacuummodel.h"
 
 #include <stdexcept>
 
@@ -39,9 +40,10 @@ void enemystrategy::FireGenerator::createGlow() {
     glow = environment.glows.create(generator().position, 2.6f, 1, {0xcf, 0x7e, 0x50, 0xff});
 }
 
-void enemystrategy::FireGenerator::createCandle() {
-    candle = environment.particles.create(environment.common.get(0x4b485f45, "candle_moe.pcr"),
-        environment.common.get(0x4b485f45, "ps_ball.bti"));
+void enemystrategy::FireGenerator::createCandle(bool high) {
+    candle = environment.particles.create(environment.common.get(0x4b485f45,
+        high ? "candle_high.pcr" : "candle_moe.pcr"),
+        environment.common.get(0x4b485f45, high ? "honoo1.bti" : "ps_ball.bti"));
     if (candle) {
         candle->position = position;
         candle->field220 = {};
@@ -79,13 +81,24 @@ void enemystrategy::FireGenerator::behavior() {
         throw std::runtime_error("Original active elemental spray requires generator interaction services.");
     }
     if (!disabled) {
-        if (player.field8B4) throw std::runtime_error("Original fire attraction requires the active vacuum query.");
-        if (attractionFrames) --attractionFrames;
-        if (changed && candle) {
-            candle->release();
-            createCandle();
-            if (glow) glow->scale = 2.6f;
-            changed = false;
+        std::array<float, 3> direction{};
+        const bool attracted = player.field8B4 && player.field8B4->intersects(200.0, direction, position);
+        if (attracted) {
+            ++attractionFrames;
+            if (candle && !changed) {
+                candle->release();
+                createCandle(true);
+                if (glow) glow->scale = 4.0f;
+                changed = true;
+            }
+        } else {
+            if (attractionFrames) --attractionFrames;
+            if (changed && candle) {
+                candle->release();
+                createCandle();
+                if (glow) glow->scale = 2.6f;
+                changed = false;
+            }
         }
         if (candle && (candle->flags & 8) && !(candle->flags & 0x40)) {
             if (!glow) createGlow();
