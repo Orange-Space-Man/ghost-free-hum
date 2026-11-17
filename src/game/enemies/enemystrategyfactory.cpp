@@ -27,16 +27,48 @@
 #include "game/enemies/enemyfakedoorstrategy.h"
 #include "game/enemies/enemyroomobserverstrategy.h"
 #include "game/enemies/enemyghostparenthost.h"
+#include "game/actors/characterowner.h"
+#include "game/actors/moveactor.h"
+#include "game/world/dooranimationpose.h"
+#include "game/effects/particleeffectfactory.h"
 
 #include <sstream>
 #include <stdexcept>
 
 namespace {
     class Spear final : public enemystrategy::Strategy {};
+    class Kinopio final : public enemystrategy::Strategy {
+    public:
+        Kinopio(enemies::Runtime& runtime, particles::EffectFactory& effects) : runtime(runtime), effects(effects) {}
+        ~Kinopio() override { if (tears) tears->release(); }
+        void behavior() override {
+            if (!owner) throw std::runtime_error("Kinopio strategy requires its character owner.");
+            auto& actor = dynamic_cast<actors::MoveActor&>(owner->actor());
+            if (runtime.roomCleared(actor.room() >> 24) || !actor.model) {
+                if (tears) { tears->release(); tears = nullptr; }
+                return;
+            }
+            const auto matrix = dooranimation::concatenate(actor.matrix, actor.model->matrix(0, 0x18));
+            const std::array<float, 3> position{matrix[3], matrix[7], matrix[11]};
+            if (!tears) tears = effects.create(14, position, {});
+            else tears->position = position;
+        }
+    private:
+        enemies::Runtime& runtime;
+        particles::EffectFactory& effects;
+        particles::Emitter* tears = nullptr;
+    };
 }
 
 enemystrategy::Factory::Factory(enemies::Runtime& runtime, gameflags::State& flags,
     const mission::Resources& resources) : runtime(runtime), flags(flags), resources(resources) {}
+
+void enemystrategy::Factory::bindRoomLight(std::function<void(unsigned)> callback) { roomLight = std::move(callback); }
+void enemystrategy::Factory::bindKinopioEffects(particles::EffectFactory& effects) { kinopioEffects = &effects; }
+void enemystrategy::Factory::lightRoom(unsigned room) const {
+    if (!roomLight) throw std::runtime_error("Original room light action has no scene binding.");
+    roomLight(room);
+}
 
 std::unique_ptr<enemystrategy::Strategy> enemystrategy::Factory::construct(std::uint32_t constructor) const {
     switch (constructor) {
@@ -106,6 +138,9 @@ std::unique_ptr<enemystrategy::Strategy> enemystrategy::Factory::construct(std::
         if (!items) throw std::runtime_error("Original EnItem services are not bound.");
         return std::make_unique<Item>(*items, *this);
     case glme01::labProfessorFactory: return std::make_unique<LabProfessor>();
+    case 0x800f02dc:
+        if (!kinopioEffects) throw std::runtime_error("Kinopio requires the original particle effect owner.");
+        return std::make_unique<Kinopio>(runtime, *kinopioEffects);
     case glme01::noMoveFactory: return std::make_unique<NoMove>();
     case glme01::spearFactory: return std::make_unique<Spear>();
     case glme01::pathConditionFactory: return std::make_unique<PathCondition>(resources);

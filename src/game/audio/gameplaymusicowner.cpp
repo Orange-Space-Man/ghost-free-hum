@@ -296,6 +296,29 @@ bool gameplaymusic::Owner::requestSequence(std::uint32_t id, std::uint32_t audio
     return true;
 }
 
+bool gameplaymusic::Owner::requestToadFanfare(std::uint32_t audioFrame) {
+    std::lock_guard<std::recursive_mutex> lock(mutex);
+    constexpr unsigned id = 0x8000001e;
+    if (lastRequestFrame == audioFrame) return false;
+    const auto* info = jaudio::soundInfo(resources, id);
+    if (!info || (*info)[0] != 8 || (*info)[1] || (*info)[2] || (*info)[3])
+        throw std::runtime_error("Unsupported original Toad fanfare routing metadata.");
+    std::string error;
+    if (!fanfare.loadSequence(package, resources, id, error)) throw std::runtime_error(error);
+    fanfare.start();
+    fanfareActive = true;
+    sequenceVolume.set(0, 10);
+    lastRequestFrame = audioFrame;
+    return true;
+}
+
+void gameplaymusic::Owner::stopEventMusic() {
+    std::lock_guard<std::recursive_mutex> lock(mutex);
+    fanfare.stop();
+    fanfareActive = false;
+    stop();
+}
+
 bool gameplaymusic::Owner::requestTraining(std::uint32_t audioFrame) {
     std::lock_guard<std::recursive_mutex> lock(mutex);
     if (deferRequest(0x80000025)) return true;

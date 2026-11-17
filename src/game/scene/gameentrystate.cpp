@@ -24,3 +24,18 @@ bool gameentry::selectNewFile(const gamesave::State& saves, unsigned slot, State
     state = result;
     return true;
 }
+
+bool gameentry::store(const State& entry, gamesave::State& saves, std::string& error) {
+    error.clear();
+    if (!entry.initialized || !saves.initialized || entry.slot >= 3) {
+        error = "Saving requires an active file slot.";
+        return false;
+    }
+    auto begin = saves.working.begin() + 12 + entry.slot * 0x3b0;
+    begin[1] |= 1;
+    std::copy(entry.flags.begin(), entry.flags.end(), begin + 2);
+    std::copy(entry.inventory.begin(), entry.inventory.end(), begin + 0x14);
+    std::copy(entry.player.begin(), entry.player.end(), begin + 0x234);
+    std::copy(entry.record.begin(), entry.record.end(), begin + 0x3a0);
+    return true;
+}

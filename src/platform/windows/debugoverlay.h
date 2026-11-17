@@ -13,5 +13,7 @@ namespace debugoverlay {
     void setScene(const std::string& information);
     void setLoading(const std::string& information);
     bool isLoading();
+    bool checkpointVisible();
+    unsigned takeCheckpoint();
     void draw();
 }

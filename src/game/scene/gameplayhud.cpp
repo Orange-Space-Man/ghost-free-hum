@@ -308,9 +308,9 @@ std::vector<startupscene::Picture> gameplay::Hud::pictures() const {
 std::vector<startupscene::Picture> gameplay::Hud::scannerPictures(bool discovered) const {
     auto result = scannerFrameGraphics.pictures(scannerFrameLayout);
     auto layout = scannerLayout;
+    (void)discovered;
     for (const auto tag : {"swin", "smes", "ster", "skey", "sque"})
-        if (auto* pane = layout.find(tag)) pane->visible = discovered &&
-            (std::string_view(tag) == "swin" || std::string_view(tag) == "smes" || std::string_view(tag) == "sque");
+        if (auto* pane = layout.find(tag)) pane->visible = false;
     auto sight = scannerGraphics.pictures(layout);
     result.insert(result.end(), sight.begin(), sight.end());
     return result;

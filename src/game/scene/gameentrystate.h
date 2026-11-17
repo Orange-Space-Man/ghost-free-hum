@@ -16,5 +16,6 @@ namespace gameentry {
     };
 
     bool selectNewFile(const gamesave::State& saves, unsigned slot, State& state, std::string& error);
+    bool store(const State& entry, gamesave::State& saves, std::string& error);
 }
 

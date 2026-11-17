@@ -38,6 +38,7 @@ namespace characterowner {
         void bindItemCreation(characteritems::Creation* items);
         void bindUpdates(UpdateServices* services);
         void bindProfessorInteraction(std::function<void()> callback);
+        void bindToadInteraction(std::function<void()> callback);
         void update(Owner& owner) override;
         characterownership::Resources& resources() override;
         characterownership::ActorLinks& links(enemies::Actor& actor) override;
@@ -64,6 +65,7 @@ namespace characterowner {
         characteritems::Creation* items = nullptr;
         UpdateServices* updates = nullptr;
         std::function<void()> professorInteraction;
+        std::function<void()> toadInteraction;
         std::array<std::unique_ptr<characterownership::Links>, 128> actorLinks;
         std::array<enemies::Actor*, 128> linkedActors{};
     };

@@ -26,6 +26,9 @@ void characterowner::CreationRuntime::bindUpdates(UpdateServices* services) { up
 void characterowner::CreationRuntime::bindProfessorInteraction(std::function<void()> callback) {
     professorInteraction = std::move(callback);
 }
+void characterowner::CreationRuntime::bindToadInteraction(std::function<void()> callback) {
+    toadInteraction = std::move(callback);
+}
 
 void characterowner::CreationRuntime::update(Owner& owner) {
     if (!manager || &owner.manager() != manager || !updates || !updates->players.entries) {
@@ -56,6 +59,7 @@ std::uint32_t characterowner::CreationRuntime::event(Owner& owner, charactereven
     const auto group = event.message == 26 ? properties.group(owner.actor().type()) : 0;
     const auto result = dispatchEvent(owner, event, group, capture, items);
     if (event.message == 19 && owner.actor().type() == 39 && professorInteraction) professorInteraction();
+    if (event.message == 19 && owner.actor().type() == 42 && toadInteraction) toadInteraction();
     return result;
 }
 

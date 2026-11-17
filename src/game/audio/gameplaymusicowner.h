@@ -17,6 +17,8 @@ namespace gameplaymusic {
         bool requestLab(std::uint32_t audioFrame);
         bool requestTraining(std::uint32_t audioFrame);
         bool requestSequence(std::uint32_t id, std::uint32_t audioFrame);
+        bool requestToadFanfare(std::uint32_t audioFrame);
+        void stopEventMusic();
         bool requestDeath(std::uint32_t audioFrame);
         bool requestEntrance(std::uint32_t audioFrame);
         bool requestFirstKey(std::uint32_t audioFrame);

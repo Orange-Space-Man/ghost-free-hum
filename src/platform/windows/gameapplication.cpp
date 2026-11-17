@@ -66,6 +66,7 @@ void gameapplication::Application::advanceOpening() {
     if (gameplayPreparation.valid() && gameplayPreparation.wait_for(std::chrono::seconds(0)) == std::future_status::ready) {
         gameplayScene = gameplayPreparation.get();
         gameplayScene->bindControllerOptions(*gameplaySaves, &presentationFrames);
+        bindGameplaySave();
         gameplayScene->prepareGraphics();
     }
     if (openingFade.active()) {
@@ -170,8 +171,9 @@ void gameapplication::Application::advanceMenu() {
 }
 
 void gameapplication::Application::advance(bool audioFinished) {
-    startupaudio::setPaused(controlsettings::visible());
-    if (controlsettings::visible()) return;
+    if (const auto checkpoint = debugoverlay::takeCheckpoint()) debugCheckpoint = checkpoint;
+    startupaudio::setPaused(controlsettings::visible() || debugoverlay::checkpointVisible());
+    if (controlsettings::visible() || debugoverlay::checkpointVisible()) return;
     ++presentationFrames;
     if (debugCheckpoint) {
         const auto checkpoint = debugCheckpoint;
@@ -242,6 +244,23 @@ void gameapplication::Application::advanceGameplay() {
     gameplayScene->updatePresentation(!gameplayPhase);
 }
 
+void gameapplication::Application::bindGameplaySave() {
+    gameplayScene->bindSave([this] { saveGameplay(); });
+}
+
+void gameapplication::Application::saveGameplay() {
+    std::string error;
+    if (!gameentry::store(gameEntry, *gameplaySaves, error)) throw std::runtime_error(error);
+    if (gameplaySaves != &saves || !audioEnabled) return;
+    const auto now = std::time(nullptr);
+    std::tm calendar{};
+    localtime_s(&calendar, &now);
+    std::snprintf(reinterpret_cast<char*>(cardBanner.data() + 0x1c20), 32, "Last saved on %d/%d",
+        calendar.tm_mon + 1, calendar.tm_mday);
+    if (!card.save(saves, cardBanner, static_cast<unsigned>(GetTickCount64()),
+        static_cast<unsigned>(now - 946684800), error)) throw std::runtime_error(error);
+}
+
 void gameapplication::Application::beginTransition() {
     const auto request = gameplayScene->transition();
     if (gameEntry.map == 1 && request.opening && request.destination == 2) {
@@ -287,6 +306,7 @@ void gameapplication::Application::advanceTransition() {
         if (gameplayPreparation.wait_for(std::chrono::seconds(0)) != std::future_status::ready) return;
         gameplayScene = gameplayPreparation.get();
         gameplayScene->bindControllerOptions(*gameplaySaves, &presentationFrames);
+        bindGameplaySave();
         gameplayScene->prepareGraphics();
         if (audioEnabled) startupaudio::bindPositionalPlayback(gameplayScene->playback());
         gameplayPhase = 0;
@@ -377,7 +397,6 @@ void gameapplication::Application::restart() {
 }
 
 LRESULT gameapplication::Application::handleMessage(HWND window, UINT message, WPARAM wParam, LPARAM lParam) {
-    if (message == WM_KILLFOCUS || (message == WM_KEYUP && wParam == VK_F3)) debugModifier = false;
     if (debugLoading) {
         if (message == WM_CLOSE) {
             debugCloseRequested = true;
@@ -386,15 +405,6 @@ LRESULT gameapplication::Application::handleMessage(HWND window, UINT message, W
         if (message == WM_KEYDOWN || message == WM_KEYUP || message == WM_SYSKEYDOWN || message == WM_SYSKEYUP) return 0;
     }
     if (debugoverlay::handleMessage(window, message, wParam, lParam)) return 0;
-    if (message == WM_KILLFOCUS) debugModifier = false;
-    if ((message == WM_KEYDOWN || message == WM_KEYUP) && wParam == VK_F3) {
-        debugModifier = message == WM_KEYDOWN;
-        return 0;
-    }
-    if (message == WM_KEYDOWN && debugModifier && wParam >= '1' && wParam <= '9') {
-        if (!(lParam & (1LL << 30)) && wParam <= '4') debugCheckpoint = static_cast<unsigned>(wParam - '0');
-        return 0;
-    }
 
     if (message == WM_KEYDOWN && (wParam == VK_F1 || wParam == VK_F5)) {
         if (!(lParam & (1LL << 30))) restart();

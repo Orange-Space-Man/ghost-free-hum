@@ -48,6 +48,8 @@ unsigned gameevent::EntranceServices::count(unsigned) const { unsupportedService
 void gameevent::EntranceServices::clearCount() { unsupportedService(); }
 void gameevent::EntranceServices::startAll() { unsupportedService(); }
 void gameevent::EntranceServices::timeActive() { unsupportedService(); }
+void gameevent::EntranceServices::save() { unsupportedService(); }
+void gameevent::EntranceServices::stopMusic() { unsupportedService(); }
 
 gameevent::EntranceScript::EntranceScript(std::string source) : source(std::move(source)) {}
 
@@ -196,6 +198,8 @@ bool gameevent::EntranceScript::update(EntranceServices& services) {
         else if (command == "CLEARCOUNT") services.clearCount();
         else if (command == "ALLSTART") services.startAll();
         else if (command == "TIMEACTIVE") services.timeActive();
+        else if (command == "SAVE") services.save();
+        else if (command == "BGMSTOP") services.stopMusic();
         else if (command == "LUIGISTOP2") services.stopPlayerMotion();
         else if (command == "LUIGISTOP3") services.stopPlayer();
         else if (command == "LUIGISTOP") services.stopActor();

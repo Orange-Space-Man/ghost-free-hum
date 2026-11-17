@@ -66,7 +66,13 @@ void characterowner::Owner::reset() {
 
 void characterowner::Owner::initializeStrategy(unsigned type) {
     owned.strategy.reset();
-    owned.strategy = runtime.constructStrategy(strategies.constructor(type), *this, 0x800);
+    try {
+        owned.strategy = runtime.constructStrategy(strategies.constructor(type), *this, 0x800);
+    } catch (const std::exception& error) {
+        std::string_view name;
+        if (source.table && source.row >= 0) source.table->getValue(source.row, "name", name);
+        throw std::runtime_error("Character type " + std::to_string(type) + " (" + std::string(name) + "): " + error.what());
+    }
     if (!owned.strategy) {
         throw std::runtime_error("Original character strategy construction failed.");
     }

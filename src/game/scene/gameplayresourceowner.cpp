@@ -124,6 +124,7 @@ struct gameplay::ResourceOwner::State {
         entrance = std::make_unique<gameevent::EntranceOwner>(package, types, entry, *rooms, *managers, owner, executable, *messages, *cameraFollow);
         managers->bindScannerMessage([this](unsigned count) { entrance->startFurnitureMessage(count); });
         if (entry.map == 6) managers->bindProfessorInteraction([this] { entrance->startGalleryConversation(); });
+        if (entry.map == 2) managers->bindToadInteraction([this] { entrance->startToadConversation(); });
         entrance->bindRoomLight([this](bool enabled) { managers->setRoomLight(cameraRoom >> 24, enabled); });
         entrance->bindRandom([this] {
             randomState = randomState * 0x19660d + 0x3c6ef35f; // 80009638, the shared game RNG
@@ -204,7 +205,11 @@ void gameplay::ResourceOwner::updateCamera() {
     const auto* player = state->managers->playerEvents().player(0);
     if (!player) throw std::runtime_error("Camera update requires the manager-owned player.");
     if (player->room()) state->cameraRoom = player->room();
-    state->roomTransition.update(state->cameraRoom);
+    const auto& transition = state->roomTransition;
+    const bool paintingTransition = (transition.currentRoom >> 24) == 3 || (state->cameraRoom >> 24) == 3 ||
+        (transition.mode != roomtraversal::TransitionMode::Idle && (transition.previousRoom >> 24) == 3);
+    if (state->entry.map == 6 && !paintingTransition) state->roomTransition.initialize(state->cameraRoom);
+    else state->roomTransition.update(state->cameraRoom);
     if (state->entrance->updateCamera()) return;
     if (player->view.field895) {
         state->cameraFollow->updateScanner(*state->cameras.cameras[0], player->view);
@@ -223,6 +228,12 @@ void gameplay::ResourceOwner::bindPlayerDemo(std::function<void(std::string_view
 
 void gameplay::ResourceOwner::bindControllerInstructions(std::function<void()> request) {
     state->entrance->bindControllerInstructions(std::move(request));
+}
+void gameplay::ResourceOwner::bindSave(std::function<void()> callback) {
+    state->entrance->bindSave([this, callback = std::move(callback)] {
+        state->managers->snapshotFlags();
+        callback();
+    });
 }
 
 void gameplay::ResourceOwner::updateEvents(unsigned elapsedSeconds, std::uint32_t audioFrame) {

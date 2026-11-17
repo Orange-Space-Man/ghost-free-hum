@@ -40,7 +40,10 @@ void enemystrategy::RoomObserver::behavior() {
         condition->owner = owner;
         condition->context = context;
         actionStrategy.reset();
-        if (action == 0 || action == 2 || action == 4 || action == 5 || action == 6 || action > 12) {
+        if (action == 1) {
+            factory.lightRoom(owner->actor().room() >> 24);
+        }
+        if (action == 0 || action == 1 || action == 2 || action == 4 || action == 5 || action == 6 || action > 12) {
             actionStrategy = std::make_unique<CompletedAction>();
             actionStrategy->owner = owner;
             actionStrategy->context = context;

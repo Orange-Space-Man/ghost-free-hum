@@ -38,6 +38,7 @@ void gameevent::EntranceOwner::playerLight(bool enabled) {
 void gameevent::EntranceOwner::bindControllerInstructions(std::function<void()> request) {
     requestInstructions = std::move(request);
 }
+void gameevent::EntranceOwner::bindSave(std::function<void()> callback) { saveGame = std::move(callback); }
 
 void gameevent::EntranceOwner::controllerInstructions() {
     if (!requestInstructions) throw std::runtime_error("Controller instructions require their gameplay owner.");
@@ -56,6 +57,7 @@ bool gameevent::EntranceOwner::eligible(unsigned event, unsigned elapsedSeconds)
     const auto* player = managers.playerEvents().player(0);
     if (!player || !player->view.life) return false;
     if (definition->trigger == 0 || (entry.map == 6 && event == 28 && definition->trigger == 1)) return true;
+    if (entry.map == 2 && event == 17 && definition->trigger == 1) return true;
     const auto eventRoom = rooms.resolve(definition->position, 0xffffffff);
     if (definition->trigger == 4) {
         if (eventRoom != player->room() || managers.doors().activeDoor() != -1) return false;
@@ -154,6 +156,10 @@ void gameevent::EntranceOwner::startGalleryConversation() {
     managers.flags().setOn(9);
     startEvent(28, true);
 }
+void gameevent::EntranceOwner::startToadConversation() {
+    if (entry.map != 2 || script || !eligible(17, 0)) return;
+    startEvent(17, true);
+}
 
 bool gameevent::EntranceOwner::flag(unsigned index) const { return managers.flags().value(static_cast<std::uint8_t>(index)); }
 void gameevent::EntranceOwner::menu(bool enabled) { menuAvailable = enabled; }
@@ -173,9 +179,11 @@ void gameevent::EntranceOwner::music(unsigned index) {
     if (index == 10) managers.music().requestEntrance(audioFrame);
     else if (index == 0) managers.music().requestFirstKey(audioFrame);
     else if (index == 1) managers.music().requestParlor(audioFrame);
-    else if (index == 8 || index == 13 || index == 14) {
+    else if (index == 12) managers.music().requestToadFanfare(audioFrame);
+    else if (index == 8 || index == 11 || index == 13 || index == 14) {
         // Table 8038EAB4: 8 -> 0x80000008, 13 -> 0x80000027, 14 -> 0x80000026.
-        managers.music().requestSequence(index == 8 ? 0x80000008u : index == 13 ? 0x80000027u : 0x80000026u, audioFrame);
+        managers.music().requestSequence(index == 8 ? 0x80000008u : index == 11 ? 0x8000001du :
+            index == 13 ? 0x80000027u : 0x80000026u, audioFrame);
     }
     else throw std::runtime_error("Unsupported entrance music request.");
 }
@@ -419,3 +427,8 @@ void gameevent::EntranceOwner::startAll() {
     managers.playerEvents().send(0, 0x3a);
 }
 void gameevent::EntranceOwner::timeActive() { clockActive = true; }
+void gameevent::EntranceOwner::save() {
+    if (!saveGame) throw std::runtime_error("Toad save requires the bound game card owner.");
+    saveGame();
+}
+void gameevent::EntranceOwner::stopMusic() { managers.music().stopEventMusic(); }

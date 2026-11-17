@@ -18,6 +18,7 @@ namespace gameplay {
         Scene(const std::filesystem::path& package, gameentry::State& entry);
         ~Scene();
         void bindControllerOptions(gamesave::State& saves, const std::uint64_t* presentationClock = nullptr);
+        void bindSave(std::function<void()> callback);
         void requestControllerInstructions();
         bool controllerInstructionsActive() const;
         void prepareGraphics();

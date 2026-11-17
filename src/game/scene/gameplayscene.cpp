@@ -206,6 +206,7 @@ void gameplay::Scene::bindControllerOptions(gamesave::State& saves, const std::u
     controllerOptions = &saves;
     instructionClock = presentationClock;
 }
+void gameplay::Scene::bindSave(std::function<void()> callback) { resources.bindSave(std::move(callback)); }
 
 void gameplay::Scene::requestControllerInstructions() {
     if (!controllerOptions || !sceneControl.gameplayEnabled || instructions.active())
@@ -362,7 +363,10 @@ void gameplay::Scene::update(const playerinput::PadStatus& pad, std::int16_t por
     updateRoomResources();
     resources.updateCamera();
     publishCamera();
-    rooms = resources.prepareVisibility(visibilityProjection, fullBounds);
+    const auto& cameraBounds = resources.cameraViewport();
+    rooms = resources.prepareVisibility(visibilityProjection,
+        {static_cast<std::int16_t>(cameraBounds[0]), static_cast<std::int16_t>(cameraBounds[1]),
+            static_cast<std::int16_t>(cameraBounds[2]), static_cast<std::int16_t>(cameraBounds[3])});
     managers.updateDoors(ticks);
     managers.updateFurniture(ticks);
     auto targetAmbient = resources.rooms().entries().at(player->room() >> 24).ambient;
@@ -516,7 +520,9 @@ void gameplay::Scene::publishCamera() {
     const auto camera = resources.publishCamera();
     if (camera.visibilityMode != 0 && camera.visibilityMode != 2 && camera.visibilityMode != 3)
         throw std::runtime_error("Gameplay requires the selected camera visibility traversal.");
-    overrideRoomOpacity = camera.visibilityMode == 2;
+    // The scanner sits behind the normal foreground wall. The first-person view
+    // must keep that wall opaque, as the original camera mode does.
+    overrideRoomOpacity = camera.visibilityMode == 2 || camera.visibilityMode == 3;
     view = camera.view;
     projection = camera.projection;
     visibilityProjection = camera.worldProjection;

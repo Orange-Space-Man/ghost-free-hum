@@ -21,6 +21,8 @@ namespace gameevent {
         void bindControllerInstructions(std::function<void()> request);
         void bindPlayerDemo(std::function<void(std::string_view)> request);
         void bindRandom(std::function<std::uint32_t()> value);
+        void bindSave(std::function<void()> callback);
+        void startToadConversation();
         void playerDemo(std::string_view name) override;
         void update(unsigned elapsedSeconds, std::uint32_t audioFrame);
         bool updateCamera();
@@ -91,6 +93,8 @@ namespace gameevent {
         void clearCount() override;
         void startAll() override;
         void timeActive() override;
+        void save() override;
+        void stopMusic() override;
         std::vector<std::uint8_t> resource(std::string_view name) const;
         void startEvent(unsigned event, bool direct);
         bool eligible(unsigned event, unsigned elapsedSeconds) const;
@@ -105,6 +109,7 @@ namespace gameevent {
         gameplaycamera::Follow& follow;
         std::function<void(std::string_view)> requestDemo;
         std::function<std::uint32_t()> eventRandom;
+        std::function<void()> saveGame;
         bool targetCameraActive = false;
         std::array<float, 3> cameraSubject{};
         std::unique_ptr<MessageText> messageText;

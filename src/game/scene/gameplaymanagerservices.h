@@ -94,6 +94,8 @@ namespace gameplay {
         playerscanner::Services& scanner();
         void bindScannerMessage(std::function<void(unsigned)> callback);
         void bindProfessorInteraction(std::function<void()> callback);
+        void bindToadInteraction(std::function<void()> callback);
+        void snapshotFlags();
         void stopAuxiliaryBeam();
         void updateAuxiliaryEquipment();
         void refreshParticles();

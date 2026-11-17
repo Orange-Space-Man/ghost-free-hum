@@ -53,7 +53,10 @@ std::vector<roomtraversal::Submission> roomtraversal::Walk::stationary(unsigned 
     walk(room, 0, viewport);
     for (auto link : rooms.at(room).portals) {
         const auto& portal = portals.entries.at(link);
-        bool enabled = (portal.attributes[0] & 2) != 0;
+        // The Gallery's open hall leaves the main room visible from its reverse side.
+        const bool reverseOpen = map == 6 && portal.rooms[1] == room && portal.identity == 0xff &&
+            doordata::traversalEnabled(portal);
+        bool enabled = (portal.attributes[0] & 2) != 0 || reverseOpen;
         if (!enabled && (portal.attributes[0] & 4)) {
             if (portal.rooms[0] == room) {
                 if (!services.centerVisible) throw std::runtime_error("Conditional room portal requires original center visibility.");
@@ -62,6 +65,7 @@ std::vector<roomtraversal::Submission> roomtraversal::Walk::stationary(unsigned 
         }
         if (!enabled || portal.attributes[1] == 3 || services.doorBlocked(portal.identity)) continue;
         const auto neighbor = portal.rooms[0] == room ? portal.rooms[1] : portal.rooms[0];
+        if (reverseOpen && visibility.marked(neighbor, static_cast<int>(buffer), buffer)) continue;
         mark(neighbor, 0, viewport);
         walk(neighbor, 0, viewport);
     }

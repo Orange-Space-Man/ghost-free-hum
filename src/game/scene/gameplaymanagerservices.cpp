@@ -353,6 +353,7 @@ struct gameplay::ManagerServices::State : playerpresentation::Services, playersc
         enemies = std::make_unique<enemies::Manager>(dependencies.types, dependencies.creation, *runtime,
             dependencies.playerCount, mapMode);
         strategies = std::make_unique<enemystrategy::Factory>(*runtime, dependencies.flags, dependencies.mission);
+        strategies->bindKinopioEffects(particles->effects());
         owners->bind(*enemies, *strategies);
         effects->bind(*enemies, *actors);
         runtime->bind(*enemies);
@@ -386,6 +387,7 @@ struct gameplay::ManagerServices::State : playerpresentation::Services, playersc
         const auto dustOffsetBits = word(0x804db584);
         std::memcpy(&dustBlowOffset, &dustOffsetBits, sizeof(dustBlowOffset));
         elementDuration = static_cast<std::int32_t>(word(glme01::playerElementDuration));
+        mirrorWarpDuration = word(0x804d2c44) + word(0x804d2c48) + 45;
         suctionAudio = std::make_unique<SuctionAudio>(audio->playback);
         itemCreation = std::make_unique<characteritems::Creation>(dependencies.mission, dependencies.actors.parameters,
             furnitureAdmission, *enemies, *runtime, *actors, dependencies.actors.rooms, *suctionAudio);
@@ -526,6 +528,7 @@ struct gameplay::ManagerServices::State : playerpresentation::Services, playersc
     std::unique_ptr<enemystrategy::BarrierEnvironment> barrierServices;
     std::unique_ptr<enemystrategy::FireGeneratorEnvironment> fireServices;
     float dustBlowOffset = 0;
+    std::uint32_t mirrorWarpDuration = 0;
     std::array<std::uint32_t, 3> captureLight{};
     std::unique_ptr<enemystrategy::TrainingEnvironment> trainingServices;
     std::unique_ptr<ghostparent::Environment> ghostServices;
@@ -714,6 +717,7 @@ vacuumcapture::Vacuum& gameplay::ManagerServices::State::vacuumFor(unsigned inde
 }
 gameplay::ManagerServices::ManagerServices(const ManagerDependencies& dependencies) : state(std::make_unique<State>(dependencies)) {
     state->initialize();
+    state->strategies->bindRoomLight([this](unsigned room) { setRoomLight(room, true); });
 }
 
 gameplay::ManagerServices::~ManagerServices() = default;
@@ -727,6 +731,10 @@ void gameplay::ManagerServices::bindScannerMessage(std::function<void(unsigned)>
 void gameplay::ManagerServices::bindProfessorInteraction(std::function<void()> callback) {
     state->owners->bindProfessorInteraction(std::move(callback));
 }
+void gameplay::ManagerServices::bindToadInteraction(std::function<void()> callback) {
+    state->owners->bindToadInteraction(std::move(callback));
+}
+void gameplay::ManagerServices::snapshotFlags() { state->dependencies.flags.store(state->dependencies.entry.flags); }
 playerevents::Dispatcher& gameplay::ManagerServices::playerEvents() { return *state->events; }
 playerevents::LifeEnvironment& gameplay::ManagerServices::playerLife() { return *state->life; }
 particles::Scene& gameplay::ManagerServices::particles() { return *state->particles; }
@@ -903,6 +911,31 @@ void gameplay::ManagerServices::updatePlayerMain(unsigned index, const PlayerMai
         updatePlayerMotion(index, {*state->life, services.timers.doubledDamage, services.timers.frame, services.platforms, globalSound});
     };
     frame.sound = [this](unsigned id, const auto& position) { state->audio->playback.play(id, position); };
+    frame.beginWarp = [this](playeractor::Player& target) {
+        auto& playerState = target.state;
+        playerState.field1150 = static_cast<float>(state->mirrorWarpDuration);
+        playerState.field1154 = {0, 0, 0};
+        playerState.field1160 = playerState.direction;
+        playerState.field106C = -1;
+        state->audio->playback.play(0x840, target.position);
+        state->audio->music.requestSequence(0x80000024, state->audioInterfaceFrame);
+    };
+    frame.warp = [this](playeractor::Player& target) {
+        auto& playerState = target.state;
+        const float previous = playerState.field1150;
+        playerState.field1150 = std::max(0.0f, previous - 1.0f);
+        auto& scanner = *target.components->scanner;
+        scanner.state[2] = 1;
+        scanner.field4 = static_cast<float>(state->mirrorWarpDuration) - previous;
+        if (previous >= 45 && playerState.field1150 < 45) {
+            playerState.field1324 &= ~0x20u;
+            target.setPosition(playerState.field1154);
+        }
+        if (playerState.field1150 == 0) {
+            scanner.state[2] = 0;
+            playerState.field106C = 0;
+        }
+    };
     frame.elemental = [this](playeractor::Player& target) {
         const float offset = state->dustBlowOffset;
         const auto& weapon = *target.components->weapon->first;

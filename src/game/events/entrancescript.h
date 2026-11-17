@@ -74,6 +74,8 @@ namespace gameevent {
         virtual void clearCount();
         virtual void startAll();
         virtual void timeActive();
+        virtual void save();
+        virtual void stopMusic();
     };
 
     class EntranceScript {

@@ -19,7 +19,7 @@ void gameapplication::Application::loadDebugCheckpoint(unsigned checkpoint) {
     } loading{*this};
     using Clock = std::chrono::steady_clock;
     auto nextProgress = Clock::now();
-    std::string log = "F3 + " + std::to_string(checkpoint) + " - Preparing checkpoint\n";
+    std::string log = "Preparing checkpoint " + std::to_string(checkpoint) + "\n";
     std::string stage;
     unsigned frame = 0;
     const auto progress = [&](const char* message = nullptr) {
@@ -73,6 +73,7 @@ void gameapplication::Application::loadDebugCheckpoint(unsigned checkpoint) {
     while (preparation.wait_for(std::chrono::milliseconds(1)) != std::future_status::ready) progress();
     gameplayScene = preparation.get();
     gameplayScene->bindControllerOptions(*gameplaySaves, &presentationFrames);
+    bindGameplaySave();
     progress("Preparing models and shaders");
     auto graphics = std::async(std::launch::async, [this] {
         gameplayScene->prepareModelGraphics(gamerenderer::modelDevice());
