@@ -7,17 +7,38 @@
 #include "game/menu/menulayoutgraphics.h"
 
 namespace gameplay {
+    struct GhostHealth {
+        const void* owner = nullptr;
+        std::array<float, 3> position{};
+        int life = 0, change = 0;
+        bool captured = false, attached = false;
+    };
+
     class Hud {
     public:
         Hud(const gamearchive::Archive& archive, const std::vector<std::uint8_t>& executable, const std::vector<unsigned>& rooms, unsigned map = 2);
         bool addRoom(const gamearchive::Archive& archive, const std::vector<std::uint8_t>& executable, unsigned room);
         void update(const playeractor::View& player, bool fullscreen, bool roomCleared);
+        void updateGhosts(const std::vector<GhostHealth>& ghosts, unsigned frame);
+        std::vector<startupscene::Picture> ghostPictures(const std::array<float, 12>& view,
+            const std::array<float, 16>& projection, const std::array<int, 4>& bounds) const;
         void updateDemoPanel(const playeractor::View& player, bool active, bool messageVisible);
         std::array<int, 4> demoViewport() const;
         std::vector<startupscene::Picture> pictures() const;
         const std::vector<roommaterials::Texture>& textures() const;
 
     private:
+        struct GhostSlot {
+            GhostHealth ghost;
+            unsigned state = 0;
+            std::int16_t timer = 0;
+            float scale = 1;
+            bool seen = false;
+        };
+        std::array<GhostSlot, 32> ghostSlots{};
+        std::array<std::size_t, 2> ghostShocks{};
+        unsigned ghostFrame = 0;
+        float ghostScale = 1;
         std::vector<roommaterials::Texture> images;
         std::map<unsigned, std::size_t> roomTextures;
         std::array<std::size_t, 10> digits{};

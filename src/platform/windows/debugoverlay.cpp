@@ -94,3 +94,4 @@ void debugoverlay::draw() {
     ImGui::Render();
     ImGui_ImplDX11_RenderDrawData(ImGui::GetDrawData());
 }
+

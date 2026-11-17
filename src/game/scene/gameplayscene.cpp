@@ -167,6 +167,7 @@ void gameplay::Scene::prepareModelGraphics(ID3D11Device* device) {
     mirrorRenderer.load(device, resources.mirror());
     particleRenderer.prepare(resources.managers().particles().pool());
     particleRenderer.prepare(resources.managers().particles().runningDust().material());
+    particleRenderer.prepare(resources.managers().particles().elemental().blowMaterial());
     for (auto kind : {playermodels::SharedModel::Coin, playermodels::SharedModel::Bill,
         playermodels::SharedModel::Bill2, playermodels::SharedModel::Bill3,
         playermodels::SharedModel::Pipe, playermodels::SharedModel::Vacuum}) {
@@ -311,6 +312,7 @@ void gameplay::Scene::update(const playerinput::PadStatus& pad, std::int16_t por
         moneyCamera.target[1] - moneyCamera.position[1], moneyCamera.target[2] - moneyCamera.position[2]});
     managers.particles().update();
     resources.hud().update(player->view, resources.fullscreen(), managers.roomCleared(player->room() >> 24));
+    resources.hud().updateGhosts(managers.ghostHealth(), ticks);
     resources.hud().updateDemoPanel(player->view, sceneControl.demoDisplay, resources.messages().visible());
     resources.updateMessages();
     ++ticks;
@@ -415,6 +417,8 @@ void gameplay::Scene::draw(bool present) {
         picture.width = 640;
         picture.height = 480;
         std::vector<startupscene::Picture> pictures{picture};
+        const auto ghostHealth = resources.hud().ghostPictures(view, projection, {fullBounds[0], fullBounds[1], fullBounds[2], fullBounds[3]});
+        pictures.insert(pictures.end(), ghostHealth.begin(), ghostHealth.end());
         const auto hud = resources.hud().pictures();
         pictures.insert(pictures.end(), hud.begin(), hud.end());
         const auto messages = resources.messagePictures();
@@ -573,6 +577,7 @@ void gameplay::Scene::drawWorld(bool reflection, const s3denvironment::Camera& c
         resources.managers().actors(), resources.visibility(), view, visibilityBuffer), view, projection);
     drawActors(1, camera, visibilityBuffer);
     drawAuxiliary(reflection ? 1 : 3);
+    if (!reflection) drawVacuumEffects();
     drawFurniture(1);
     drawRooms(1);
     resources.managers().doors().submitTranslucent(visibilityBuffer, false, submitDoor);
@@ -588,6 +593,7 @@ void gameplay::Scene::drawWorld(bool reflection, const s3denvironment::Camera& c
     particleRenderer.draw(gamerenderer::modelContext(), particleBillboards->prepare(resources.managers().particles().pool(),
         resources.rooms(), resources.visibility(), view), view, projection);
     particleRenderer.draw(gamerenderer::modelContext(), resources.managers().particles().runningDust().prepare(view), view, projection);
+    particleRenderer.draw(gamerenderer::modelContext(), resources.managers().particles().elemental().prepareBlow(view), view, projection);
 }
 
 void gameplay::Scene::drawSheets(unsigned pass) {
@@ -661,6 +667,39 @@ void gameplay::Scene::drawAuxiliary(unsigned stage) {
     } else if (stage == 5) {
         draw(6, false);
         draw(7, false);
+    }
+}
+
+void gameplay::Scene::drawVacuumEffects() {
+    auto& managers = resources.managers();
+    auto& shared = *managers.players().models;
+    shared.buffer(4).clear();
+    shared.buffer(5).clear();
+    std::map<j3dmodel::MaterialPacket*, j3dmodel::ModelInstance*> owners;
+    const auto prepare = [&](playermodels::VacuumModel& model) {
+        model.prepare(3, view, *modelTransforms, shared);
+        model.prepare(0, view, *modelTransforms, shared);
+        for (auto& packet : model.instance->materials) owners[&packet] = model.instance.get();
+    };
+    for (const auto* actor : actors) {
+        const auto* player = dynamic_cast<const playeractor::Player*>(actor);
+        if (!player) continue;
+        auto& vacuum = *player->components->vacuum;
+        if (vacuum.fields8[0] && !vacuum.field74) prepare(*vacuum.model);
+    }
+    for (const auto& entry : managers.players().entries->entries)
+        if (entry->effect->state) prepare(*entry->effect->model);
+    gamerenderer::bindSceneTarget(false, &drawViewport);
+    for (unsigned index : {4u, 5u}) {
+        const auto& buffer = shared.buffer(index);
+        for (unsigned i = 0; i < buffer.entries.size(); ++i) {
+            const auto bucket = buffer.draw ? buffer.entries.size() - 1 - i : i;
+            for (auto* packet = buffer.entries[bucket]; packet; packet = packet->next) {
+                auto& instance = *owners.at(packet);
+                effectRenderers.at(instance.model.get()).draw(gamerenderer::modelContext(), instance, *packet,
+                    lightMaterialState, projection, instance.field8 & 12, (index & 1) ? 4 : 3);
+            }
+        }
     }
 }
 
@@ -751,7 +790,13 @@ void gameplay::Scene::drawActors(unsigned stage, const s3denvironment::Camera& c
             const auto matrix = dooranimation::concatenate(world, actor.model->matrix(0, vertex.matrix));
             vertex.position = transform(matrix, surface.positions.at(vertex.positionIndex), true);
             dooranimation::Matrix normal;
-            if (!modeldraw::normalMatrix(matrix, normal)) throw std::runtime_error("Singular first-area actor transform.");
+            if (!modeldraw::normalMatrix(matrix, normal)) {
+                const auto& retainedNormal = actor.model->matrix(2, vertex.matrix);
+                normal.fill(0);
+                for (unsigned row = 0; row < 3; ++row) for (unsigned column = 0; column < 3; ++column)
+                    for (unsigned axis = 0; axis < 3; ++axis)
+                        normal[row * 4 + column] += view[axis * 4 + row] * retainedNormal[axis * 4 + column];
+            }
             vertex.normal = transform(normal, vertex.normal, false);
             vertex.binormal = transform(normal, vertex.binormal, false);
             vertex.tangent = transform(normal, vertex.tangent, false);

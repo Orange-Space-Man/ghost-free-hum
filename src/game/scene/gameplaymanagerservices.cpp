@@ -1,3 +1,4 @@
+#include "game/scene/gameplayhud.h"
 #include "game/actors/actorcapturepose.h"
 #include "game/actors/charactercaptureservices.h"
 #include "resources/dolresources.h"
@@ -324,7 +325,7 @@ struct gameplay::ManagerServices::State : playerpresentation::Services {
         if (dependencies.prepareRooms) dependencies.prepareRooms(*enemies);
         enemies->initializeActors();
         particles->bind(*enemies, *actors, dependencies.actors.pose, dependencies.visibility);
-        particles->initializeElements();
+        particles->initializeElements(collision);
         particles->initializeRunningDust(dependencies.mission, dependencies.actors.rooms, [this](unsigned kind, unsigned amount) {
             playerevents::Payload payload;
             payload.word(0x60, kind);
@@ -655,13 +656,18 @@ vacuumcapture::Vacuum& gameplay::ManagerServices::State::vacuumFor(unsigned inde
         [this](const std::array<float, 3>& position) { particles->effects().create(3, position, {0, 0, 0}); },
         [model](const vacuumcapture::VacuumInput& input) { model->initialize(0.0f, *input.parameters, nullptr); },
         [this, model, mix](float strength, const vacuumcapture::VacuumInput& input) {
-            // 8008A960: blend the two parameter sets by the strength, then step the beam.
+            // 8008A960 -> 8008AF18: blend the path and derived vacuum parameters.
             auto blended = *input.parameters;
             if (input.target && strength > 0) {
                 blended.field20 = mix(strength, blended.field20, input.target->field20);
                 for (unsigned axis = 0; axis < 3; ++axis) blended.field24[axis] = mix(strength, blended.field24[axis], input.target->field24[axis]);
                 blended.field30 = mix(strength, blended.field30, input.target->field30);
                 blended.field34 = mix(strength, blended.field34, input.target->field34);
+                blended.field60 = mix(strength, blended.field60, input.target->field60);
+                blended.field54 = mix(strength, blended.field54, input.target->field54);
+                blended.field58 = mix(strength, blended.field58, input.target->field58);
+                blended.field5C = mix(strength, blended.field5C, input.target->field5C);
+                blended.field64 = static_cast<std::uint8_t>(int(mix(strength, float(blended.field64), float(input.target->field64))));
             }
             model->updateMotion(blended, dependencies.actors.pose, pathCollision(), vacuumFeedback());
         }};
@@ -903,6 +909,10 @@ void gameplay::ManagerServices::updatePlayerMain(unsigned index, const PlayerMai
     state->playerMain.run(*player, frame);
     if (index < state->vacuums.size() && state->vacuums[index]) {
         // The original attached-actor list lives in the vacuum object; the player environment reads it as words.
+        auto& component = *player->components->vacuum;
+        const auto& vacuum = *state->vacuums[index];
+        component.fields8 = {std::uint8_t(vacuum.active), std::uint8_t(vacuum.started), std::uint8_t(vacuum.holding)};
+        component.field74 = vacuum.input.volume ? 1 : 0;
         auto& words = player->components->vacuum->fieldsC;
         const auto& attached = state->vacuums[index]->attached;
         for (unsigned i = 0; i < words.size(); ++i) words[i] = attached[i] ? attached[i]->id() + 1 : 0;
@@ -1349,4 +1359,32 @@ unsigned gameplay::ManagerServices::frightenPlayer(const actors::MoveActor& sour
 
 ghostcapture::DropServices gameplay::ManagerServices::captureDrops() {
     return state->itemCreation->captureDrops();
+}
+
+std::vector<gameplay::GhostHealth> gameplay::ManagerServices::ghostHealth() {
+    std::vector<GhostHealth> result;
+    const auto* player = playerEvents().player(0);
+    auto append = [&](characterowner::Owner& owner, bool attached) {
+        auto& actor = dynamic_cast<actors::MoveActor&>(owner.actor());
+        result.push_back({&owner, State::jointWorld(actor, state->dependencies.strategies.attachmentJoint(actor.type())),
+            static_cast<std::int16_t>(actor.life), static_cast<std::int16_t>(actor.life) - static_cast<std::int32_t>(owner.state().life),
+            bool(actor.flags & 0x80000), attached});
+    };
+    for (const auto& slot : enemies().slots()) {
+        if (slot.state != 2 || !slot.owner) continue;
+        auto* owner = dynamic_cast<characterowner::Owner*>(slot.owner.get());
+        if (!owner) continue;
+        auto& actor = dynamic_cast<actors::MoveActor&>(owner->actor());
+        if (static_cast<int>(state->dependencies.creation.group(actor.type())) == -1 || actor.room() != player->room() ||
+            (actor.flags & 0xc000) || !(actor.fieldE0 & 255) || players().entries->containsTarget(&actor)) continue;
+        characterevent::Event event(20);
+        if (owner->event(event)) append(*owner, false);
+    }
+    if (player->view.field8D4) for (const auto handle : *player->view.field8D4) {
+        if (!handle) break;
+        const auto& slot = enemies().slots().at(handle - 1);
+        if (slot.state == 2 && slot.owner)
+            if (auto* owner = dynamic_cast<characterowner::Owner*>(slot.owner.get())) append(*owner, true);
+    }
+    return result;
 }

@@ -376,4 +376,6 @@ void playermodels::VacuumModel::updateMotion(const VacuumParameters& value, cons
     }
     fieldBC += parameters.field5C;
     if (static_cast<float>(textureAnimation->frameCount) <= fieldBC) fieldBC -= static_cast<float>(textureAnimation->frameCount);
+    const auto frameDirection = pose.horizontalDirection(static_cast<std::uint16_t>(parameters.field40 + 0x3fff));
+    publishJoints({frameDirection[2], 0, frameDirection[0]});
 }

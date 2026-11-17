@@ -88,6 +88,7 @@ namespace gameplay {
         void drawSheets(unsigned pass);
         float lightProjectionDepth = 0;
         void drawPlayerLight();
+        void drawVacuumEffects();
         void prepareAuxiliary();
         void drawAuxiliary(unsigned stage);
         j3dmodel::MaterialState equipmentMaterialState;

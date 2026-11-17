@@ -105,12 +105,13 @@ particlerenderer::Renderer::Texture& particlerenderer::Renderer::texture(const p
 void particlerenderer::Renderer::prepare(const particles::EmitterPool& pool) {
     for (const auto& list : pool.active) {
         for (auto* emitter = list.sentinel.next; emitter != &list.sentinel; emitter = emitter->next) {
-            if (!emitter->draw || emitter->draw != &emitter->ordinaryDraw) continue;
+            if (!emitter->draw) continue;
             particles::Billboard item;
             item.texture = emitter->draw->texture;
             item.mode = emitter->draw->fields18[0];
             item.blend = emitter->parameters.fields206[1];
             item.depth = emitter->parameters.fields206[2];
+            if (emitter->draw == &emitter->extendedDraw) item.cull = 0;
             texture(item.texture);
             material(item);
         }
@@ -133,8 +134,8 @@ modelrenderer::MaterialShader& particlerenderer::Renderer::material(const partic
     const auto found = materials.find(key);
     if (found != materials.end()) return found->second;
     static const std::array<unsigned, 4> colors[] = {{2, 12, 8, 15}, {15, 2, 8, 15},
-        {4, 2, 8, 15}, {15, 8, 2, 4}, {15, 8, 15, 2}, {15, 4, 8, 15}, {15, 15, 15, 2}};
-    if (particle.mode > 6) throw std::runtime_error("Particle color combiner mode is invalid.");
+        {4, 2, 8, 15}, {15, 8, 2, 4}, {15, 8, 15, 2}, {15, 4, 8, 15}, {15, 15, 15, 2}, {15, 4, 8, 15}};
+    if (particle.mode > 7) throw std::runtime_error("Particle color combiner mode is invalid.");
     modelmaterial::Stage stage;
     stage.coordinate = stage.texture = 0;
     stage.color = colors[particle.mode];

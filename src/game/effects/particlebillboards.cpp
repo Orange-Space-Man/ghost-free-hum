@@ -3,6 +3,7 @@
 #include "resources/glme01addresses.h"
 
 #include <cstring>
+#include <cmath>
 #include <stdexcept>
 
 namespace {
@@ -48,6 +49,15 @@ particles::Billboards::Billboards(const std::vector<std::uint8_t>& executable) {
     if (!dolresources::read(executable, 0x804dcac8, 4, scale, error)) throw std::runtime_error(error);
     childScale = floating((unsigned(scale[0]) << 24) | (unsigned(scale[1]) << 16) |
         (unsigned(scale[2]) << 8) | scale[3]);
+    std::vector<std::uint8_t> geometry;
+    if (!dolresources::read(executable, 0x803817c0, 48, geometry, error) ||
+        !dolresources::read(executable, 0x804dcb08, 4, scale, error)) throw std::runtime_error(error);
+    extendedPivotScale = floating((unsigned(scale[0]) << 24) | (unsigned(scale[1]) << 16) |
+        (unsigned(scale[2]) << 8) | scale[3]);
+    for (unsigned i = 0; i < 8; ++i) for (unsigned axis = 0; axis < 3; ++axis) {
+        const unsigned offset = i * 6 + axis * 2;
+        extendedCorners[i][axis] = float(static_cast<std::int16_t>((unsigned(geometry[offset]) << 8) | geometry[offset + 1]));
+    }
     for (unsigned table = 0; table < 2; ++table) {
         std::vector<std::uint8_t> bytes;
         std::string error;
@@ -74,8 +84,7 @@ std::vector<particles::Billboard> particles::Billboards::prepare(EmitterPool& po
             if (!visible && !(emitter->flags & 0x80)) continue;
         }
         if (!emitter->nodes.count && !emitter->shortNodes.count) continue;
-        if (emitter->draw != &emitter->ordinaryDraw)
-            throw std::runtime_error("Particle draw requires the extended geometry path.");
+        if (!emitter->draw) throw std::runtime_error("Active particles have no drawing owner.");
         if (emitter->parameters.flags & 0x2000) appendChildren(*emitter, view, result);
         append(*emitter, view, result);
     }
@@ -122,6 +131,46 @@ void particles::Billboards::append(Emitter& emitter, const std::array<float, 12>
         item.mode = draw.fields18[0];
         item.blend = emitter.parameters.fields206[1];
         item.depth = emitter.parameters.fields206[2];
+        if (emitter.draw == &emitter.extendedDraw) {
+            const auto cross = [](const std::array<float, 3>& a, const std::array<float, 3>& b) {
+                return std::array<float, 3>{a[1] * b[2] - a[2] * b[1],
+                    a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]};
+            };
+            const auto normalize = [](std::array<float, 3>& value) {
+                const float length = std::sqrt(value[0] * value[0] + value[1] * value[1] + value[2] * value[2]);
+                if (length == 0) return false;
+                for (auto& component : value) component /= length;
+                return true;
+            };
+            const unsigned offset = draw.fields34[0] == 1 ? 0 : 3;
+            std::array<float, 3> direction{node->fields0[offset], node->fields0[offset + 1], node->fields0[offset + 2]};
+            const std::array<float, 3> previous{node->field48, node->fields4C[0], node->fields4C[1]};
+            if (!normalize(direction)) { node->fields30[1] = node->fields30[0]; continue; }
+            auto side = cross(previous, direction);
+            if (!normalize(side)) { node->fields30[1] = node->fields30[0]; continue; }
+            auto across = cross(direction, side);
+            normalize(across);
+            node->field48 = across[0];
+            node->fields4C = {across[1], across[2]};
+            const float size = node->fields38[1] * node->fields38[0];
+            const float length = float(double(size) * double(floating(draw.fields2C[0])));
+            const auto angle = node->fields44[0] >> 4;
+            const float pivot = extendedPivotScale * floating(draw.fields2C[1]);
+            item.cull = 0;
+            for (unsigned plane = 0; plane < (draw.fields34[1] ? 2u : 1u); ++plane) {
+                for (unsigned corner = 0; corner < 4; ++corner) {
+                    const auto& point = extendedCorners[plane * 4 + corner];
+                    const float x = cosine[angle] * point[0] - sine[angle] * point[2];
+                    const float z = sine[angle] * point[0] + cosine[angle] * point[2];
+                    const float y = point[1] + pivot;
+                    for (unsigned axis = 0; axis < 3; ++axis) item.positions[corner][axis] =
+                        node->fields0[axis] + floating(node->fields24[axis]) +
+                        across[axis] * size * x + direction[axis] * length * y + side[axis] * size * z;
+                }
+                result.push_back(item);
+            }
+            continue;
+        }
         const float size = (35.35534f * node->fields38[1]) * node->fields38[0];
         for (unsigned corner = 0; corner < 4; ++corner) {
             const auto angle = static_cast<std::uint16_t>(node->fields44[0] + 0xe000 + corner * 0x4000) >> 4;

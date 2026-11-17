@@ -43,6 +43,9 @@ gameplay::Hud::Hud(const gamearchive::Archive& archive, const std::vector<std::u
     for (const auto room : rooms) addRoom(archive, executable, room);
     for (unsigned i = 0; i < digits.size(); ++i) digits[i] = load(archive, name(executable, lifeNumberTable, i));
     for (unsigned i = 0; i < floors.size(); ++i) floors[i] = load(archive, name(executable, floorNameTable, i));
+    ghostShocks = {load(archive, "/kawano/2dsub/ghost_life_a.bti"), load(archive, "/kawano/2dsub/ghost_life_b.bti")};
+    const auto ghostScaleBits = word(read(executable, 0x804d0534, 4), 0);
+    std::memcpy(&ghostScale, &ghostScaleBits, 4);
     hearts = {load(archive, "/kawano/lifemeter/heartD.bti"), load(archive, "/kawano/lifemeter/heartD2.bti"),
         load(archive, "/kawano/lifemeter/heartD_KAGE.bti")};
     demoPanelImages = {load(archive, "/kawano/base/cgbh.bti"),
@@ -284,3 +287,90 @@ std::vector<startupscene::Picture> gameplay::Hud::pictures() const {
 }
 
 const std::vector<roommaterials::Texture>& gameplay::Hud::textures() const { return images; }
+
+void gameplay::Hud::updateGhosts(const std::vector<GhostHealth>& ghosts, unsigned frame) {
+    ghostFrame = frame;
+    for (auto& slot : ghostSlots) slot.seen = false;
+    for (const auto& ghost : ghosts) {
+        auto slot = std::find_if(ghostSlots.begin(), ghostSlots.end(), [&](const auto& value) { return value.ghost.owner == ghost.owner; });
+        if (slot == ghostSlots.end()) {
+            slot = std::find_if(ghostSlots.begin(), ghostSlots.end(), [](const auto& value) { return !value.ghost.owner; });
+            if (slot == ghostSlots.end()) throw std::runtime_error("Original ghost health display slots exhausted.");
+            slot->state = 1;
+        }
+        slot->ghost = ghost;
+        slot->seen = true;
+        ++slot->timer;
+        if (slot->state == 1) {
+            if (slot->timer > 60 || ghost.change < 0) {
+                slot->state = 2;
+                slot->timer = 0;
+                slot->scale = ghost.change < 0 ? 1.5f : 1.2f;
+            }
+        } else if (slot->state == 2) {
+            slot->scale = ghost.change < 0 ? 1.5f : std::max(1.0f, slot->scale - 0.04f);
+        } else if (slot->state == 3) {
+            slot->scale = slot->timer < 25 ? 1 : (50 - slot->timer) / 25.0f;
+        }
+        if (slot->state < 3 && ghost.captured) { slot->state = 3; slot->timer = 0; }
+    }
+    for (auto& slot : ghostSlots) if (!slot.seen) slot = {};
+}
+
+std::vector<startupscene::Picture> gameplay::Hud::ghostPictures(const std::array<float, 12>& view,
+    const std::array<float, 16>& projection, const std::array<int, 4>& bounds) const {
+    std::vector<startupscene::Picture> result;
+    for (const auto& slot : ghostSlots) {
+        if (!slot.ghost.owner || (slot.state != 1 && slot.state != 2)) continue;
+        auto position = slot.ghost.position;
+        position[1] -= 85;
+        std::array<float, 4> camera{0, 0, 0, 1}, clip{};
+        for (unsigned row = 0; row < 3; ++row) {
+            camera[row] = view[row * 4 + 3];
+            for (unsigned axis = 0; axis < 3; ++axis) camera[row] += view[row * 4 + axis] * position[axis];
+        }
+        for (unsigned row = 0; row < 4; ++row)
+            for (unsigned axis = 0; axis < 4; ++axis) clip[row] += projection[row * 4 + axis] * camera[axis];
+        if (clip[3] == 0) continue;
+        int x = int(std::round((clip[0] / clip[3] + 1) * 320)), y = int(std::round((1 - clip[1] / clip[3]) * 240));
+        const int ghostLife = slot.ghost.life;
+        const int count = ghostLife >= 100 ? 3 : ghostLife >= 10 ? 2 : 1;
+        const int right = bounds[2] - (int(ghostScale * (ghostLife < 1 ? 0 : count * 22)) + 12);
+        if (!slot.ghost.attached && (x < bounds[0] - 50 || x > right + 50 || y < bounds[1] - 50 || y > bounds[3] + 50)) continue;
+        x = std::clamp(x, bounds[0], right);
+        y = std::clamp(y, bounds[1], bounds[3]);
+        const float scale = ghostScale * slot.scale, t = 2 * (slot.scale - 1);
+        auto lerp = [t](std::array<int, 4> a, std::array<int, 4> b) {
+            std::array<float, 4> color;
+            for (unsigned i = 0; i < 4; ++i) color[i] = int(a[i] + (b[i] - a[i]) * t) / 255.0f;
+            return color;
+        };
+        const auto a = lerp({255, 255, 0, 128}, {255, 255, 0, 255});
+        const auto b = lerp({200, 0, 255, 255}, {255, 255, 0, 255});
+        const auto digitColor = slot.state == 1 ? std::array<float, 4>{1, 240 / 255.0f, 0, 1} :
+            lerp({255, 240, 0, 255}, {255, 0, 255, 255});
+        auto add = [&](std::size_t texture, float px, float py, float width, float height, std::array<float, 4> color) -> startupscene::Picture& {
+            auto image = picture(texture, int(px), int(py), 1, false, color);
+            image.width = float(int(width)); image.height = float(int(height));
+            result.push_back(image);
+            return result.back();
+        };
+        for (unsigned pass = 0; pass < (slot.state == 1 ? 2u : 1u); ++pass) {
+            add(ghostShocks[1], x - 36 * scale, y - 36 * scale, 72 * scale, 72 * scale,
+                slot.state == 1 && pass == 0 ? std::array<float, 4>{200 / 255.0f, 0, 1, 1} : b);
+            auto& shock = add(ghostShocks[0], x - 32 * scale, y - 32 * scale, 64 * scale, 64 * scale, a);
+            for (auto& uv : shock.coordinates) {
+                if (ghostFrame % 2) uv = {uv[1], 1 - uv[0]};
+                if ((ghostFrame / 2) % 2) uv[0] = 1 - uv[0];
+            }
+            int divisor = count == 3 ? 100 : count == 2 ? 10 : 1;
+            for (int digit = 0; digit < count; ++digit, divisor /= 10) {
+                const float dx = float(-9 * count + 18 * digit);
+                const auto texture = digits.at((ghostLife / divisor) % 10);
+                add(texture, x + (dx + 2) * scale, y - 10 * scale, 19 * scale, 26 * scale, {0, 0, 0, 1});
+                add(texture, x + dx * scale, y - 12 * scale, 19 * scale, 26 * scale, digitColor);
+            }
+        }
+    }
+    return result;
+}

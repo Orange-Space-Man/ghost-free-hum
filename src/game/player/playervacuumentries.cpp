@@ -382,7 +382,7 @@ void vacuumcapture::Controller::release(unsigned index) {
     e.flags |= 0x50;
     e.state = 2;
     if (!e.fieldB) {
-        if (e.mode == 1) {
+        if (v.blend.field4 == 1) {
             e.flags |= 0x20;
             e.fieldB = true;
         } else {

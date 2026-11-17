@@ -8,6 +8,11 @@ namespace elements {
         Particle();
         std::array<float, 3> position;
         std::int16_t age;
+        std::array<float, 3> acceleration{}, velocity{};
+        std::uint16_t pulse = 0;
+        float rotationSpeed = 0, rotation = 0, timer = 0, maximumSize = 0, size = 0, baseSize = 0;
+        unsigned growth = 0;
+        bool influenced = false;
         Particle* next;
         Particle* previous;
     };

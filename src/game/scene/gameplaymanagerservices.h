@@ -31,6 +31,7 @@ namespace playeractions { struct Input; }
 namespace roomfurniture { class Owner; }
 
 namespace gameplay {
+    struct GhostHealth;
     struct PlayerMainServices {
         playerpresentation::Services* presentation;
         playerscanner::Services* scanner;
@@ -82,6 +83,7 @@ namespace gameplay {
 
     class ManagerServices {
     public:
+        std::vector<GhostHealth> ghostHealth();
         explicit ManagerServices(const ManagerDependencies& dependencies);
         ~ManagerServices();
         ManagerServices(const ManagerServices&) = delete;

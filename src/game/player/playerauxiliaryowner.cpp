@@ -84,11 +84,6 @@ void playerresources::AuxiliaryOwner::update(const AuxiliaryFrameServices& servi
         vacuum->start(input, services.effect);
     }
     vacuum->updateMotion(services.vacuum, services.actors.pose, services.collision, services.feedback);
-    if (vacuum->state) {
-        const auto direction = services.actors.pose.horizontalDirection(
-            static_cast<std::uint16_t>(vacuum->input.angle + 0x3fff));
-        vacuum->model->publishJoints({direction[2], 0, direction[0]});
-    }
     const auto& definition = services.actors.catalog.type(type);
     const auto timing = services.actors.resources.timing(definition.model, definition.animations.at(actor->animationState)[0]);
     field14 = actoranimation::timingCrossing(timing.get(), "hfoot_timing",

@@ -24,7 +24,7 @@ namespace particles {
         std::vector<Billboard> prepareGlows(GlowPool& glows, const std::array<float, 12>& view);
         std::vector<Billboard> prepareActorGlows(const actors::Registry& actors, const roomtraversal::State& visibility,
             const std::array<float, 12>& view, unsigned buffer) const;
-        void initializeElements();
+        void initializeElements(const mapcollision::State& collision);
         void initializeRunningDust(const mission::Resources& mission, const roomlocation::Rooms& rooms,
             std::function<void(unsigned, unsigned)> capture);
         runningdust::Manager& runningDust();
@@ -52,6 +52,7 @@ namespace particles {
         NativeSimulation simulation;
         const std::vector<std::uint8_t>& executable;
         ArchiveResources& resources;
+        const mapcollision::State* collision = nullptr;
         std::unique_ptr<elements::Scene> elementalScene;
         std::unique_ptr<runningdust::Manager> dust;
         runningdust::Interaction dustInteraction;

@@ -24,7 +24,8 @@ namespace particles {
 
     private:
         std::array<float, 4096> sine{}, cosine{};
-        float childScale = 0;
+        float childScale = 0, extendedPivotScale = 0;
+        std::array<std::array<float, 3>, 8> extendedCorners{};
         void appendChildren(Emitter& emitter, const std::array<float, 12>& view, std::vector<Billboard>& result) const;
         void append(Emitter& emitter, const std::array<float, 12>& view, std::vector<Billboard>& result) const;
     };

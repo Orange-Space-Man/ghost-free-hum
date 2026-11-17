@@ -54,6 +54,8 @@ void particles::Scene::refresh(const SecondarySource* secondary) {
 
 void particles::Scene::update() {
     emitters.update(simulation);
+    if (elementalScene && binding && binding->refreshed)
+        elementalScene->updateBlow(binding->player.view, binding->player.flags, shared.player, *collision, randomState);
     if (dust) {
         elementalScene->refreshForceRanges(shared.player);
         const auto& context = shared.player;
@@ -109,7 +111,8 @@ std::vector<particles::Billboard> particles::Scene::prepareGlows(GlowPool& glows
     return particles::prepareGlows(glows, resources.get(0x4b485f45, "ps_ball.bti"), particleRandomState, view);
 }
 
-void particles::Scene::initializeElements() {
+void particles::Scene::initializeElements(const mapcollision::State& collision) {
+    this->collision = &collision;
     if (elementalScene) throw std::logic_error("Elemental scene is already initialized.");
     elementalScene = std::make_unique<elements::Scene>(executable);
 }
