@@ -38,6 +38,7 @@ namespace {
     std::array<std::array<std::int16_t, 1120>, 3> musicBuffers{};
     unsigned nextBuffer = 0;
     bool prepared = false;
+    bool paused = false;
     std::vector<std::int16_t> logoBuffer;
     bool comInitialized = false;
     std::thread musicThread;
@@ -86,6 +87,7 @@ namespace {
 
     void queueMusic() {
         std::lock_guard<std::mutex> lock(renderMutex);
+        if (paused) return;
         XAUDIO2_VOICE_STATE state{};
         music->GetState(&state);
         if (!streamAudio.sampleRate)
@@ -329,6 +331,14 @@ bool startupaudio::finished() {
     return state.BuffersQueued == 0;
 }
 
+void startupaudio::setPaused(bool value) {
+    std::lock_guard<std::mutex> lock(renderMutex);
+    if (!engine || paused == value) return;
+    if (value) engine->StopEngine();
+    else check(engine->StartEngine(), "Could not resume game audio.");
+    paused = value;
+}
+
 void startupaudio::close() {
     stopMusic();
     positionalPlayback.reset();
@@ -336,6 +346,7 @@ void startupaudio::close() {
     if (source) { source->DestroyVoice(); source = nullptr; }
     if (master) { master->DestroyVoice(); master = nullptr; }
     engine.Reset();
+    paused = false;
     logoBuffer.clear();
     if (comInitialized) { CoUninitialize(); comInitialized = false; }
 }

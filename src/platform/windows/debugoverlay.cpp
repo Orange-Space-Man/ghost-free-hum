@@ -1,4 +1,5 @@
 #include "platform/windows/debugoverlay.h"
+#include "platform/windows/controlsettings.h"
 #include "imgui.h"
 #include "backends/imgui_impl_dx11.h"
 #include "backends/imgui_impl_win32.h"
@@ -21,6 +22,7 @@ void debugoverlay::open(HWND window, ID3D11Device* device, ID3D11DeviceContext* 
     ImGui::GetIO().IniFilename = nullptr;
     ImGui::GetIO().LogFilename = nullptr;
     ImGui::GetIO().ConfigFlags |= ImGuiConfigFlags_NoMouseCursorChange;
+    controlsettings::initialize(window);
     visible = false;
     loadingInfo.clear();
     systemInfo = "Windows (version unavailable)";
@@ -51,6 +53,7 @@ void debugoverlay::close() {
 bool debugoverlay::handleMessage(HWND window, UINT message, WPARAM wParam, LPARAM lParam) {
     if (!platformReady) return false;
     ImGui_ImplWin32_WndProcHandler(window, message, wParam, lParam);
+    if (controlsettings::handleMessage(message, wParam, lParam)) return true;
     if (message == WM_KEYDOWN && wParam == VK_F2) {
         if (!(lParam & (1LL << 30))) toggle();
         return true;
@@ -87,6 +90,7 @@ void debugoverlay::draw() {
         list->AddText(nullptr, 0, {11, 11}, IM_COL32(0, 0, 0, 255), text.c_str(), nullptr, wrap);
         list->AddText(nullptr, 0, {10, 10}, IM_COL32(255, 255, 255, 255), text.c_str(), nullptr, wrap);
     }
+    controlsettings::draw();
     ImGui::Render();
     ImGui_ImplDX11_RenderDrawData(ImGui::GetDrawData());
 }

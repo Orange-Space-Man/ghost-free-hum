@@ -58,6 +58,7 @@ namespace gameapplication {
         gamecard::Storage card;
         bool audioEnabled = false;
         bool startPressed = false;
+        unsigned previousMenuButtons = 0, menuHoldTicks = 0;
         bool boundaryReported = false;
         std::filesystem::path currentAssets;
         std::filesystem::path savePath;

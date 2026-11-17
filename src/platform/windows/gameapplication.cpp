@@ -1,6 +1,7 @@
 #include "resources/glme01addresses.h"
 #include "platform/windows/gameapplication.h"
 #include "platform/windows/debugoverlay.h"
+#include "platform/windows/controlsettings.h"
 #include <windows.h>
 #include <shellapi.h>
 #include <algorithm>
@@ -170,6 +171,8 @@ void gameapplication::Application::advanceMenu() {
 }
 
 void gameapplication::Application::advance(bool audioFinished) {
+    startupaudio::setPaused(controlsettings::visible());
+    if (controlsettings::visible()) return;
     ++presentationFrames;
     if (debugCheckpoint) {
         const auto checkpoint = debugCheckpoint;
@@ -185,6 +188,23 @@ void gameapplication::Application::advance(bool audioFinished) {
 }
 
 void gameapplication::Application::advanceScene(bool audioFinished) {
+    if (!gameplayActive) {
+        const auto pad = playerinput::pollWindowPad(applicationWindow, true).status;
+        unsigned buttons = pad.buttons;
+        if (pad.stickX < -30) buttons |= 1;
+        if (pad.stickX > 30) buttons |= 2;
+        if (pad.stickY < -30) buttons |= 4;
+        if (pad.stickY > 30) buttons |= 8;
+        const unsigned pressed = buttons & ~previousMenuButtons;
+        menuHoldTicks = buttons == previousMenuButtons ? menuHoldTicks + 1 : 0;
+        if (menuActive) {
+            menuInput.pressed |= pressed;
+            menuInput.repeat |= pressed | (menuHoldTicks >= 20 && menuHoldTicks % 6 == 0 ? buttons : 0);
+        } else if (openingActive) {
+            if (pressed & 0x100) openingSkip = true;
+        } else if (pressed & 0x1100) startPressed = true;
+        previousMenuButtons = buttons;
+    }
     if (gameplayActive) {
         if (transitionPhase != TransitionPhase::Idle) advanceTransition();
         else {
@@ -347,12 +367,13 @@ void gameapplication::Application::restart() {
 LRESULT gameapplication::Application::handleMessage(HWND window, UINT message, WPARAM wParam, LPARAM lParam) {
     if (message == WM_KILLFOCUS || (message == WM_KEYUP && wParam == VK_F3)) debugModifier = false;
     if (debugLoading) {
-        if (message == WM_CLOSE || (message == WM_KEYDOWN && wParam == VK_ESCAPE)) {
+        if (message == WM_CLOSE) {
             debugCloseRequested = true;
             return 0;
         }
         if (message == WM_KEYDOWN || message == WM_KEYUP || message == WM_SYSKEYDOWN || message == WM_SYSKEYUP) return 0;
     }
+    if (debugoverlay::handleMessage(window, message, wParam, lParam)) return 0;
     if (message == WM_KILLFOCUS) debugModifier = false;
     if ((message == WM_KEYDOWN || message == WM_KEYUP) && wParam == VK_F3) {
         debugModifier = message == WM_KEYDOWN;
@@ -362,7 +383,7 @@ LRESULT gameapplication::Application::handleMessage(HWND window, UINT message, W
         if (!(lParam & (1LL << 30)) && wParam <= '3') debugCheckpoint = static_cast<unsigned>(wParam - '0');
         return 0;
     }
-    if (debugoverlay::handleMessage(window, message, wParam, lParam)) return 0;
+
     if (message == WM_KEYDOWN && (wParam == VK_F1 || wParam == VK_F5)) {
         if (!(lParam & (1LL << 30))) restart();
         return 0;
@@ -379,27 +400,6 @@ LRESULT gameapplication::Application::handleMessage(HWND window, UINT message, W
         return 0;
     }
     if (message == WM_ERASEBKGND) return 1;
-    if (message == WM_KEYDOWN) {
-        const bool repeated = (lParam & (1LL << 30)) != 0;
-        if (openingActive) {
-            if (!repeated && wParam == 'A') openingSkip = true;
-        } else if (menuActive) {
-            unsigned button = 0;
-            if (wParam == VK_LEFT) button = 1;
-            if (wParam == VK_RIGHT) button = 2;
-            if (wParam == VK_DOWN) button = 4;
-            if (wParam == VK_UP) button = 8;
-            if (wParam == 'A') button = 0x100;
-            if (wParam == VK_RETURN) button = 0x1000;
-            if (wParam == 'B') button = 0x200;
-            if (wParam == 'X') button = 0x400;
-            if (wParam == 'Y') button = 0x800;
-            if (!repeated) menuInput.pressed |= button;
-            menuInput.repeat |= button;
-        } else if (!repeated && (wParam == VK_RETURN || wParam == 'A')) startPressed = true;
-        if (wParam == VK_ESCAPE) DestroyWindow(window);
-        return 0;
-    }
     if (message == WM_DESTROY) {
         applicationWindow = nullptr;
         close();

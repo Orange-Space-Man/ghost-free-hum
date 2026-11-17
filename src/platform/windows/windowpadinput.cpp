@@ -1,4 +1,5 @@
 #include "platform/windows/windowpadinput.h"
+#include "platform/windows/controlbindings.h"
 
 #include <windows.h>
 #include <Xinput.h>
@@ -31,30 +32,6 @@ playerinput::PadStatus playerinput::translate(const HostPad& pad) {
 }
 
 playerinput::HostSample playerinput::pollWindowPad(void* window, bool enabled) {
-    HostSample result;
-    if (!enabled || !window || GetForegroundWindow() != static_cast<HWND>(window)) return result;
-    XINPUT_STATE pad{};
-    if (XInputGetState(0, &pad) == ERROR_SUCCESS) {
-        const auto& gamepad = pad.Gamepad;
-        result.status = translate({gamepad.wButtons, gamepad.sThumbLX, gamepad.sThumbLY,
-            gamepad.sThumbRX, gamepad.sThumbRY, gamepad.bLeftTrigger, gamepad.bRightTrigger});
-        result.port = 0;
-    }
-    const auto key = [](int value) { return (GetAsyncKeyState(value) & 0x8000) != 0; };
-    const auto stick = [&](int negative, int positive, int range, std::int8_t& destination) {
-        const bool a = key(negative), b = key(positive);
-        if (a || b) destination = static_cast<std::int8_t>((int(b) - int(a)) * range);
-    };
-    stick(VK_LEFT, VK_RIGHT, 87, result.status.stickX);
-    stick(VK_DOWN, VK_UP, 87, result.status.stickY);
-    stick('J', 'L', 74, result.status.substickX);
-    stick('K', 'I', 74, result.status.substickY);
-    const std::pair<int, unsigned> buttons[]{{'A', 0x100}, {'B', 0x200}, {'X', 0x400}, {'Y', 0x800},
-        {'Z', 0x10}, {'Q', 0x40}, {'E', 0x20}, {VK_RETURN, 0x1000}};
-    for (const auto& mapping : buttons) if (key(mapping.first)) result.status.buttons |= mapping.second;
-    if (key('Q')) result.status.triggerLeft = 255;
-    if (key('E')) result.status.triggerRight = 255;
-    if (result.status.buttons & 0x100) result.status.analogA = 255;
-    if (result.status.buttons & 0x200) result.status.analogB = 255;
-    return result;
+    if (!enabled || !window || GetForegroundWindow() != static_cast<HWND>(window)) return {};
+    return controlbindings::poll(window);
 }

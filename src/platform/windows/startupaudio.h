@@ -14,6 +14,7 @@ namespace startupaudio {
     void playMenu();
     void playStream(const jaudio::StreamAudio& audio);
     void stop();
+    void setPaused(bool value);
     unsigned streamFrame();
     double streamPosition();
     void playStartSound();

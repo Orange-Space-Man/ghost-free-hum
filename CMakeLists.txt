@@ -457,6 +457,8 @@ add_library(WindowsRuntime STATIC
     src/platform/windows/gameassetsetup.cpp
     src/platform/windows/gameframepacing.cpp
     src/platform/windows/startupaudio.cpp
+    src/platform/windows/controlbindings.cpp
+    src/platform/windows/controlsettings.cpp
     src/platform/windows/windowpadinput.cpp
 )
 
