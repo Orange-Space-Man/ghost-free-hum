@@ -48,6 +48,7 @@ namespace gameplay {
         keypresentation::SceneControl sceneControl;
         keypresentation::Owner keyPresentation;
         unsigned presentationButtons = 0;
+        bool gameBoyOpen = false;
         originalmath::FloatTrig trig;
         dooranimation::PoseTables poseTables;
         std::vector<float> textureTrigonometry;
@@ -88,6 +89,7 @@ namespace gameplay {
         void drawSheets(unsigned pass);
         float lightProjectionDepth = 0;
         void drawPlayerLight();
+        void drawScannerEffects();
         void drawVacuumEffects();
         void prepareAuxiliary();
         void drawAuxiliary(unsigned stage);

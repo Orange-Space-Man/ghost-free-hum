@@ -6,7 +6,7 @@
 #include <stdexcept>
 
 void gameapplication::Application::loadDebugCheckpoint(unsigned checkpoint) {
-    if (checkpoint < 1 || checkpoint > 3) return;
+    if (checkpoint < 1 || checkpoint > 4) return;
     debugLoading = true;
     debugCloseRequested = false;
     struct LoadingScope {
@@ -61,6 +61,11 @@ void gameapplication::Application::loadDebugCheckpoint(unsigned checkpoint) {
     gameplaySaves = &checkpointSaves;
     std::string error;
     if (!gameentry::selectNewFile(checkpointSaves, 0, gameEntry, error)) throw std::runtime_error(error);
+    if (checkpoint == 4) {
+        gameEntry.map = 6;
+        gameEntry.flags[0] |= 0x80;
+        gameEntry.player[0x16a] = (gameEntry.player[0x16a] & ~3u) | 3u;
+    }
     progress("Loading room, actors and audio resources");
     auto preparation = std::async(std::launch::async, [this] {
         return std::make_unique<gameplay::Scene>(currentAssets, gameEntry);
@@ -99,9 +104,11 @@ void gameapplication::Application::loadDebugCheckpoint(unsigned checkpoint) {
         for (unsigned i = 0; i < limit && !ready(); ++i) step({});
         if (!ready()) throw std::runtime_error(failure);
     };
-    progress("Advancing foyer entrance cutscene");
-    until([&] { return gameEntry.inventory[0x20 + 48] == 1; }, 600, "Debug checkpoint: entrance event did not finish.");
-    if (checkpoint >= 2) {
+    if (checkpoint != 4) {
+        progress("Advancing foyer entrance cutscene");
+        until([&] { return gameEntry.inventory[0x20 + 48] == 1; }, 600, "Debug checkpoint: entrance event did not finish.");
+    }
+    if (checkpoint >= 2 && checkpoint <= 3) {
         const auto walk = [&](float targetX, float targetZ) {
             for (unsigned i = 0; i < 500; ++i) {
                 const auto& position = *gameplayScene->playerView().position;

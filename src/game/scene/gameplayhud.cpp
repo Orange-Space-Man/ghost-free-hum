@@ -178,9 +178,9 @@ startupscene::Picture gameplay::Hud::picture(std::size_t texture, int x, int y, 
     return result;
 }
 
-void gameplay::Hud::updateDemoPanel(const playeractor::View& player, bool active, bool messageVisible) {
+void gameplay::Hud::updateDemoPanel(const playeractor::View& player, bool active, bool messageVisible, bool opened) {
     demoConversation = active;
-    demoPanelActive = player.field861 || demoPanelY < demoPanelPositions[1];
+    demoPanelActive = player.field861 && (active || opened || demoPanelY < demoPanelPositions[1]);
     ++moneyFrame;
     for (unsigned row = 0; row < 3; ++row) {
         const unsigned places = row == 2 ? 3 : 4;
@@ -196,7 +196,7 @@ void gameplay::Hud::updateDemoPanel(const playeractor::View& player, bool active
         }
     }
     // Normal counters and conversation use the same sliding panel in 8003CFC0.
-    const int target = !player.field861 || player.field895 ? demoPanelPositions[1] :
+    const int target = !player.field861 || player.field895 || (!active && !opened) ? demoPanelPositions[1] :
         messageVisible ? demoPanelPositions[3] : demoPanelPositions[2];
     if (player.field895) demoPanelY = target;
     else {

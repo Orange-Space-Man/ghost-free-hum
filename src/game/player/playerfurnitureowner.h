@@ -15,6 +15,7 @@ namespace playerinteraction {
             const actorcollision::Manager& collision, const mapcollision::State& map, unsigned mapMode,
             const std::function<std::uint32_t()>& random);
         void updateSheets();
+        playerscanner::FurnitureCache& scanCache() { return cache; }
 
     private:
         const playersheets::SuctionOwner* owner(int index) override;

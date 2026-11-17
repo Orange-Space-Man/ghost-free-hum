@@ -157,7 +157,7 @@ void gameplaycamera::Follow::update(CameraOwner& camera, const playeractor::View
     if (playerIndex >= leadX.size()) throw std::out_of_range("Camera player index exceeds the original subject table.");
     refreshRoom(room);
     const bool capturing = (camera.flags & 1) && camera.callback == captureCallback;
-    if (((camera.flags & 5) && !capturing) || (capturing && (camera.flags & 4)) || player.field895 || player.field894)
+    if (((camera.flags & 5) && !capturing) || (capturing && (camera.flags & 4)) || player.field894)
         throw std::runtime_error("Camera follow requires the selected original scanner, ladder or override callback.");
     if (capturing) {
         updateCapture(camera, player, room, playerIndex);

@@ -91,6 +91,8 @@ namespace gameplay {
         enemies::Manager& enemies();
         actors::Registry& actors();
         players::Manager& players();
+        playerscanner::Services& scanner();
+        void bindScannerMessage(std::function<void(unsigned)> callback);
         void stopAuxiliaryBeam();
         void updateAuxiliaryEquipment();
         void refreshParticles();

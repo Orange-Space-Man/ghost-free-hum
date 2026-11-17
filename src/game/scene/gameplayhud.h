@@ -22,7 +22,7 @@ namespace gameplay {
         void updateGhosts(const std::vector<GhostHealth>& ghosts, unsigned frame);
         std::vector<startupscene::Picture> ghostPictures(const std::array<float, 12>& view,
             const std::array<float, 16>& projection, const std::array<int, 4>& bounds) const;
-        void updateDemoPanel(const playeractor::View& player, bool active, bool messageVisible);
+        void updateDemoPanel(const playeractor::View& player, bool active, bool messageVisible, bool opened = false);
         std::array<int, 4> demoViewport() const;
         std::vector<startupscene::Picture> pictures() const;
         const std::vector<roommaterials::Texture>& textures() const;

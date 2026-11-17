@@ -12,6 +12,7 @@
 #include "jlib/j3d/j3dmodelcalculation.h"
 #include "jlib/j3d/j3dmaterialcalculation.h"
 #include "jlib/j3d/j3dmaterialdisplaylist.h"
+#include "jlib/j3d/j3dtextureanimation.h"
 #include <algorithm>
 #include <cstring>
 #include <stdexcept>
@@ -173,7 +174,8 @@ void gameplay::Scene::prepareModelGraphics(ID3D11Device* device) {
     particleRenderer.prepare(resources.managers().particles().elemental().blowMaterial());
     for (auto kind : {playermodels::SharedModel::Coin, playermodels::SharedModel::Bill,
         playermodels::SharedModel::Bill2, playermodels::SharedModel::Bill3,
-        playermodels::SharedModel::Pipe, playermodels::SharedModel::Vacuum}) {
+        playermodels::SharedModel::Pipe, playermodels::SharedModel::Vacuum,
+        playermodels::SharedModel::Scanner, playermodels::SharedModel::Warp}) {
         const auto& model = resources.managers().players().models->model(kind);
         effectRenderers[model.get()].load(device, model);
     }
@@ -266,6 +268,7 @@ void gameplay::Scene::update(const playerinput::PadStatus& pad, std::int16_t por
     presentationButtons |= managers.controller().pressed;
     if (!gameplayTick) return;
     if (!sceneControl.gameplayEnabled) return;
+    if (!resources.entranceActive() && (managers.controller().pressed & 0x800)) gameBoyOpen = !gameBoyOpen;
     managers.lights().beginFrame();
     const bool cameraWasActive = resources.eventCameraActive();
     resources.updateEvents(ticks / 30, audioFrame);
@@ -275,8 +278,13 @@ void gameplay::Scene::update(const playerinput::PadStatus& pad, std::int16_t por
     }
     managers.updateGenerators();
     const std::array<playermotion::PlatformMotion, 2> platforms{};
-    PlayerMainServices playerServices{nullptr, nullptr,
+    PlayerMainServices playerServices{nullptr, &managers.scanner(),
         {managers.playerLife(), false, ticks, {}, {}, {}, {}}, platforms};
+    const auto scannerTransition = [this](playeractor::Player& target, bool enabled) {
+        target.state.flags1140[2] = enabled;
+        resources.managers().playback()->play(enabled ? 0x830 : 0x831, target.position);
+    };
+    playerServices.scannerTransition = scannerTransition;
     playerServices.keyPresentationActive = keyPresentationActive();
     playerServices.presentKey = [this](bool missingKey, bool front, std::uint8_t type) { presentKey(missingKey, front, type); };
     auto* player = managers.playerEvents().player(0);
@@ -305,7 +313,9 @@ void gameplay::Scene::update(const playerinput::PadStatus& pad, std::int16_t por
     else managers.updateShadow();
     managers.updateRoomLights();
     managers.updatePoses();
-    managers.completePlayerFrame({}, false);
+    playeractor::LateFrameServices lateServices{};
+    lateServices.scannerTransition = scannerTransition;
+    managers.completePlayerFrame(lateServices, false);
     managers.refreshParticles();
     managers.updatePlacement(ticks / 30, false);
     managers.glows().update();
@@ -316,7 +326,7 @@ void gameplay::Scene::update(const playerinput::PadStatus& pad, std::int16_t por
     managers.particles().update();
     resources.hud().update(player->view, resources.fullscreen(), managers.roomCleared(player->room() >> 24));
     resources.hud().updateGhosts(managers.ghostHealth(), ticks);
-    resources.hud().updateDemoPanel(player->view, sceneControl.demoDisplay, resources.messages().visible());
+    resources.hud().updateDemoPanel(player->view, sceneControl.demoDisplay, resources.messages().visible(), gameBoyOpen);
     resources.updateMessages();
     ++ticks;
 }
@@ -614,6 +624,7 @@ void gameplay::Scene::drawWorld(bool reflection, const s3denvironment::Camera& c
     particleRenderer.draw(gamerenderer::modelContext(), resources.managers().particles().prepareGlows(
         resources.managers().glows(), view), view, projection);
     drawPlayerLight();
+    drawScannerEffects();
     drawAuxiliary(5);
     particleRenderer.draw(gamerenderer::modelContext(), particleBillboards->prepare(resources.managers().particles().pool(),
         resources.rooms(), resources.visibility(), view), view, projection);
@@ -748,6 +759,33 @@ void gameplay::Scene::drawPlayerLight() {
                     projection, light.instance->field8 & 12, index == 4 ? 3 : 4);
         }
     }
+}
+
+void gameplay::Scene::drawScannerEffects() {
+    auto* player = resources.managers().playerEvents().player(0);
+    if (!player) return;
+    auto& scanner = *player->components->scanner;
+    if (!scanner.state[0] && !scanner.state[2]) return;
+    effectLighting->prepare(effectMaterialState, view, resources.managers().lights().lights(), trig);
+    gamerenderer::bindSceneTarget(false, &drawViewport);
+    const auto draw = [&](j3dmodel::ModelInstance& instance) {
+        j3dmodel::calculateBasic(instance, *modelTransforms);
+        for (auto& material : instance.model->materials.entries) {
+            j3dmodel::animateTextureMatrices(*material);
+            j3dmodel::calculateMaterial(*material, instance.jointMatrices[0], view,
+                instance.field8 & 12, *modelTransforms);
+        }
+        for (auto& packet : instance.materials) j3dmodel::updateMaterialPacket(packet);
+        j3dmodel::calculateViewMatrices(instance, view);
+        for (unsigned pass = 0; pass < 2; ++pass)
+            for (auto& packet : instance.materials) {
+                if (((packet.material->mode & 3) ? 0u : 1u) != pass) continue;
+                effectRenderers.at(instance.model.get()).draw(gamerenderer::modelContext(), instance, packet,
+                    effectMaterialState, projection, instance.field8 & 12, pass + 3);
+            }
+    };
+    if (scanner.state[0]) draw(*scanner.scanner);
+    if (scanner.state[2]) draw(*scanner.warp);
 }
 
 void gameplay::Scene::refreshActorModels() {

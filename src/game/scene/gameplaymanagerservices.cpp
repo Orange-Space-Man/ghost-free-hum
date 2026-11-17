@@ -25,6 +25,7 @@
 #include "game/player/playerdamageframe.h"
 #include "game/player/playerscareresponse.h"
 #include "game/player/playerinputrouting.h"
+#include "game/player/playeractorscanbindings.h"
 #include "game/player/playerorientationframe.h"
 #include "game/player/playerlightframe.h"
 #include "game/player/playerlightcontacts.h"
@@ -91,7 +92,43 @@ namespace {
     };
 }
 
-struct gameplay::ManagerServices::State : playerpresentation::Services {
+struct gameplay::ManagerServices::State : playerpresentation::Services, playerscanner::Services {
+    std::int16_t delay() const override {
+        return static_cast<std::int16_t>(players->models->animation(4)->frameCount);
+    }
+    void playScanSound(unsigned sound) override { audio->playback.playGlobal(sound); }
+    playerscanner::Hit furniture(const playerscanner::Vector& position, const playerscanner::Vector& direction) override {
+        return playerFurniture->scanCache().query(position, direction);
+    }
+    playerscanner::Hit actor(const playerscanner::Vector& position, const playerscanner::Vector& direction) override {
+        return playerscanner::ActorBindings(*enemies, *actors, dependencies.actors.catalog,
+            dependencies.collisions, dependencies.visibility).query(position, direction);
+    }
+    unsigned actorType(int actor) override {
+        return playerscanner::ActorBindings(*enemies, *actors, dependencies.actors.catalog,
+            dependencies.collisions, dependencies.visibility).type(actor);
+    }
+    std::optional<unsigned> actorMessage(int actor) override {
+        return playerscanner::ActorBindings(*enemies, *actors, dependencies.actors.catalog,
+            dependencies.collisions, dependencies.visibility).message(actor);
+    }
+    void setDiscoveryFlag(unsigned flag) override { dependencies.flags.setOn(static_cast<std::uint8_t>(flag)); }
+    void selectMessage(unsigned, unsigned message) override { selectedScanMessage = message; }
+    void openMessage() override {
+        if (scannerMessage) scannerMessage(selectedScanMessage);
+    }
+    void markFurniture(int index) override { playerFurniture->scanCache().mark(static_cast<unsigned>(index)); }
+    bool mirror(int index) override { return playerFurniture->scanCache().mirror(static_cast<unsigned>(index)); }
+    bool furnitureMessage(int index) override {
+        const auto row = playerFurniture->scanCache().row(static_cast<unsigned>(index));
+        const auto* object = roomFurniture->object(row);
+        if (!object || !object->counter) return false;
+        selectedScanMessage = object->counter & 255;
+        return true;
+    }
+    void openFurnitureMessage() override { openMessage(); }
+    unsigned selectedScanMessage = 0;
+    std::function<void(unsigned)> scannerMessage;
     void effect(unsigned id, const std::array<float, 3>& position) override {
         particles->effects().create(id, position, furnitureDirection);
     }
@@ -231,7 +268,7 @@ struct gameplay::ManagerServices::State : playerpresentation::Services {
         webs.reset();
         if (owners) owners->bindUpdates(nullptr);
         if (audio) audio->playback.stop();
-        if (furniture) furniture->bindAudio({});
+        if (roomFurniture) roomFurniture->bindAudio({});
         if (enemies) {
             for (unsigned i = static_cast<unsigned>(enemies->slots().size()); i > 0; --i) {
                 if (enemies->slots()[i - 1].state == 2) enemies->deactivate(i - 1);
@@ -536,7 +573,7 @@ struct gameplay::ManagerServices::State : playerpresentation::Services {
     ladders::Paths ladderPaths;
     characteritems::Admission furnitureAdmission;
     roomfurniture::Response furnitureResponse;
-    roomfurniture::Owner* furniture = nullptr;
+    roomfurniture::Owner* roomFurniture = nullptr;
     std::array<float, 3> furnitureDirection{};
     std::int32_t elementDuration = 0;
     std::unique_ptr<SuctionAudio> suctionAudio;
@@ -683,6 +720,10 @@ gameplay::ManagerServices::~ManagerServices() = default;
 enemies::Manager& gameplay::ManagerServices::enemies() { return *state->enemies; }
 actors::Registry& gameplay::ManagerServices::actors() { return *state->actors; }
 players::Manager& gameplay::ManagerServices::players() { return *state->players; }
+playerscanner::Services& gameplay::ManagerServices::scanner() { return *state; }
+void gameplay::ManagerServices::bindScannerMessage(std::function<void(unsigned)> callback) {
+    state->scannerMessage = std::move(callback);
+}
 playerevents::Dispatcher& gameplay::ManagerServices::playerEvents() { return *state->events; }
 playerevents::LifeEnvironment& gameplay::ManagerServices::playerLife() { return *state->life; }
 particles::Scene& gameplay::ManagerServices::particles() { return *state->particles; }
@@ -1120,12 +1161,12 @@ void gameplay::ManagerServices::bindPlayerFurniture(roomfurniture::Owner& furnit
     state->playerFurniture = std::make_unique<playerinteraction::FurnitureOwner>(*player, *state->events,
         *state->players->models, furniture, state->dependencies.flags, state->audio->playback,
         state->particles->effects(), state->dependencies.executable);
-    state->furniture = &furniture;
+    state->roomFurniture = &furniture;
     furniture.bindAudio([this](const auto& position) { return state->audio->playback.animationServices(position); });
 }
 
 void gameplay::ManagerServices::updateFurniture(unsigned frame) {
-    if (!state->furniture) throw std::logic_error("Furniture update requires its room-owned pool.");
+    if (!state->roomFurniture) throw std::logic_error("Furniture update requires its room-owned pool.");
     auto* player = state->events->player(0);
     if (!player) throw std::logic_error("Furniture update requires player zero.");
     // 80032FDC and its siblings: the handlers see the vacuum as active while the player's suction is on (+0x92 and +0x94 are 1).
@@ -1167,7 +1208,7 @@ void gameplay::ManagerServices::updateFurniture(unsigned frame) {
         auto* handle = state->audio->playback.play(sound, position);
         if (handle && amplitude) state->audio->playback.setInteractionVolume(*handle, *amplitude);
     };
-    services.animation = [this](auto& object, unsigned animation) { state->furniture->selectAnimation(object.row, animation); };
+    services.animation = [this](auto& object, unsigned animation) { state->roomFurniture->selectAnimation(object.row, animation); };
     services.releaseOccupant = [](unsigned, const auto&) {
         throw std::runtime_error("Occupied furniture requires its original actor-release route.");
     };
@@ -1187,8 +1228,8 @@ void gameplay::ManagerServices::updateFurniture(unsigned frame) {
         state->events->send(0, 3, &payload);
     };
     services.setFlag = [this](unsigned flag) { state->dependencies.flags.setOn(static_cast<std::uint8_t>(flag)); };
-    services.cabinetActive = [this](bool active) { state->furniture->cabinetOpen = active; };
-    state->furniture->update(state->dependencies.visibility, 0, [&](auto& object, auto& row, bool visible) {
+    services.cabinetActive = [this](bool active) { state->roomFurniture->cabinetOpen = active; };
+    state->roomFurniture->update(state->dependencies.visibility, 0, [&](auto& object, auto& row, bool visible) {
         services.persistCollected = [this, rowIndex = object.row] {
             if (state->mapMode == 2)
                 state->dependencies.entry.inventory.at(0x1a0 + rowIndex / 8) |= static_cast<std::uint8_t>(0x80 >> (rowIndex & 7));
