@@ -25,6 +25,7 @@ namespace gameplay {
         void updateDemoPanel(const playeractor::View& player, bool active, bool messageVisible, bool opened = false);
         std::array<int, 4> demoViewport() const;
         std::vector<startupscene::Picture> pictures() const;
+        std::vector<startupscene::Picture> scannerPictures(bool discovered = false) const;
         const std::vector<roommaterials::Texture>& textures() const;
 
     private:
@@ -52,6 +53,10 @@ namespace gameplay {
         bool demoPanelActive = false, demoConversation = false;
         menulayout::Layout moneyLayout;
         menulayout::Graphics moneyGraphics;
+        menulayout::Layout scannerLayout;
+        menulayout::Graphics scannerGraphics;
+        menulayout::Layout scannerFrameLayout;
+        menulayout::Graphics scannerFrameGraphics;
         std::array<std::string, 10> moneyDigits;
         unsigned moneyFrame = 0;
         std::size_t moneyNoise = 0;

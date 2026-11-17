@@ -18,6 +18,8 @@ namespace {
     constexpr unsigned coincidentOffsetAddress = 0x804d9cb8, nearDelayAddress = 0x804d00a0, normalDelayAddress = 0x804d00a1;
     constexpr unsigned nearPlaneAddress = 0x804d0000, farPlaneAddress = 0x804d0004;
     constexpr unsigned upHorizontalAddress = 0x804d9cd0, upVerticalAddress = 0x804d9d10;
+    constexpr unsigned scannerDirectionDistanceAddress = 0x804d9cec, scannerFieldOfViewAddress = 0x804d9d34;
+    constexpr unsigned scannerNearPlaneAddress = 0x804d9ce0, scannerInvertedUpAddress = 0x804d9d30;
 
     unsigned word(const std::vector<std::uint8_t>& executable, unsigned address) {
         std::vector<std::uint8_t> bytes;
@@ -88,6 +90,27 @@ gameplaycamera::Follow::Follow(const std::vector<std::uint8_t>& executable, unsi
     nearPlane = static_cast<float>(static_cast<std::int32_t>(word(executable, nearPlaneAddress)));
     farPlane = static_cast<float>(static_cast<std::int32_t>(word(executable, farPlaneAddress)));
     up = {scalar(executable, upHorizontalAddress), scalar(executable, upVerticalAddress), scalar(executable, upHorizontalAddress)};
+    scannerDirectionDistance = scalar(executable, scannerDirectionDistanceAddress);
+    scannerFieldOfView = scalar(executable, scannerFieldOfViewAddress);
+    scannerNearPlane = scalar(executable, scannerNearPlaneAddress);
+    scannerInvertedUp = scalar(executable, scannerInvertedUpAddress);
+}
+
+// 80010F20 selects the inset view, and 80021844/80021B04 publish the scanner camera.
+void gameplaycamera::Follow::updateScanner(CameraOwner& camera, const playeractor::View& player) const {
+    if (!player.position || !player.field898) throw std::runtime_error("Scanner camera requires the published player pose.");
+    camera.viewport = {112, 84, 528, 396};
+    camera.aspect = float(camera.viewport[2] - camera.viewport[0]) / float(camera.viewport[3] - camera.viewport[1]);
+    camera.visibilityMode = 3;
+    camera.fieldOfView = scannerFieldOfView;
+    camera.nearPlane = scannerNearPlane;
+    camera.farPlane = farPlane;
+    if (player.field834 == 1) camera.up = {0, scannerInvertedUp, 0};
+    else camera.up = up;
+    camera.position = *player.position;
+    camera.position[1] += player.field834 == 1 ? -180.0f : 180.0f;
+    for (unsigned axis = 0; axis < 3; ++axis)
+        camera.target[axis] = camera.position[axis] + scannerDirectionDistance * (*player.field898)[axis];
 }
 
 unsigned gameplaycamera::Follow::preset() const { return selected; }
@@ -156,6 +179,7 @@ void gameplaycamera::Follow::update(CameraOwner& camera, const playeractor::View
     if (!player.position) throw std::runtime_error("Camera follow requires the published player position.");
     if (playerIndex >= leadX.size()) throw std::out_of_range("Camera player index exceeds the original subject table.");
     refreshRoom(room);
+    camera.viewport = {0, 0, 640, 480};
     const bool capturing = (camera.flags & 1) && camera.callback == captureCallback;
     if (((camera.flags & 5) && !capturing) || (capturing && (camera.flags & 4)) || player.field894)
         throw std::runtime_error("Camera follow requires the selected original scanner, ladder or override callback.");

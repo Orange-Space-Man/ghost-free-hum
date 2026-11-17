@@ -203,7 +203,7 @@ void gameplaymusic::Owner::updateRequests(std::uint32_t audioFrame, bool enabled
     case 0x8000001a: requestParlor(audioFrame); break;
     case 0x8000001b: requestFirstKey(audioFrame); break;
     case 0x8000000e: requestItem(audioFrame); break;
-    case 0x80000008: case 0x80000026: case 0x80000027: requestSequence(pending, audioFrame); break;
+    case 0x80000008: case 0x8000000f: case 0x80000026: case 0x80000027: requestSequence(pending, audioFrame); break;
     default: throw std::logic_error("Pending music request has no recovered route.");
     }
 }

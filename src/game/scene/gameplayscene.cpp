@@ -8,6 +8,8 @@
 #include "game/startup/startupresources.h"
 #include "game/effects/barriereffectpool.h"
 #include "game/effects/cobwebeffectpool.h"
+#include "resources/roomarchivereader.h"
+#include "game/scene/gamearchive.h"
 
 #include "jlib/j3d/j3dmodelcalculation.h"
 #include "jlib/j3d/j3dmaterialcalculation.h"
@@ -41,6 +43,16 @@ namespace {
         for (unsigned i = 0; i < 3; ++i) result[i] = matrix[i * 4] * vector[0] + matrix[i * 4 + 1] * vector[1] +
             matrix[i * 4 + 2] * vector[2] + (position ? matrix[i * 4 + 3] : 0);
         return result;
+    }
+
+    float galleryNumber(const std::vector<std::uint8_t>& bytes, unsigned offset) {
+        if (offset + 4 > bytes.size()) throw std::runtime_error("Truncated Gallery painting position.");
+        const std::uint32_t bits = (std::uint32_t(bytes[offset]) << 24) | (std::uint32_t(bytes[offset + 1]) << 16) |
+            (std::uint32_t(bytes[offset + 2]) << 8) | bytes[offset + 3];
+        float value;
+        std::memcpy(&value, &bits, 4);
+        if (!std::isfinite(value)) throw std::runtime_error("Invalid Gallery painting position.");
+        return value;
     }
 }
 
@@ -128,7 +140,60 @@ gameplay::Scene::Scene(const std::filesystem::path& package, gameentry::State& e
         actorModels.push_back(std::move(model));
         actorModelResources.push_back(actor->model->model);
     }
+    if (entry.map == 6) loadGalleryPaintings();
     if (actors.empty()) throw std::runtime_error("First-area scene has no manager-owned visible actors.");
+}
+
+void gameplay::Scene::loadGalleryPaintings() {
+    std::vector<std::uint8_t> compressed, decoded;
+    gamearchive::Archive archive;
+    std::string error;
+    if (!resources.package().read("files/Nakamura/gallery.bin", compressed, error) ||
+        !roomarchive::decompress(compressed, decoded, error) || !archive.read(decoded, error))
+        throw std::runtime_error("Gallery paintings: " + error);
+    const int positionIndex = archive.findPathResource("/posd/gal.pos");
+    if (positionIndex < 0) throw std::runtime_error("Gallery painting positions are missing.");
+    const auto positions = archive.resource(positionIndex);
+    constexpr unsigned paintingCount = 23;
+    if (positions.size() != paintingCount * 16) throw std::runtime_error("Unexpected Gallery painting position table.");
+    galleryPaintings.reserve(paintingCount);
+    galleryPaintingBatches.reserve(paintingCount);
+    for (unsigned index = 0; index < paintingCount; ++index) {
+        // 80186B40 selects ge0 until the corresponding portrait has been restored.
+        const auto name = "/mdld/oba" + (index + 1 < 10 ? std::string("0") : std::string()) +
+            std::to_string(index + 1) + "ge0.mdl";
+        const int resource = archive.findPathResource(name);
+        if (resource < 0) throw std::runtime_error("Missing Gallery painting " + name);
+        s3dmodel::Model model;
+        if (!model.read(archive.resource(resource), error)) throw std::runtime_error(name + ": " + error);
+        auto batches = model.animate(std::vector<s3danimation::Pose>(model.joints.size()), 0, textureTrigonometry);
+        const float x = galleryNumber(positions, index * 16);
+        const float y = galleryNumber(positions, index * 16 + 4);
+        const float z = galleryNumber(positions, index * 16 + 8);
+        const float angle = galleryNumber(positions, index * 16 + 12) * 0.017453292519943295f;
+        const float cosine = std::cos(angle), sine = std::sin(angle);
+        for (auto& batch : batches) for (auto& vertex : batch.vertices) {
+            const auto position = vertex.position;
+            vertex.position = {x + cosine * position[0] + sine * position[2],
+                y + position[1], z - sine * position[0] + cosine * position[2]};
+            const auto rotate = [&](std::array<float, 3>& direction) {
+                const auto source = direction;
+                direction = {cosine * source[0] + sine * source[2], source[1],
+                    -sine * source[0] + cosine * source[2]};
+            };
+            rotate(vertex.normal);
+            rotate(vertex.binormal);
+            rotate(vertex.tangent);
+        }
+        galleryPaintings.push_back(std::move(model));
+        galleryPaintingBatches.push_back(std::move(batches));
+    }
+}
+
+void gameplay::Scene::loadActorAndGalleryTextures() {
+    auto all = actorModels;
+    all.insert(all.end(), galleryPaintings.begin(), galleryPaintings.end());
+    textures = gamerenderer::loadPreviews(all, 640, 480);
 }
 
 gameplay::Scene::~Scene() {
@@ -158,7 +223,7 @@ bool gameplay::Scene::controllerInstructionsActive() const { return instructions
 
 void gameplay::Scene::prepareGraphics() {
     gamerenderer::setInterfaceTextures(resources.interfaceTextures());
-    textures = gamerenderer::loadPreviews(actorModels, 640, 480);
+    loadActorAndGalleryTextures();
     gamerenderer::cacheScene("gameplay");
     if (models.empty()) prepareModelGraphics(gamerenderer::modelDevice());
 }
@@ -244,7 +309,7 @@ bool gameplay::Scene::updateRoomResources() {
     });
     if (changed && device) {
         gamerenderer::setInterfaceTextures(resources.interfaceTextures());
-        textures = gamerenderer::loadPreviews(actorModels, 640, 480);
+        loadActorAndGalleryTextures();
         gamerenderer::cacheScene("gameplay");
     }
     return changed;
@@ -430,10 +495,17 @@ void gameplay::Scene::draw(bool present) {
         picture.width = 640;
         picture.height = 480;
         std::vector<startupscene::Picture> pictures{picture};
-        const auto ghostHealth = resources.hud().ghostPictures(view, projection, {fullBounds[0], fullBounds[1], fullBounds[2], fullBounds[3]});
-        pictures.insert(pictures.end(), ghostHealth.begin(), ghostHealth.end());
-        const auto hud = resources.hud().pictures();
-        pictures.insert(pictures.end(), hud.begin(), hud.end());
+        const auto* player = resources.managers().playerEvents().player(0);
+        if (player && player->state.flags1140[2]) {
+            const auto sight = resources.hud().scannerPictures(player->components->scanner->state[1] != 0);
+            pictures.insert(pictures.end(), sight.begin(), sight.end());
+        } else {
+            const auto ghostHealth = resources.hud().ghostPictures(view, projection,
+                {fullBounds[0], fullBounds[1], fullBounds[2], fullBounds[3]});
+            pictures.insert(pictures.end(), ghostHealth.begin(), ghostHealth.end());
+            const auto hud = resources.hud().pictures();
+            pictures.insert(pictures.end(), hud.begin(), hud.end());
+        }
         const auto messages = resources.messagePictures();
         pictures.insert(pictures.end(), messages.begin(), messages.end());
         gamerenderer::drawInterface(pictures, present);
@@ -442,7 +514,7 @@ void gameplay::Scene::draw(bool present) {
 
 void gameplay::Scene::publishCamera() {
     const auto camera = resources.publishCamera();
-    if (camera.visibilityMode != 0 && camera.visibilityMode != 2)
+    if (camera.visibilityMode != 0 && camera.visibilityMode != 2 && camera.visibilityMode != 3)
         throw std::runtime_error("Gameplay requires the selected camera visibility traversal.");
     overrideRoomOpacity = camera.visibilityMode == 2;
     view = camera.view;
@@ -563,8 +635,11 @@ void gameplay::Scene::drawShadows() {
 
 void gameplay::Scene::drawWorld(bool reflection, const s3denvironment::Camera& camera) {
     const unsigned visibilityBuffer = reflection ? 5 : 0;
+    const auto& viewport = resources.cameraViewport();
     drawViewport = reflection ? D3D11_VIEWPORT{320 - float(resources.mirror().width()), 240 - float(resources.mirror().height()),
-        float(resources.mirror().width() * 2), float(resources.mirror().height() * 2), 0, 1} : D3D11_VIEWPORT{0, 0, 640, 480, 0, 1};
+        float(resources.mirror().width() * 2), float(resources.mirror().height() * 2), 0, 1} :
+        D3D11_VIEWPORT{float(viewport[0]), float(viewport[1]), float(viewport[2] - viewport[0]),
+            float(viewport[3] - viewport[1]), 0, 1};
     gamerenderer::bindSceneTarget(true, &drawViewport);
     if (!reflection && resources.mirror().visible(resources.visibility()))
         mirrorRenderer.draw(gamerenderer::modelContext(), view, projection);
@@ -599,12 +674,14 @@ void gameplay::Scene::drawWorld(bool reflection, const s3denvironment::Camera& c
     resources.managers().doors().submitOpaque(visibilityBuffer, false, submitDoor);
     drawFurniture(0);
     drawActors(0, camera, visibilityBuffer);
+    drawGalleryPaintings(0, camera);
     if (!reflection) drawAuxiliary(2);
     drawSheets(2);
     gamerenderer::bindSceneTarget(false, &drawViewport);
     particleRenderer.draw(gamerenderer::modelContext(), resources.managers().particles().prepareActorGlows(
         resources.managers().actors(), resources.visibility(), view, visibilityBuffer), view, projection);
     drawActors(1, camera, visibilityBuffer);
+    drawGalleryPaintings(1, camera);
     drawAuxiliary(reflection ? 1 : 3);
     if (!reflection) {
         gamerenderer::beginGhostLayer();
@@ -818,15 +895,27 @@ void gameplay::Scene::refreshActorModels() {
     actors = std::move(current);
     actorModels = std::move(updatedModels);
     actorModelResources = std::move(retained);
-    textures = gamerenderer::loadPreviews(actorModels, 640, 480);
+    loadActorAndGalleryTextures();
     gamerenderer::cacheScene("gameplay");
+}
+
+void gameplay::Scene::drawGalleryPaintings(unsigned stage, const s3denvironment::Camera& camera) {
+    if (galleryPaintings.empty()) return;
+    s3denvironment::Lighting lighting;
+    for (unsigned i = 0; i < galleryPaintings.size(); ++i)
+        gamerenderer::drawPreview(actorModels.size() + i, galleryPaintings[i], galleryPaintingBatches[i],
+            lighting, &camera, false, 1u << stage, false, textureTrigonometry, nullptr, &drawViewport);
 }
 
 void gameplay::Scene::drawActors(unsigned stage, const s3denvironment::Camera& camera, unsigned visibilityBuffer) {
     // 80060E70: 8005DD50 is skipped for every actor while 800093EC reports the camera looking against the projector.
     const bool receiveSuppressed = s3dshadow::receiveSuppressed(camera, resources.managers().shadowProjection());
+    const auto* scannerPlayer = resources.managers().playerEvents().player(0);
+    const bool hidePlayer = scannerPlayer && scannerPlayer->state.flags1140[2] && visibilityBuffer != 5;
     for (unsigned i = 0; i < actors.size(); ++i) {
         const auto& actor = *actors[i];
+        if (hidePlayer && (&actor == scannerPlayer || &actor == scannerPlayer->state.field7A4 ||
+            &actor == scannerPlayer->state.field7A8 || &actor == scannerPlayer->state.field7AC)) continue;
         const bool ghost = (constant<std::uint16_t>(resources.executable(), 0x8033b598 + actor.type() * 0x1c) & 8) != 0;
         if (visibilityBuffer != 5 && ghost != (stage >= 2)) continue;
         if (actor.room() >> 24 == 255 ||

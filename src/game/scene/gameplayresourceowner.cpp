@@ -120,6 +120,7 @@ struct gameplay::ResourceOwner::State {
             [this](bool active) { managers->music().setCutsceneActive(active); }});
         if (entry.map == 1) managers->music().requestLab(1);
         if (entry.map == 3) managers->music().requestTraining(1);
+        if (entry.map == 6) managers->music().requestSequence(0x8000000f, 1);
         entrance = std::make_unique<gameevent::EntranceOwner>(package, types, entry, *rooms, *managers, owner, executable, *messages, *cameraFollow);
         entrance->bindRoomLight([this](bool enabled) { managers->setRoomLight(cameraRoom >> 24, enabled); });
         entrance->bindRandom([this] {
@@ -195,6 +196,7 @@ std::vector<startupscene::Picture> gameplay::ResourceOwner::messagePictures() co
     return pictures;
 }
 const s3denvironment::Camera& gameplay::ResourceOwner::camera() const { return state->camera; }
+const std::array<std::int32_t, 4>& gameplay::ResourceOwner::cameraViewport() const { return state->cameras.active->viewport; }
 
 void gameplay::ResourceOwner::updateCamera() {
     const auto* player = state->managers->playerEvents().player(0);
@@ -202,6 +204,10 @@ void gameplay::ResourceOwner::updateCamera() {
     if (player->room()) state->cameraRoom = player->room();
     state->roomTransition.update(state->cameraRoom);
     if (state->entrance->updateCamera()) return;
+    if (player->view.field895) {
+        state->cameraFollow->updateScanner(*state->cameras.cameras[0], player->view);
+        return;
+    }
     state->cameraFollow->update(*state->cameras.cameras[0], player->view, state->cameraRoom);
 }
 

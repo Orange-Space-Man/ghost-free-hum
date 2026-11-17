@@ -6,6 +6,7 @@
 #include <cmath>
 #include <cstring>
 #include <stdexcept>
+#include <string_view>
 
 namespace {
     std::vector<std::uint8_t> read(const std::vector<std::uint8_t>& executable, unsigned address, unsigned size) {
@@ -71,6 +72,24 @@ gameplay::Hud::Hud(const gamearchive::Archive& archive, const std::vector<std::u
     if (!moneyGraphics.load(archive, moneyLayout, moneyError, extraDigits)) throw std::runtime_error(moneyError);
     moneyGraphics.textureOffset = images.size();
     images.insert(images.end(), moneyGraphics.textures.begin(), moneyGraphics.textures.end());
+    // The original scanner uses the gbf_1 Game Boy Horror sight layout.
+    const int sightResource = archive.findPathResource("/kawano/base/blo/gbf_1.blo");
+    if (sightResource < 0 || !menulayout::read(archive.resource(sightResource), scannerLayout, moneyError))
+        throw std::runtime_error("Game Boy scanner layout: " + moneyError);
+    auto* sightBackdrop = scannerLayout.find("BACK");
+    if (!sightBackdrop) throw std::runtime_error("Game Boy scanner backdrop is missing.");
+    sightBackdrop->visible = false;
+    sightBackdrop->textures.fill({});
+    if (!scannerGraphics.load(archive, scannerLayout, moneyError))
+        throw std::runtime_error("Game Boy scanner graphics: " + moneyError);
+    scannerGraphics.textureOffset = images.size();
+    images.insert(images.end(), scannerGraphics.textures.begin(), scannerGraphics.textures.end());
+    const int frameResource = archive.findPathResource("/kawano/base/blo/gbf_0.blo");
+    if (frameResource < 0 || !menulayout::read(archive.resource(frameResource), scannerFrameLayout, moneyError) ||
+        !scannerFrameGraphics.load(archive, scannerFrameLayout, moneyError))
+        throw std::runtime_error("Game Boy scanner frame: " + moneyError);
+    scannerFrameGraphics.textureOffset = images.size();
+    images.insert(images.end(), scannerFrameGraphics.textures.begin(), scannerFrameGraphics.textures.end());
     const auto panelPositions = read(executable, 0x804d0524, 10);
     for (unsigned i = 0; i < demoPanelPositions.size(); ++i)
         demoPanelPositions[i] = static_cast<std::int16_t>((panelPositions[i * 2] << 8) | panelPositions[i * 2 + 1]);
@@ -283,6 +302,17 @@ std::vector<startupscene::Picture> gameplay::Hud::pictures() const {
         result.push_back(picture(floors.at(selectedFloor), 537, 44, 1, false,
             {brightness, brightness, brightness, float(160 * fade / 255) / 255}));
     }
+    return result;
+}
+
+std::vector<startupscene::Picture> gameplay::Hud::scannerPictures(bool discovered) const {
+    auto result = scannerFrameGraphics.pictures(scannerFrameLayout);
+    auto layout = scannerLayout;
+    for (const auto tag : {"swin", "smes", "ster", "skey", "sque"})
+        if (auto* pane = layout.find(tag)) pane->visible = discovered &&
+            (std::string_view(tag) == "swin" || std::string_view(tag) == "smes" || std::string_view(tag) == "sque");
+    auto sight = scannerGraphics.pictures(layout);
+    result.insert(result.end(), sight.begin(), sight.end());
     return result;
 }
 

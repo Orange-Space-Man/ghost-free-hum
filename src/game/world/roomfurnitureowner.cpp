@@ -102,7 +102,7 @@ roomfurniture::Object roomfurniture::Owner::construct(const Placement& placement
         result.model = &resources.models().at(placement.model);
         result.matrices.resize(result.model->hierarchy.visits().size());
     }
-    if (result.behavior == 15 || result.behavior == 20 || result.behavior == 38) {
+    if (result.behavior == 15 || result.behavior == 20 || result.behavior == 38 || result.behavior == 43) {
         const auto name = std::string(field<std::string_view>(table, result.row, "dmd_name"));
         for (const auto* suffix : {"_0.anm", "_1.anm"}) {
             const auto found = std::find_if(resources.animations().begin(), resources.animations().end(),
@@ -190,7 +190,7 @@ void roomfurniture::Owner::update(const roomtraversal::State& visibility, unsign
             object.flags = visible ? object.flags | 1 : object.flags & ~1u;
             auto& state = states.at(object.row);
             const bool handled = behavior && behavior(object, state, visible);
-            if (!handled && (object.behavior == 3 || object.behavior == 14 || object.behavior == 38))
+            if (!handled && (object.behavior == 3 || object.behavior == 14 || object.behavior == 38 || object.behavior == 43))
                 throw std::logic_error("Parlor furniture requires its selected response services.");
             if (!handled && visible) {
                 const bool strikeResponse = object.behavior == 0 || object.behavior == 15 || object.behavior == 17 || object.behavior == 22;

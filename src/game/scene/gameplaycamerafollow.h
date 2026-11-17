@@ -9,6 +9,7 @@ namespace gameplaycamera {
     public:
         explicit Follow(const std::vector<std::uint8_t>& executable, unsigned map = 2);
         void update(CameraOwner& camera, const playeractor::View& player, unsigned room, unsigned playerIndex = 0);
+        void updateScanner(CameraOwner& camera, const playeractor::View& player) const;
         unsigned preset() const;
         static constexpr unsigned captureCallback = 0x80022bc4;
         void beginTarget(CameraOwner& camera) const;
@@ -37,6 +38,7 @@ namespace gameplaycamera {
         float nearThreshold, farThreshold, reactionHeight, reactionDepth;
         float quantization, inverseQuantization, smoothingScale, fieldOfView, coincidentOffset;
         float nearPlane, farPlane;
+        float scannerDirectionDistance, scannerFieldOfView, scannerNearPlane, scannerInvertedUp;
         float targetHeight, targetMinimumDepth, targetRate;
         float captureFarDistance, captureLookDistance, eyeHeight = 0, eyeDepth = 0;
         float corridorDepth = 0;

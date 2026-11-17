@@ -1252,7 +1252,7 @@ void gameplay::ManagerServices::updateFurniture(unsigned frame) {
             state->furnitureResponse.rotating(object, row, visible, vacuumActive, services);
             return true;
         }
-        if (object.behavior != 0 && object.behavior != 15 && object.behavior != 22) return false;
+        if (object.behavior != 0 && object.behavior != 15 && object.behavior != 22 && object.behavior != 43) return false;
         state->furnitureResponse.basic(object, row, visible, vacuumActive, static_cast<unsigned>(object.animations.size()), frame, services);
         return true;
     });

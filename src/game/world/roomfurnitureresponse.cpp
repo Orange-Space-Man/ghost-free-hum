@@ -233,14 +233,14 @@ void roomfurniture::Response::suction(Object& object, int strength, bool animate
 
 void roomfurniture::Response::basic(Object& object, RowState& row, bool visible, bool vacuumActive,
     unsigned animationKind, unsigned frame, const ResponseServices& services) const {
-    if (object.behavior != 0 && object.behavior != 15 && object.behavior != 22 && object.behavior != 38)
+    if (object.behavior != 0 && object.behavior != 15 && object.behavior != 22 && object.behavior != 38 && object.behavior != 43)
         throw std::runtime_error("Furniture requires its selected behavior handler.");
     object.flags = visible ? object.flags | 1 : object.flags & ~1u;
     if (!visible) {
         if (object.behavior != 22) object.collectionFlags &= ~2u;
         return;
     }
-    const bool animated = object.behavior == 15 || object.behavior == 38;
+    const bool animated = object.behavior == 15 || object.behavior == 38 || object.behavior == 43;
     const bool animate = animated && animationKind == 2;
     if (!animated) strike(object, row, false, false, services);
     auto point = object.position;

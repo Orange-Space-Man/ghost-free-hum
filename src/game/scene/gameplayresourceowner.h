@@ -20,6 +20,7 @@ namespace gameplay {
         ResourceOwner& operator=(const ResourceOwner&) = delete;
         ManagerServices& managers();
         const s3denvironment::Camera& camera() const;
+        const std::array<std::int32_t, 4>& cameraViewport() const;
         gameplaycamera::DrawState publishCamera();
         void updateCamera();
         void setCurrentRoomLight(bool enabled);

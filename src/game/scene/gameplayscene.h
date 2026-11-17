@@ -58,6 +58,8 @@ namespace gameplay {
         std::map<const doors::ModelResource*, modelrenderer::Batches> models;
         std::vector<actors::MoveActor*> actors;
         std::vector<s3dmodel::Model> actorModels;
+        std::vector<s3dmodel::Model> galleryPaintings;
+        std::vector<std::vector<s3dmodel::Batch>> galleryPaintingBatches;
         std::vector<actormodel::ResourceRef> actorModelResources;
         std::vector<std::size_t> textures;
         modelrenderer::PipelineState pipeline;
@@ -103,6 +105,9 @@ namespace gameplay {
         void drawWorld(bool reflection, const s3denvironment::Camera& camera);
         void refreshActorModels();
         void drawActors(unsigned stage, const s3denvironment::Camera& camera, unsigned visibilityBuffer);
+        void loadGalleryPaintings();
+        void drawGalleryPaintings(unsigned stage, const s3denvironment::Camera& camera);
+        void loadActorAndGalleryTextures();
         void drawModel(const doors::ModelResource& model, const std::function<const dooranimation::Matrix&(unsigned)>& matrix,
             unsigned pass, std::uint8_t opacity, unsigned room, const roomtraversal::Bounds& bounds,
             bool lowOpacity = false);
