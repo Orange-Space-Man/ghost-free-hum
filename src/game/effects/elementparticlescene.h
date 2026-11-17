@@ -9,6 +9,7 @@ namespace elements {
     public:
         explicit Scene(const std::vector<std::uint8_t>& executable);
         void updateProjectiles(const playeractor::View& player, std::uint32_t actorFlags);
+        void refreshForceRanges(particles::SceneContext& context) const;
         void update(const playeractor::View& player, std::uint32_t actorFlags,
             particles::SceneContext& context, const roomtraversal::State& visibility);
         Pool pool;

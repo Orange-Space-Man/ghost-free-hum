@@ -52,7 +52,7 @@ namespace vacuumcapture {
         std::function<unsigned(const actors::MoveActor&)> attachmentJoint;       // 800E9548
         std::function<int(unsigned)> typeGroup;                                  // 8006A3D8 + 0x14
         std::function<std::uint32_t(const actors::MoveActor&)> slotHandle;       // 80097FAC
-        std::function<void(const Vector&)> releaseTrail;                         // 8008907C
+        std::function<void(const Vector&, unsigned, float)> releaseTrail;                         // 8008907C
         std::function<bool()> doubledDamage;                                     // DAT_804D80C0
     };
 

@@ -25,7 +25,8 @@ namespace particles {
         std::vector<Billboard> prepareActorGlows(const actors::Registry& actors, const roomtraversal::State& visibility,
             const std::array<float, 12>& view, unsigned buffer) const;
         void initializeElements();
-        void initializeRunningDust(const mission::Resources& mission, const roomlocation::Rooms& rooms);
+        void initializeRunningDust(const mission::Resources& mission, const roomlocation::Rooms& rooms,
+            std::function<void(unsigned, unsigned)> capture);
         runningdust::Manager& runningDust();
         std::uint32_t& effectRandomState();
         void beamImpact(float speed, float radius, const std::array<float, 3>& position,
@@ -40,6 +41,7 @@ namespace particles {
         EffectFactory& effects();
 
     private:
+        std::array<float, 3> randomDirection();
         struct Binding;
         std::uint32_t& randomState;
         std::uint32_t particleRandomState = 0;
@@ -52,6 +54,9 @@ namespace particles {
         ArchiveResources& resources;
         std::unique_ptr<elements::Scene> elementalScene;
         std::unique_ptr<runningdust::Manager> dust;
+        runningdust::Interaction dustInteraction;
+        runningdust::ForceFrame dustForce;
+        float dustOutwardCosine = 0;
         std::array<std::unique_ptr<Batch>, 3> batches;
     };
 }

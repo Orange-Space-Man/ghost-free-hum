@@ -130,8 +130,7 @@ void elements::Scene::update(const playeractor::View& player, std::uint32_t acto
         if (emitter->particles.count) throw std::runtime_error("Active elemental collision and particle simulation require their gameplay dependencies.");
     }
     if (paused) return;
-    context.distance = context.suction.strength * contextScale;
-    context.field44 = context.control * contextScale;
+    refreshForceRanges(context);
     for (auto* emitter = pool.active.sentinel.next; emitter != &pool.active.sentinel;) {
         auto* next = emitter->next;
         control(*emitter, player, actorFlags, context, visibility);
@@ -141,4 +140,9 @@ void elements::Scene::update(const playeractor::View& player, std::uint32_t acto
         }
         emitter = next;
     }
+}
+
+void elements::Scene::refreshForceRanges(particles::SceneContext& context) const {
+    context.distance = context.suction.strength * contextScale;
+    context.field44 = context.control * contextScale;
 }

@@ -88,7 +88,7 @@ namespace {
         Vector origin{};
         float floor = 0, logarithmInput = 0, growthThreshold = 0, collisionRadius = 0;
         unsigned room = 0, level = 0;
-        bool visible = true;
+        bool visible = true, outward = false;
     };
 
     struct Region {
@@ -108,13 +108,22 @@ namespace {
 struct runningdust::Manager::State {
     State(const std::vector<std::uint8_t>& executable, const mission::Resources& mission,
         const roomlocation::Rooms& rooms, const roomtraversal::State& visibility, std::uint32_t& randomState) :
-        rooms(rooms), visibility(visibility), randomState(randomState) {
+        rooms(rooms), visibility(visibility), randomState(randomState), captureInteraction(executable) {
         std::string error;
         if (!trig.read(executable, error)) throw std::runtime_error(error);
         radiansPerDegree = read<float>(range(executable, degreesToRadiansAddress, 4), 0);
         impactSpeedScale = read<float>(range(executable, impactSpeedScaleAddress, 4), 0);
         releasedDecay = read<float>(range(executable, 0x804dc2e8, 4), 0);
         releasedMinimum = read<float>(range(executable, 0x804dc2ec, 4), 0);
+        captureDelay = range(executable, 0x804d5a0c, 1)[0];
+        captureMagnitude = read<float>(range(executable, 0x804dc2f4, 4), 0);
+        captureSpread = read<float>(range(executable, 0x804dc25c, 4), 0);
+        captureForce.mode = ForceMode::Outward;
+        captureForce.strength = read<float>(range(executable, 0x804dc328, 4), 0);
+        captureForce.radius = read<float>(range(executable, 0x804dc32c, 4), 0);
+        captureForce.cosine = read<float>(range(executable, 0x804dc2f0, 4), 0);
+        const auto axis = range(executable, 0x8020ccb8, 12);
+        for (unsigned i = 0; i < 3; ++i) captureForce.axis[i] = read<float>(axis, i * 4);
         const auto impact = range(executable, impactRadiusAddress, 8);
         impactRadius = read<float>(impact, 0);
         impactDensity = read<float>(impact, 4);
@@ -194,11 +203,20 @@ struct runningdust::Manager::State {
         return result;
     }
 
-    void emit(particles::SceneContext& context, unsigned modifier) {
+    bool emit(particles::SceneContext& context, unsigned modifier, bool primary) {
+        if (!context.field59) context.field5A = context.field5B = 0;
+        else if (++context.field5B > captureDelay) {
+            context.field5A = 1;
+            context.field5B = 0;
+        }
+        if (!context.actorPosition || (!(primary && context.field5A) && context.field48 <= 0)) return true;
         auto level = levels[context.room & 255];
-        if (!context.actorPosition || context.field48 <= 0 || !level) return;
+        if (context.field5A && level < 2) level = 2;
+        if (!level) return false;
         auto* emitter = takeLast(emitters.free);
-        if (!emitter) return;
+        if (!emitter) return true;
+        emitter->outward = context.field5A != 0;
+        if (emitter->outward) context.magnitude *= captureMagnitude;
         active.append(*emitter);
         level = static_cast<std::uint8_t>(std::min(5u, (unsigned(level) + modifier) & 255));
         const auto& p = parameters[level];
@@ -220,7 +238,9 @@ struct runningdust::Manager::State {
         const float depth = p.depth * (context.field5C ? 0.5f : 1.0f);
         const float stepX = width / float(count - 1), stepZ = depth / float(count - 1);
         const float radial = p.radialScale * context.magnitude;
-        const float upward = p.upwardBase + p.upwardScale * context.magnitude;
+        const float upward = emitter->outward ?
+            p.upwardBase + ((captureSpread * p.upwardScale) * context.magnitude) * random() :
+            p.upwardBase + p.upwardScale * context.magnitude;
         for (unsigned z = 0; z < count; ++z) for (unsigned x = 0; x < count; ++x) {
             Vector position = emitter->origin;
             position[0] += -0.5f * width + (0.5f * (float(x) * stepX)) * (1 + random());
@@ -243,6 +263,7 @@ struct runningdust::Manager::State {
             particle->rotation = 360 * random();
             particle->driftSign = 1 - 2 * random() < 0 ? -1.0f : 1.0f;
         }
+        return true;
     }
 
     void update(Emitter& emitter, Particle& particle, const particles::SceneContext& player) {
@@ -303,6 +324,10 @@ struct runningdust::Manager::State {
     float logQuadratic = 0, logCubic = 0, logTwo = 0, radiansPerDegree = 0;
     float impactSpeedScale = 0, impactRadius = 0, impactDensity = 0;
     float releasedDecay = 0, releasedMinimum = 0;
+    Interaction captureInteraction;
+    ForceFrame captureForce;
+    std::uint8_t captureDelay = 0;
+    float captureMagnitude = 0, captureSpread = 0;
     originalmath::FloatTrig trig;
     std::array<Vector, 4> corners{};
     std::array<std::array<float, 2>, 4> coordinates{};
@@ -322,7 +347,8 @@ bool runningdust::Manager::impact(float speed, float radius, const Vector& posit
     auto* emitter = takeLast(state->emitters.free);
     if (!emitter) return false;
     state->active.append(*emitter);
-    emitter->room = state->rooms.resolve(position);
+    emitter->outward = false;
+    emitter->room = player.room;
     emitter->floor = float(state->rooms.entries().at(emitter->room >> 24).bounds[1]);
     level &= 255;
     if (!level) return false;
@@ -381,7 +407,8 @@ bool runningdust::Manager::release(const std::array<float, 3>& position, unsigne
     auto* emitter = takeLast(state->emitters.free);
     if (!emitter) return false;
     state->active.append(*emitter);
-    emitter->room = state->rooms.resolve(position);
+    emitter->outward = false;
+    emitter->room = player.room;
     emitter->floor = float(state->rooms.entries().at(emitter->room >> 24).bounds[1]);
     emitter->context = &player;
     emitter->localParameters = state->parameters[1];
@@ -435,11 +462,13 @@ bool runningdust::Manager::remove(jmp::ToolDataRef& entry) {
     return true;
 }
 
-void runningdust::Manager::update(particles::SceneContexts& contexts, const ParticleInteraction& interaction) {
+void runningdust::Manager::update(particles::SceneContexts& contexts, const ParticleInteraction& interaction,
+    const std::function<Vector()>& direction) {
     if (!contexts.player.actorPosition) throw std::logic_error("Running dust requires the refreshed player context.");
     const auto modifier = state->regionLevel(*contexts.player.actorPosition);
-    state->emit(contexts.player, modifier);
-    if (state->levels[contexts.player.room & 255] || contexts.player.field48 <= 0) state->emit(contexts.secondary, modifier);
+    if (state->emit(contexts.player, modifier, true)) state->emit(contexts.secondary, modifier, false);
+    state->captureForce.origin = *contexts.player.actorPosition;
+    state->captureForce.randomDirection = direction;
     auto& active = state->active;
     for (auto* emitter = active.sentinel.next; emitter != &active.sentinel;) {
         auto* next = emitter->next;
@@ -456,9 +485,11 @@ void runningdust::Manager::update(particles::SceneContexts& contexts, const Part
                 const EmitterInteraction parameters{emitter->level,
                     static_cast<std::int16_t>(p.lifetime - p.captureDelay), p.releasedLifetime,
                     {p.pulseAmplitude, p.pulseStep, p.accelerationScale, p.velocityScale}};
-                if (!interaction && (particle->forced || particle->influenced))
+                if (!interaction && !emitter->outward && (particle->forced || particle->influenced))
                     throw std::logic_error("Influenced dust requires its retained interaction service.");
-                const auto result = interaction ? interaction(*particle, parameters) : ForceResult::Ordinary;
+                const auto result = emitter->outward ? state->captureInteraction.advance(state->captureForce,
+                    {0, parameters.level, parameters.captureLifetime, parameters.releasedLifetime, parameters.motion}, *particle) :
+                    interaction ? interaction(*particle, parameters) : ForceResult::Ordinary;
                 if (result == ForceResult::Removed) {
                     emitter->particles.remove(*particle);
                     state->particles.free.append(*particle);

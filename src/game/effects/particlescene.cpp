@@ -1,5 +1,7 @@
 #include "game/effects/particlescene.h"
 #include "game/actors/actorregistry.h"
+#include "resources/dolresources.h"
+#include <cstring>
 
 #include <stdexcept>
 
@@ -24,7 +26,13 @@ struct particles::Scene::Binding {
 
 particles::Scene::Scene(const std::vector<std::uint8_t>& executable, ArchiveResources& resources,
     std::uint32_t& randomState) : randomState(randomState), emitters(128, 1024, 1024),
-    factory(executable, resources, emitters), simulation(executable, particleRandomState), executable(executable), resources(resources) {
+    factory(executable, resources, emitters), simulation(executable, particleRandomState), executable(executable), resources(resources), dustInteraction(executable) {
+    std::vector<std::uint8_t> bytes;
+    std::string error;
+    if (!dolresources::read(executable, 0x804d5a10, 4, bytes, error)) throw std::runtime_error(error);
+    const std::uint32_t bits = (unsigned(bytes[0]) << 24) | (unsigned(bytes[1]) << 16) | (unsigned(bytes[2]) << 8) | bytes[3];
+    std::memcpy(&dustOutwardCosine, &bits, 4);
+
 }
 
 particles::Scene::~Scene() = default;
@@ -46,11 +54,33 @@ void particles::Scene::refresh(const SecondarySource* secondary) {
 
 void particles::Scene::update() {
     emitters.update(simulation);
-    if (dust) dust->update(shared);
+    if (dust) {
+        elementalScene->refreshForceRanges(shared.player);
+        const auto& context = shared.player;
+        dustForce.mode = runningdust::selectForce(false, false, binding->player.view.field8B4 != nullptr,
+            binding->player.view.field8A0);
+        dustForce.origin = *context.suction.position;
+        dustForce.axis = *context.suction.direction;
+        const bool suction = dustForce.mode == runningdust::ForceMode::Suction;
+        dustForce.strength = suction ? context.suction.strength : context.control;
+        dustForce.radius = suction ? context.distance : context.field44;
+        dustForce.cosine = suction ? context.field54 : dustOutwardCosine;
+        dust->update(shared, [this](auto& particle, const auto& emitter) {
+            return dustInteraction.advance(dustForce,
+                {emitter.retainedType, emitter.level, emitter.captureLifetime, emitter.releasedLifetime, emitter.motion}, particle);
+        }, [this] { return randomDirection(); });
+    }
 }
 
-void particles::Scene::initializeRunningDust(const mission::Resources& mission, const roomlocation::Rooms& rooms) {
+void particles::Scene::initializeRunningDust(const mission::Resources& mission, const roomlocation::Rooms& rooms,
+    std::function<void(unsigned, unsigned)> capture) {
     if (!binding || dust) throw std::logic_error("Running dust requires one initialized scene binding.");
+    dustForce.capture = std::move(capture);
+    dustForce.random = [this] {
+        randomState = randomState * 0x19660d + 0x3c6ef35f;
+        return randomState;
+    };
+    dustForce.randomDirection = [this] { return randomDirection(); };
     dust = std::make_unique<runningdust::Manager>(executable, mission, rooms, binding->visibility, randomState);
 }
 
@@ -64,15 +94,15 @@ std::uint32_t& particles::Scene::effectRandomState() { return particleRandomStat
 void particles::Scene::beamImpact(float speed, float radius, const std::array<float, 3>& position,
     const std::array<float, 3>& velocity, const std::array<float, 3>& normal, unsigned level) {
     if (!binding || !binding->refreshed || !dust) throw std::runtime_error("Beam impact requires the initialized particle scene.");
-    if (binding->player.state.flags792 & 8)
-        throw std::runtime_error("Beam impact dust requires the equipped-player dust force callbacks.");
-    dust->impact(speed, radius, position, velocity, normal, level, shared.player, [this] {
-        particleRandomState = particleRandomState * 0x5eedf715u + 0x1b0cb173u;
-        const auto first = binding->pose.horizontalDirection(static_cast<std::uint16_t>((particleRandomState & 4095) << 4));
-        particleRandomState = particleRandomState * 0x5eedf715u + 0x1b0cb173u;
-        const auto second = binding->pose.horizontalDirection(static_cast<std::uint16_t>((particleRandomState & 4095) << 4));
-        return std::array<float, 3>{first[0] * second[2], first[0] * second[0], first[2]};
-    });
+    dust->impact(speed, radius, position, velocity, normal, level, shared.player, [this] { return randomDirection(); });
+}
+
+std::array<float, 3> particles::Scene::randomDirection() {
+    particleRandomState = particleRandomState * 0x5eedf715u + 0x1b0cb173u;
+    const auto first = binding->pose.horizontalDirection(static_cast<std::uint16_t>((particleRandomState & 4095) << 4));
+    particleRandomState = particleRandomState * 0x5eedf715u + 0x1b0cb173u;
+    const auto second = binding->pose.horizontalDirection(static_cast<std::uint16_t>((particleRandomState & 4095) << 4));
+    return std::array<float, 3>{first[0] * second[2], first[0] * second[0], first[2]};
 }
 
 std::vector<particles::Billboard> particles::Scene::prepareGlows(GlowPool& glows, const std::array<float, 12>& view) {

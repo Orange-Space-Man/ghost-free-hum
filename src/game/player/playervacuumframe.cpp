@@ -304,6 +304,6 @@ void vacuumcapture::CaptureReaction::run(playeractor::Player& player, std::uint8
         return;
     }
     services.sound(0x1810, &player.position);
-    services.releaseTrail(components.weapon->first->position);
+    services.releaseTrail(components.weapon->first->position, 0x40, trailHeight_);
     services.rumble(0xb);
 }
