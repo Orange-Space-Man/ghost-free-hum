@@ -60,13 +60,15 @@ bool playerinteraction::FurnitureFrame::actor(playeractor::Player& player, Furni
         const auto& facing = player.state.direction;
         if (((direction[0] * facing[0] + direction[1] * facing[1]) + direction[2] * facing[2]) <= 0) continue;
         if (!actorcollision::intersect(direction, expanded, player.position, volume(target, services.collision), target.position)) continue;
-        react(player, 2);
-        player.playFeedback(3);
-        player.state.field1070 = 5;
-        player.state.field1074 = target.position;
-        player.state.field1074[1] = player.position[1];
-        player.state.field109C = turnBlend;
-        player.setVelocity({});
+        if (!npc) {
+            react(player, 2);
+            player.playFeedback(3);
+            player.state.field1070 = 5;
+            player.state.field1074 = target.position;
+            player.state.field1074[1] = player.position[1];
+            player.state.field109C = turnBlend;
+            player.setVelocity({});
+        }
         characterevent::Event event(actorEvent);
         slot.owner->event(event);
         return true;

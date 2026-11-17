@@ -501,15 +501,6 @@ void gameplay::Scene::draw(bool present) {
         picture.width = 640;
         picture.height = 480;
         std::vector<startupscene::Picture> pictures{picture};
-        if (const auto fade = resources.galleryRoomFade()) {
-            startupscene::Picture black;
-            black.texture = textures.at(0);
-            black.width = 640;
-            black.height = 480;
-            black.alpha = float(fade) / 255.0f;
-            black.black = black.white = {0, 0, 0, 1};
-            pictures.push_back(black);
-        }
         const auto* player = resources.managers().playerEvents().player(0);
         if (player && player->state.flags1140[2]) {
             const auto sight = resources.hud().scannerPictures(player->components->scanner->state[1] != 0);
@@ -1057,6 +1048,20 @@ std::string gameplay::Scene::debugInfo() {
 void gameplay::Scene::drawMoney() {
     auto& managers = resources.managers();
     effectLighting->prepare(effectMaterialState, view, managers.lights().lights(), trig);
+    auto moneyLighting = effectMaterialState;
+    if (managers.lights().lights().empty()) {
+        modellighting::State fallback;
+        modellighting::initialize(fallback, view, {}, false, {}, trig);
+        const auto& source = fallback.lights[0];
+        j3dmodel::MaterialLight light;
+        for (unsigned i = 0; i < light.color.size(); ++i)
+            light.color[i] = static_cast<std::uint8_t>(source.color[i]);
+        std::copy_n(source.position.begin(), 3, light.position.begin());
+        std::copy_n(source.direction.begin(), 3, light.direction.begin());
+        std::copy_n(source.angular.begin(), 3, light.attenuation.begin());
+        std::copy_n(source.distance.begin(), 3, light.attenuation.begin() + 3);
+        moneyLighting.light(0, light);
+    }
     const auto instances = managers.moneyModels();
     gamerenderer::bindSceneTarget(false);
     for (auto* instance : instances) {
@@ -1071,7 +1076,7 @@ void gameplay::Scene::drawMoney() {
             for (auto& packet : instance->materials) {
                 if (((packet.material->mode & 3) ? 0u : 1u) != pass) continue;
                 effectRenderers.at(instance->model.get()).draw(gamerenderer::modelContext(), *instance, packet,
-                    effectMaterialState, projection, instance->field8 & 12, pass + 3);
+                    moneyLighting, projection, instance->field8 & 12, pass + 3);
             }
 }
 

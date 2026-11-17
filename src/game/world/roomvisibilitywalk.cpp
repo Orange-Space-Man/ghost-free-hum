@@ -41,10 +41,6 @@ std::vector<roomtraversal::Submission> roomtraversal::Walk::stationary(unsigned 
     };
     if (transition && transition->mode == TransitionMode::RevealCurrent) {
         const auto previous = transition->previousRoom >> 24;
-        if (map == 6 && previous == 3) {
-            mark(room, 0, viewport);
-            return result;
-        }
         if (map != 6 && (rooms.at(previous).attributes & 1) && floorOpacity)
             throw std::runtime_error("Room transition requires the floor-overlap branch.");
         flags.at(previous) &= ~1u;
@@ -74,7 +70,11 @@ std::vector<roomtraversal::Submission> roomtraversal::Walk::stationary(unsigned 
         walk(neighbor, 0, viewport);
     }
     flags.at(room) &= ~1u;
-    if (transition && transition->mode == TransitionMode::HidePrevious && !(map == 6 && room == 3))
-        mark(transition->previousRoom >> 24, 0, viewport, transition->opacity);
+    if (transition && transition->mode == TransitionMode::HidePrevious) {
+        const auto previous = transition->previousRoom >> 24;
+        if (map == 6 && room == 3)
+            result.push_back({rooms.at(previous).id, static_cast<std::int8_t>(transition->opacity), viewport});
+        else mark(previous, 0, viewport, transition->opacity);
+    }
     return result;
 }

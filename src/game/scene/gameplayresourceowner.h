@@ -21,7 +21,6 @@ namespace gameplay {
         ManagerServices& managers();
         const s3denvironment::Camera& camera() const;
         const std::array<std::int32_t, 4>& cameraViewport() const;
-        std::uint8_t galleryRoomFade() const;
         gameplaycamera::DrawState publishCamera();
         void updateCamera();
         void setCurrentRoomLight(bool enabled);
