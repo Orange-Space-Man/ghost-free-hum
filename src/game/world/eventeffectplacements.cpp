@@ -2,13 +2,14 @@
 
 #include <stdexcept>
 
-particles::EventEffectPlacements::EventEffectPlacements(ArchiveResources& resources, EmitterPool& emitters) :
-    resources(resources), emitters(emitters) {}
+particles::EventEffectPlacements::EventEffectPlacements(ArchiveResources& resources, EmitterPool& emitters, TrainingFireworks& fireworks) :
+    fireworks(fireworks), resources(resources), emitters(emitters) {}
 
 bool particles::EventEffectPlacements::message(jmp::ToolDataRef& entry, const char* command) {
     std::string_view name;
     if (!entry.table || !entry.table->getValue(entry.row, "name", name))
         throw std::runtime_error("Original event effect placement requires its name field.");
+    if (fireworks.start(command)) return true;
     if (name != "effect") return false;
     if (std::string_view(command) != "ev_ent_kie")
         throw std::runtime_error("Event effect command requires its original resource and emitter bindings.");

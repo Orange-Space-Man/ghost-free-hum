@@ -143,7 +143,7 @@ void modeleffects::Pool::update(const roomlocation::Rooms& rooms, const roomtrav
             if (!owner->model) throw std::runtime_error("Original model-effect update has no model instance.");
             const auto& matrix = owner->model->matrix;
             const auto room = rooms.resolve({matrix[3], matrix[7], matrix[11]}, 0xffffffff);
-            const auto flags = visibility.record(room, 0).flags;
+            const auto flags = room == 0xffffffff ? 0 : visibility.record(room, 0).flags;
             visible = (flags & 1) && !(flags & 2);
         }
         advance(*owner, visible);
@@ -249,7 +249,7 @@ std::vector<j3dmodel::ModelInstance*> modeleffects::Pool::prepare(const roomloca
         if ((owner.flags & 5) != 5) continue;
         const auto& matrix = owner.model->matrix;
         const auto room = rooms.resolve({matrix[3], matrix[7], matrix[11]}, 0xffffffff);
-        if ((visibility.record(room, 0).flags & 3) != 1) continue;
+        if (room == 0xffffffff || (visibility.record(room, 0).flags & 3) != 1) continue;
         if (transform) transform->frame = float(owner.frame);
         for (unsigned group = 0; group < animations.size(); ++group)
             for (unsigned index = 0; index < animations[group].size(); ++index)

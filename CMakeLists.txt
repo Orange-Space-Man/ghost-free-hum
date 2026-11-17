@@ -159,6 +159,7 @@ add_library(Game STATIC
     src/game/effects/particlebillboards.cpp
     src/game/world/candleplacementmanager.cpp
     src/game/world/eventeffectplacements.cpp
+    src/game/effects/trainingfireworks.cpp
     src/game/effects/particleemitterstate.cpp
     src/game/effects/particleforces.cpp
     src/game/effects/particleglowpool.cpp

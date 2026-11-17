@@ -117,9 +117,7 @@ struct gameplay::ManagerServices::State : playerpresentation::Services {
         if (scene == 1 && !events->player(0)->view.field861) return;
         throw std::runtime_error("Collected key requires its original map scene admission.");
     }
-    // Vacuum capture (phases 1-3): sounds whose effects are not recovered yet (jaudio positional scope) are skipped.
     void vacuumSound(unsigned id, const std::array<float, 3>* position) {
-        if (!jaudio::PositionalPlayback::admitted(id)) return;
         if (position) audio->playback.play(id, *position);
         else audio->playback.playGlobal(id);
     }
@@ -460,7 +458,9 @@ struct gameplay::ManagerServices::State : playerpresentation::Services {
             [this](unsigned room) { return runtime->roomCleared(room); },
             [this](unsigned id, const auto& position) { audio->playback.play(id, position); });
         sender = std::make_unique<jmp::MessageSender>();
-        eventEffects = std::make_unique<particles::EventEffectPlacements>(commonResources, particles->pool());
+        fireworks = std::make_unique<particles::TrainingFireworks>(dependencies.executable, mapResources,
+            particles->pool(), [this](unsigned id) { audio->playback.playGlobal(id); });
+        eventEffects = std::make_unique<particles::EventEffectPlacements>(commonResources, particles->pool(), *fireworks);
         sender->addReceiver(enemies.get());
         sender->addReceiver(candles.get());
         sender->addReceiver(eventEffects.get());
@@ -505,6 +505,7 @@ struct gameplay::ManagerServices::State : playerpresentation::Services {
     std::unique_ptr<modeleffects::CobwebPlacements> webs;
     std::unique_ptr<particles::CandlePlacements> candles;
     std::unique_ptr<particles::EventEffectPlacements> eventEffects;
+    std::unique_ptr<particles::TrainingFireworks> fireworks;
     std::unique_ptr<jmp::EntryActivation> placement;
     std::vector<const jmp::ToolData*> placementTables;
     gamearchive::Resources commonResources, mapResources;
@@ -602,7 +603,7 @@ void gameplay::ManagerServices::State::buildVacuum() {
         [this](unsigned type) { return static_cast<int>(dependencies.creation.group(type)); },
         [this] { return players->frame(); }, [] { return false; },
         [this](unsigned id, const std::array<float, 3>& position) { vacuumSound(id, &position); },
-        [] {}, // 8018B4A4 life-drain sound sequence: not recovered
+        [this] { audio->playback.playCaptureDrain(); },
         [this](unsigned id, const std::array<float, 3>& position) { particles->effects().create(id, position, {0, 0, 0}); },
         [this](const std::array<float, 3>& position, unsigned frames) {
             players->state->start(position, captureLight[0], static_cast<std::uint16_t>(captureLight[1]),
@@ -649,7 +650,7 @@ vacuumcapture::Vacuum& gameplay::ManagerServices::State::vacuumFor(unsigned inde
         [this](unsigned type) { return static_cast<int>(dependencies.actors.parameters.parameters(type).entries().at(0).bits); },
         [this](unsigned room, unsigned buffer) { return runtime->roomVisible(room, buffer); },
         [this](unsigned id, const std::array<float, 3>* position) { vacuumSound(id, position); },
-        [](float, const std::array<float, 3>&, unsigned) {}, // 8018ACF8 vacuum loop sound: not recovered
+        [this](float strength, const std::array<float, 3>& position, unsigned mode) { audio->playback.requestVacuum(strength, position, mode); },
         [this](actors::MoveActor& actor, characterevent::Event& event) {
             if (auto* owner = enemies->activeOwner(actor)) owner->event(event);
         },
@@ -874,7 +875,7 @@ void gameplay::ManagerServices::updatePlayerMain(unsigned index, const PlayerMai
         auto& vacuum = state->vacuumFor(index, target);
         vacuumcapture::PlayerFrameServices vacuumServices{vacuum, state->playerGlobals.vacuum,
             [&target](unsigned pattern) { target.playFeedback(pattern); },
-            [](float, const std::array<float, 3>&, unsigned) {}, // 8018ACF8 blocked-vacuum loop sound: not recovered
+            [this](float strength, const std::array<float, 3>& position, unsigned mode) { state->audio->playback.requestVacuum(strength, position, mode); },
             [this](const std::array<float, 3>& position, const std::array<std::uint8_t, 4>& color, int range, int brightness) {
                 modellighting::RoomLight light;
                 light.position = position;
@@ -965,6 +966,7 @@ unsigned gameplay::ManagerServices::candleCount() const { return state->candles-
 
 void gameplay::ManagerServices::updatePlacement(std::int32_t elapsedSeconds, bool force) {
     if (state->placementFailed) throw std::runtime_error("Original placement activation failed; reload the scene before retrying.");
+    state->fireworks->update(state->dependencies.entry.map);
     state->missionEvents->updateAppearance(elapsedSeconds);
     bool roomChanged = false;
     for (unsigned i = 0; i < state->dependencies.playerCount; ++i)

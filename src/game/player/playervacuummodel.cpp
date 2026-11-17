@@ -130,6 +130,8 @@ void playermodels::VacuumModel::prepare(unsigned stage, const j3dmodel::Matrix& 
         return;
     }
     if (stage != 0) return;
+    textureAnimation->frame = fieldBC;
+    colorAnimation->frame = (50.0f * static_cast<float>(parameters.field64)) / 255.0f;
     const auto& geometry = data->geometry;
     std::vector<int> pending;
     if (geometry.hierarchy.root >= 0) pending.push_back(geometry.hierarchy.root);
@@ -144,6 +146,7 @@ void playermodels::VacuumModel::prepare(unsigned stage, const j3dmodel::Matrix& 
         for (int index = links.material; index >= 0; index = geometry.hierarchy.materials.at(index).next) {
             auto& packet = instance->materials.at(index);
             auto& material = *packet.material;
+            packet.shapes = &instance->shapes.at(material.shape);
             j3dmodel::animateMaterialColors(material);
             j3dmodel::animateTextureMatrices(material);
             j3dmodel::calculateMaterial(material, matrix, view, instance->field8 & 12, tables);

@@ -231,7 +231,7 @@ namespace {
                 }
             }
             auto& pixel = *result.pixel;
-            if (flags & 0x10000000) {
+            if (!(flags & 0x10000000)) {
                 if (result.mode & 1) pixel.kind = j3dmodel::MaterialPixelKind::Opaque;
                 else if (result.mode & 2) pixel.kind = j3dmodel::MaterialPixelKind::TextureEdge;
                 else if (result.mode & 4) pixel.kind = j3dmodel::MaterialPixelKind::Translucent;

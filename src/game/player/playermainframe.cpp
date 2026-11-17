@@ -35,10 +35,9 @@ void playeractor::MainFrame::run(Player& player, MainFrameServices& services) co
     services.furniture();
     equipment.run(player, services.sound);
     bool vacuumUpdated = false;
-    if (state.field1180 == 1) {
-        if (!services.vacuum) throw std::runtime_error("Active vacuum requires its original capture update.");
-        vacuumUpdated = services.vacuum(player);
-    }
+    if (services.vacuum) vacuumUpdated = services.vacuum(player);
+    else if (state.field1180 == 1)
+        throw std::runtime_error("Active vacuum requires its original capture update.");
     energy.run(player, services.environment.catalog, vacuumUpdated);
     if (state.field1180 == 6 && actions.query74968()) {
         if (static_cast<std::int32_t>(state.fields11D8[0]) > 0) {

@@ -13,7 +13,7 @@
 #include <stdexcept>
 
 namespace {
-    constexpr std::array<unsigned, 170> soundIds{0x107f, 0x3801, 0x3802, 0x1805, 0x80f, 0x288c, 0x84f, 0x81e, 0x1829, 0x839, 0x83d, 0x1809, 0x180a, 0x180b, 0x181e, 0x280f, 0x2810, 0x282b,
+    constexpr std::array<unsigned, 187> soundIds{0x107f, 0x3801, 0x3802, 0x1805, 0x80f, 0x288c, 0x84f, 0x81e, 0x1829, 0x839, 0x83d, 0x1809, 0x180a, 0x180b, 0x181e, 0x280f, 0x2810, 0x282b,
         0x186e, 0x1841, 0x810, 0x811, 0x850, 0x4808, 0x4828, 0x828, 0x3b, 0x43, 0x801, 2, 0x805, 9,
         0x288a, 0x1028, 0x837, 0x84c, 0x813, 0x2814, 0x2805, 0x281c,
         0x1842, 0x182c, 0x1820, 0x1823, 0x1877, 0x1868, 0x4820, 0x4822, 0x1815, 0x1816, 0x2828, 0x288e, 0x826, 0x2800, 0x827,
@@ -21,7 +21,7 @@ namespace {
         0x489b, 0x182b, 0x489a, 0x482d, 0x804, 0x4825, 0x4891, 0x4818, 0x4819, 0x282c, 0x186a, 0x481a, 0x4898, 0x489d, 0x4811, 0x2823, 0x4894, 0x480b, 0x287d, 0x2850, 0x2851, 0x2852, 0x2853, 0x2854, 0x183e,
         0x28f0, 0x28f1, 0x28fa, 0x2921, 0x2924, 0x293b, 0x294a, 0x2965, 0x2824, 0x1819, 0x1875, 0x1876, 0x1898, 0x1879, 0x18cb, 0x18b0, 0x18c8, 0x295f, 0x2913, 0x294e, 0x294f, 0x2966, 0x2955, 0x2953, 0x2914, 0x2918, 0x2948, 0x2962, 0x803, 0x286a, 0x81d, 0x2822, 0x4823, 0x4802, 0x481d, 0x408f, 0x481e, 0x4892, 0x4895,
         0x28b0, 0x28d0, 0x28f8, 0x2900, 0x2901, 0x290c, 0x2919, 0x291a, 0x291b, 0x2922, 0x2929, 0x292e, 0x292f, 0x2930, 0x2931, 0x2932, 0x2933, 0x2940, 0x2941, 0x2942, 0x2943, 0x2949, 0x294b, 0x294c, 0x2957, 0x2963, 0x2967,
-        0x1039, 0x22, 0x80b, 0x1080, 0x1081, 0x1882, 0x1883, 0x282e, 0x489e};
+        0x1039, 0x22, 0x80b, 0x1080, 0x1081, 0x1882, 0x1883, 0x282e, 0x489e, 0x2818, 0x287f, 0x1895, 0xe, 0x84a, 0x84b, 0x381b, 0x1033, 0x1035, 0x3a, 0x2809, 0x2821, 0x2877, 0x1810, 0x281b, 0x1800, 0x281d};
     constexpr unsigned effectRecordCountAddress = 0x804d78b8;
     constexpr unsigned effectParameterCountAddress = 0x804d78d4;
     constexpr unsigned maximumDistanceAddress = 0x804dd170;
@@ -98,6 +98,15 @@ struct jaudio::PositionalPlayback::Runtime : EffectAdmissionServices, EffectCate
     };
     std::array<std::unique_ptr<Category>, 5> categories;
     bool started = false;
+    PositionalSound* vacuumSound = nullptr;
+    const std::array<float, 3>* vacuumPosition = nullptr;
+    float vacuumPitch = 0.5f;
+    unsigned vacuumRequests = 0, vacuumMode = 0, vacuumFade = 0, vacuumAccent = 0;
+    bool vacuumRunning = false, vacuumEngaged = false;
+    std::array<float, 13> drainPitch{};
+    unsigned drainStep = 0;
+    std::uint64_t lastDrain = 0;
+    PositionalSound* drainSound = nullptr;
 
     static unsigned count(const std::vector<std::uint8_t>& executable, unsigned address) {
         std::vector<std::uint8_t> bytes;
@@ -108,6 +117,7 @@ struct jaudio::PositionalPlayback::Runtime : EffectAdmissionServices, EffectCate
 
     Runtime(PositionalPlayback& owner, const std::vector<std::uint8_t>& executable, gameassets::Package& package, const Resources& resources) :
         owner(owner), parameters(count(executable, effectParameterCountAddress)), parameterFlags(resources.soundParameterFlags[0]) {
+        for (unsigned i = 0; i < drainPitch.size(); ++i) drainPitch[i] = scalar(executable, 0x80217488 + i * 4);
         unsigned firstChannel = 0;
         for (unsigned index = 0; index < categories.size(); ++index) {
             const auto& limits = resources.effectCategories.at(0)[index];
@@ -332,6 +342,26 @@ void jaudio::PositionalPlayback::playThunder() {
     }
 }
 
+void jaudio::PositionalPlayback::requestVacuum(float strength, const std::array<float, 3>& position, unsigned mode) {
+    std::lock_guard<std::recursive_mutex> lock(owners.mutex);
+    runtime->vacuumPosition = &position;
+    runtime->vacuumPitch = 0.5f + 0.5f * strength;
+    runtime->vacuumMode = mode;
+    runtime->vacuumFade = 0;
+    runtime->vacuumRunning = true;
+    ++runtime->vacuumRequests;
+}
+
+void jaudio::PositionalPlayback::playCaptureDrain() {
+    std::lock_guard<std::recursive_mutex> lock(owners.mutex);
+    const auto tick = runtime->master.ticks();
+    if (tick - runtime->lastDrain > 6) runtime->drainStep = 0;
+    if (auto* sound = playGlobal(0x381b, &runtime->drainSound))
+        owned(*sound).record->parameters->controls.set(EffectControl::pitch, 0, runtime->drainPitch[runtime->drainStep], 0);
+    runtime->drainStep = std::min(runtime->drainStep + 1, 12u);
+    runtime->lastDrain = tick;
+}
+
 void jaudio::PositionalPlayback::playDeathEffects(const std::array<float, 3>& position) {
     std::lock_guard<std::recursive_mutex> lock(owners.mutex);
     play(0x280f, position);
@@ -451,6 +481,47 @@ void jaudio::PositionalPlayback::update(const std::array<float, 12>& matrix) {
     std::lock_guard<std::recursive_mutex> lock(owners.mutex);
     if (music) music->updateSequenceControls();
     listener = matrix;
+    if (runtime->vacuumRunning) {
+        auto& loop = *runtime;
+        const auto set = [&](EffectControl control, unsigned slot, float value, unsigned frames) {
+            if (loop.vacuumSound) owned(*loop.vacuumSound).record->parameters->controls.set(control, slot, value, frames);
+        };
+        if (loop.vacuumMode == 8) {
+            play(0x22, *loop.vacuumPosition);
+            loop.vacuumMode = 0;
+            loop.vacuumEngaged = false;
+        } else {
+            if (loop.vacuumAccent && !--loop.vacuumAccent) set(EffectControl::pitch, 3, 1, 10);
+            if (!loop.vacuumFade) {
+                if (!loop.vacuumRequests) {
+                    loop.vacuumEngaged = false;
+                    loop.vacuumFade = 30;
+                    set(EffectControl::pitch, 0, 0.4f, 30);
+                    set(EffectControl::volume, 0, 0, 30);
+                }
+            } else if (!--loop.vacuumFade || !loop.vacuumSound) loop.vacuumRunning = false;
+            if (loop.vacuumRunning) {
+                play(0xe, *loop.vacuumPosition, &loop.vacuumSound);
+                if (loop.vacuumMode) {
+                    if (!loop.vacuumEngaged) {
+                        set(EffectControl::pitch, 0, 2, 20);
+                        set(EffectControl::volume, 0, 1, 10);
+                        loop.vacuumEngaged = true;
+                    }
+                    if (loop.vacuumMode & 6) {
+                        const bool held = (loop.vacuumMode & 4) != 0;
+                        play(held ? 0x84b : 0x84a, *loop.vacuumPosition);
+                        loop.vacuumAccent = 20;
+                        set(EffectControl::pitch, 3, held ? 1.5f : 1.2f, 5);
+                    }
+                    loop.vacuumMode = 0;
+                }
+                set(EffectControl::pitch, 5, loop.vacuumPitch, 3);
+            }
+        }
+        loop.vacuumRequests = 0;
+    }
+
     owners.update();
     for (auto& handle : handles) if (handle->record) handle->record->position = handle->position;
     for (auto& category : runtime->categories) {
@@ -488,6 +559,9 @@ void jaudio::PositionalPlayback::stop() {
     for (auto& handle : handles) handle->stop(0);
     runtime->master.stop();
     runtime->started = false;
+    runtime->vacuumRunning = runtime->vacuumEngaged = false;
+    runtime->vacuumRequests = runtime->vacuumMode = runtime->vacuumFade = runtime->vacuumAccent = 0;
+    runtime->vacuumPosition = nullptr;
 }
 
 bool jaudio::PositionalPlayback::finished() const {
