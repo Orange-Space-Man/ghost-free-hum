@@ -8,6 +8,7 @@ namespace scenetransition {
         std::int32_t destination = -1;
         std::int32_t kind = 2;
         std::int32_t duration = 30;
+        bool opening = false;
     };
 
     class ParlorWipe {

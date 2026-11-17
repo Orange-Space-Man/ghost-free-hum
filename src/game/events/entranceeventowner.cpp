@@ -86,7 +86,7 @@ void gameevent::EntranceOwner::update(unsigned elapsedSeconds, std::uint32_t fra
         for (const auto& condition : managers.missionEvents().conditions()) {
             const auto event = static_cast<unsigned>(condition.eventNumber);
             if ((event == entranceEvent || event == firstKeyEvent || (entry.map == 2 && event == 1) ||
-                (entry.map == 1 && event == 8 && !flag(7) && !flag(73)) ||
+                (entry.map == 1 && event == 8) ||
                 (entry.map == 3 && (event == 9 || event == 10))) && eligible(event, elapsedSeconds)) {
                 currentEvent = event;
                 break;
@@ -305,9 +305,16 @@ void gameevent::EntranceOwner::finish() { managers.playerEvents().player(0)->fla
 const scenetransition::Request& gameevent::EntranceOwner::transition() const { return requestedTransition; }
 void gameevent::EntranceOwner::wipeKind(std::int32_t kind) { requestedTransition.kind = kind; }
 void gameevent::EntranceOwner::wipeTime(std::int32_t duration) { requestedTransition.duration = duration; }
+void gameevent::EntranceOwner::mansionMode(bool hidden) { entry.mansionMode = hidden ? 1 : 0; }
+
+void gameevent::EntranceOwner::opening() {
+    requestedTransition.destination = 2;
+    requestedTransition.opening = true;
+}
+
 void gameevent::EntranceOwner::warp(std::int32_t destination) {
     const bool parlor = entry.map == 2 && destination == 1 && requestedTransition.kind == 1 && requestedTransition.duration == 126;
-    const bool training = entry.map == 1 && destination == 3 && requestedTransition.kind == 2 && requestedTransition.duration == 30;
+    const bool training = entry.map == 1 && (destination == 3 || destination == 6) && requestedTransition.kind == 2 && requestedTransition.duration == 30;
     const bool trainingExit = entry.map == 3 && (destination == 1 || destination == 6) && requestedTransition.kind == 2 && requestedTransition.duration == 60;
     if (!parlor && !training && !trainingExit)
         throw std::runtime_error("Scene transition requires its original destination and wipe lifecycle.");
@@ -363,41 +370,12 @@ void gameevent::EntranceOwner::setActorLife(std::string_view name, unsigned valu
     if (auto* actor = find(name)) actor->life = static_cast<std::uint16_t>(value);
 }
 
-// CHOICE (80064978/80043F14, 800441C4, 80043F88). Provisional presentation: the original choice windows are not traced, so the
-// options are listed in message window 2 with a cursor; A selects (sound 0x380B), up/down moves.
 void gameevent::EntranceOwner::beginChoice(const std::vector<unsigned>& lines) {
     if (!messageText) throw std::runtime_error("Event choices require their original message resource.");
-    choiceLines = lines;
-    choiceCursor = 0;
-    choiceActive = true;
-    showChoice();
+    std::vector<std::string> choices;
+    for (auto line : lines) choices.push_back(messageText->line(line));
+    messages.beginChoice(std::move(choices));
 }
 
-void gameevent::EntranceOwner::showChoice() {
-    std::string text;
-    for (unsigned i = 0; i < choiceLines.size(); ++i) {
-        text += i == choiceCursor ? "> " : "  ";
-        text += messageText->line(choiceLines[i]);
-        if (i + 1 < choiceLines.size()) text += "\n";
-    }
-    messages.speak(2, text);
-}
-
-int gameevent::EntranceOwner::choiceResult() {
-    if (!choiceActive) return -1;
-    const auto pressed = managers.controller().pressed;
-    const auto previous = choiceCursor;
-    if ((pressed & 0x8) && choiceCursor > 0) --choiceCursor;
-    if ((pressed & 0x4) && choiceCursor + 1 < choiceLines.size()) ++choiceCursor;
-    if (previous != choiceCursor) showChoice();
-    if (pressed & 0x300) {
-        managers.playback()->playGlobal(0x380b);
-        return static_cast<int>(choiceCursor);
-    }
-    return -1;
-}
-
-void gameevent::EntranceOwner::endChoice() {
-    choiceActive = false;
-    messages.close(2);
-}
+int gameevent::EntranceOwner::choiceResult() { return messages.choiceInput(managers.controller().pressed); }
+void gameevent::EntranceOwner::endChoice() { messages.endChoice(); }

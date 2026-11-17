@@ -17,6 +17,16 @@ namespace gameevent {
             std::int16_t first = 0, revealed = 0, scroll = 0, timer = 0, width = 0, height = 0;
             int x = 28, y = 21;
         };
+        struct Choices {
+            Phase phase = Phase::Hidden;
+            std::vector<std::string> lines;
+            unsigned cursor = 0, age = 0;
+            int timer = 0;
+        };
+        void beginChoice(std::vector<std::string> lines);
+        int choiceInput(std::uint32_t pressed);
+        void endChoice();
+        const Choices& choices() const;
         struct Services {
             std::function<std::array<float, 2>(const std::string&)> measure;
             std::function<void(unsigned)> sound;
@@ -40,6 +50,7 @@ namespace gameevent {
         static std::int16_t nextCharacter(const std::string& text, std::int16_t cursor);
         static void applyColor(Window& window);
         void measure(Window& window);
+        Choices choice;
         Services services;
         std::array<Window, 4> windows;
         std::int16_t openingFrames = 0, closingFrames = 0, scrollStep = 0, widthPadding = 0;

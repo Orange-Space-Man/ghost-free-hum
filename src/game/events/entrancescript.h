@@ -55,6 +55,8 @@ namespace gameevent {
         virtual void wipeKind(std::int32_t kind);
         virtual void wipeTime(std::int32_t ticks);
         virtual void warp(std::int32_t destination);
+        virtual void mansionMode(bool hidden);
+        virtual void opening();
         virtual bool acknowledgeMessage();
         virtual void controllerInstructions();
         virtual void playerLight(bool enabled);

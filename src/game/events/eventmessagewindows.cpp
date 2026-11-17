@@ -93,6 +93,7 @@ void gameevent::MessageWindows::close(unsigned index) {
 }
 
 void gameevent::MessageWindows::closeAll() {
+    endChoice();
     for (unsigned i = 0; i < windows.size(); ++i) close(i);
 }
 
@@ -158,6 +159,12 @@ bool gameevent::MessageWindows::acknowledgeInput(std::uint32_t pressed) {
 }
 
 void gameevent::MessageWindows::update(int eventMode) {
+    if (choice.phase == Phase::Opening && --choice.timer < 1) {
+        choice.phase = Phase::Complete;
+        choice.age = 0;
+    } else if (choice.phase == Phase::Complete) ++choice.age;
+    else if (choice.phase == Phase::Closing && ++choice.timer > closingFrames) choice = {};
+
     for (auto& entry : windows) {
         switch (entry.phase) {
         case Phase::Opening:
@@ -208,6 +215,34 @@ void gameevent::MessageWindows::update(int eventMode) {
 const gameevent::MessageWindows::Window& gameevent::MessageWindows::window(unsigned index) const { return windows.at(index); }
 bool gameevent::MessageWindows::speaking() const { return talking; }
 bool gameevent::MessageWindows::visible() const {
-    return std::any_of(windows.begin(), windows.end(), [](const Window& entry) { return entry.phase != Phase::Hidden; });
+    return choice.phase != Phase::Hidden || std::any_of(windows.begin(), windows.end(), [](const Window& entry) { return entry.phase != Phase::Hidden; });
 }
 unsigned gameevent::MessageWindows::activeWindow() const { return active; }
+
+void gameevent::MessageWindows::beginChoice(std::vector<std::string> lines) {
+    if (lines.empty() || lines.size() > 4) throw std::runtime_error("Original choice list requires one to four entries.");
+    choice = {};
+    choice.lines = std::move(lines);
+    choice.phase = Phase::Opening;
+    choice.timer = openingFrames;
+}
+
+int gameevent::MessageWindows::choiceInput(std::uint32_t pressed) {
+    if (choice.lines.empty() || choice.phase == Phase::Closing) return -1;
+    const auto count = static_cast<unsigned>(choice.lines.size());
+    if (pressed & 0x08000008) { choice.cursor = (choice.cursor + count - 1) % count; services.sound(0x380c); }
+    if (pressed & 0x04000004) { choice.cursor = (choice.cursor + 1) % count; services.sound(0x380c); }
+    if (!(pressed & 0x100) || choice.phase != Phase::Complete || choice.age <= 10) return -1;
+    services.sound(0x380d);
+    const int selected = static_cast<int>(choice.cursor);
+    endChoice();
+    return selected;
+}
+
+void gameevent::MessageWindows::endChoice() {
+    if (choice.phase == Phase::Hidden || choice.phase == Phase::Closing) return;
+    choice.phase = Phase::Closing;
+    choice.timer = 0;
+}
+
+const gameevent::MessageWindows::Choices& gameevent::MessageWindows::choices() const { return choice; }

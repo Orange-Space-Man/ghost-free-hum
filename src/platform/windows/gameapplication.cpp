@@ -50,7 +50,6 @@ void gameapplication::Application::enterOpening(unsigned destination, unsigned c
     openingFade.reset();
     boundaryReported = false;
     if (destination == 2) {
-        gameplaySaves = &saves;
         gameplayPreparation = {};
         gameplayScene.reset();
         Microsoft::WRL::ComPtr<ID3D11Device> device = gamerenderer::modelDevice();
@@ -245,9 +244,20 @@ void gameapplication::Application::advanceGameplay() {
 
 void gameapplication::Application::beginTransition() {
     const auto request = gameplayScene->transition();
+    if (gameEntry.map == 1 && request.opening && request.destination == 2) {
+        startupaudio::bindPositionalPlayback({});
+        gameplayScene.reset();
+        gameEntry.map = 2;
+        gameEntry.cutscene = 0;
+        gameplayActive = false;
+        enterOpening(2, 0);
+        resetHostClock = true;
+        return;
+    }
     const bool parlor = gameEntry.map == 2 && request.destination == 1 && request.kind == 1 && request.duration == 126;
     const bool training = gameEntry.map == 1 && request.destination == 3 && request.kind == 2 && request.duration == 30;
-    if (!parlor && !training)
+    const bool trainingReturn = gameEntry.map == 3 && request.destination == 1 && request.kind == 2 && request.duration == 60;
+    if (!parlor && !training && !trainingReturn)
         throw std::runtime_error("Unsupported gameplay scene transition.");
     transitionDestination = request.destination;
     transitionFrame.load(gamerenderer::modelDevice());

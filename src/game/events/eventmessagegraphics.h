@@ -18,7 +18,11 @@ namespace gameevent {
         std::vector<roommaterials::Texture> images;
         std::array<std::array<float, 4>, 21> colors;
         std::array<std::size_t, 19> portraits{};
-        std::size_t upper = 0, lower = 0, fontOffset = 0;
+        std::size_t upper = 0, lower = 0, fontOffset = 0, choicePanel = 0, hand = 0;
+        std::array<int, 4> choiceOrigin{};
+        int choiceTextX = 0, choiceTextY = 0, choicePadding = 0;
+        float textScale = 0;
+        void choicePictures(const MessageWindows& windows, std::vector<startupscene::Picture>& pictures) const;
         int portraitX = 0, portraitY = 0, textX = 0, textY = 0;
         int openingFrames = 0, closingFrames = 0;
         unsigned fontSize = 0;

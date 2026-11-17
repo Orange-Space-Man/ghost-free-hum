@@ -29,6 +29,8 @@ void gameevent::EntranceServices::closeWindow(unsigned) { unsupportedService(); 
 void gameevent::EntranceServices::wipeKind(std::int32_t) { unsupportedService(); }
 void gameevent::EntranceServices::wipeTime(std::int32_t) { unsupportedService(); }
 void gameevent::EntranceServices::warp(std::int32_t) { unsupportedService(); }
+void gameevent::EntranceServices::mansionMode(bool) { unsupportedService(); }
+void gameevent::EntranceServices::opening() { unsupportedService(); }
 bool gameevent::EntranceServices::acknowledgeMessage() { unsupportedService(); return false; }
 void gameevent::EntranceServices::playerLight(bool) { unsupportedService(); }
 void gameevent::EntranceServices::playerDemo(std::string_view) { unsupportedService(); }
@@ -218,6 +220,9 @@ bool gameevent::EntranceScript::update(EntranceServices& services) {
         else if (command == "WIPEKIND") services.wipeKind(integer());
         else if (command == "WIPETIME") services.wipeTime(integer());
         else if (command == "WARP") services.warp(integer());
+        else if (command == "OMOTELUIGI") services.mansionMode(false);
+        else if (command == "URALUIGI") services.mansionMode(true);
+        else if (command == "OPENING") services.opening();
         else if (command == "WINDOW") messageWindow = static_cast<std::uint8_t>(number());
         else if (command == "COLOR") services.messageColor(messageWindow, integer());
         else if (command == "CLOSEWINDOW") services.closeWindow(number());

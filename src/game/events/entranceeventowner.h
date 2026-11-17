@@ -38,6 +38,8 @@ namespace gameevent {
         void wipeKind(std::int32_t kind) override;
         void wipeTime(std::int32_t duration) override;
         void warp(std::int32_t destination) override;
+        void mansionMode(bool hidden) override;
+        void opening() override;
         bool acknowledgeMessage() override;
         void cameraTarget(std::string_view actor, std::int32_t height) override;
         scenetransition::Request requestedTransition;
@@ -83,7 +85,6 @@ namespace gameevent {
         void beginChoice(const std::vector<unsigned>& lines) override;
         int choiceResult() override;
         void endChoice() override;
-        void showChoice();
         std::vector<std::uint8_t> resource(std::string_view name) const;
         bool eligible(unsigned event, unsigned elapsedSeconds) const;
         gameassets::Package& package;
@@ -97,9 +98,6 @@ namespace gameevent {
         gameplaycamera::Follow& follow;
         std::function<void(std::string_view)> requestDemo;
         std::function<std::uint32_t()> eventRandom;
-        std::vector<unsigned> choiceLines;
-        unsigned choiceCursor = 0;
-        bool choiceActive = false;
         bool targetCameraActive = false;
         std::array<float, 3> cameraSubject{};
         std::unique_ptr<MessageText> messageText;
