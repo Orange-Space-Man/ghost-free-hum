@@ -44,6 +44,10 @@ void gameevent::EntranceServices::setActorLife(std::string_view, unsigned) { uns
 void gameevent::EntranceServices::beginChoice(const std::vector<unsigned>&) { unsupportedService(); }
 int gameevent::EntranceServices::choiceResult() { unsupportedService(); return -1; }
 void gameevent::EntranceServices::endChoice() { unsupportedService(); }
+unsigned gameevent::EntranceServices::count(unsigned) const { unsupportedService(); return 0; }
+void gameevent::EntranceServices::clearCount() { unsupportedService(); }
+void gameevent::EntranceServices::startAll() { unsupportedService(); }
+void gameevent::EntranceServices::timeActive() { unsupportedService(); }
 
 gameevent::EntranceScript::EntranceScript(std::string source) : source(std::move(source)) {}
 
@@ -147,6 +151,13 @@ bool gameevent::EntranceScript::update(EntranceServices& services) {
             const auto enough = token('"', '"');
             const auto below = token('"', '"');
             skipToCase(count >= threshold ? enough : below);
+        } else if (command == "COUNTJMP2") {
+            const auto index = number();
+            std::vector<std::string_view> labels;
+            while (cursor < source.size() && source[cursor] == '"') labels.push_back(token('"', '"'));
+            const auto selected = services.count(index);
+            if (selected >= labels.size()) throw std::out_of_range("Event count exceeds its original case list.");
+            skipToCase(labels[selected]);
         } else if (command == "CHECKFLAG") {
             const auto index = number();
             const auto on = token('"', '"');
@@ -182,6 +193,9 @@ bool gameevent::EntranceScript::update(EntranceServices& services) {
         }
         else if (command == "CASE" || command == "LISTEND") {}
         else if (command == "MENUON") services.menu(true);
+        else if (command == "CLEARCOUNT") services.clearCount();
+        else if (command == "ALLSTART") services.startAll();
+        else if (command == "TIMEACTIVE") services.timeActive();
         else if (command == "LUIGISTOP2") services.stopPlayerMotion();
         else if (command == "LUIGISTOP3") services.stopPlayer();
         else if (command == "LUIGISTOP") services.stopActor();

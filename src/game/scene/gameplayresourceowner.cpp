@@ -122,6 +122,8 @@ struct gameplay::ResourceOwner::State {
         if (entry.map == 3) managers->music().requestTraining(1);
         if (entry.map == 6) managers->music().requestSequence(0x8000000f, 1);
         entrance = std::make_unique<gameevent::EntranceOwner>(package, types, entry, *rooms, *managers, owner, executable, *messages, *cameraFollow);
+        managers->bindScannerMessage([this](unsigned count) { entrance->startFurnitureMessage(count); });
+        if (entry.map == 6) managers->bindProfessorInteraction([this] { entrance->startGalleryConversation(); });
         entrance->bindRoomLight([this](bool enabled) { managers->setRoomLight(cameraRoom >> 24, enabled); });
         entrance->bindRandom([this] {
             randomState = randomState * 0x19660d + 0x3c6ef35f; // 80009638, the shared game RNG

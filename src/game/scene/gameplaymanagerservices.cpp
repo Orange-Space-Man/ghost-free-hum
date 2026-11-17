@@ -724,6 +724,9 @@ playerscanner::Services& gameplay::ManagerServices::scanner() { return *state; }
 void gameplay::ManagerServices::bindScannerMessage(std::function<void(unsigned)> callback) {
     state->scannerMessage = std::move(callback);
 }
+void gameplay::ManagerServices::bindProfessorInteraction(std::function<void()> callback) {
+    state->owners->bindProfessorInteraction(std::move(callback));
+}
 playerevents::Dispatcher& gameplay::ManagerServices::playerEvents() { return *state->events; }
 playerevents::LifeEnvironment& gameplay::ManagerServices::playerLife() { return *state->life; }
 particles::Scene& gameplay::ManagerServices::particles() { return *state->particles; }
@@ -1212,8 +1215,10 @@ void gameplay::ManagerServices::updateFurniture(unsigned frame) {
     services.releaseOccupant = [](unsigned, const auto&) {
         throw std::runtime_error("Occupied furniture requires its original actor-release route.");
     };
-    services.scanMessage = [](unsigned) {
-        throw std::runtime_error("Furniture scanning requires its original message scene.");
+    services.scanMessage = [this](unsigned count) {
+        if (!state->scannerMessage) throw std::runtime_error("Furniture scanning requires its original message scene.");
+        state->dependencies.flags.setOn(0xac);
+        state->scannerMessage(count);
     };
     services.contact = [this](const auto& position, const auto& shape) {
         actorcollision::Record record{};

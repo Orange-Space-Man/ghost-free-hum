@@ -4,6 +4,7 @@
 #include "game/player/playermanager.h"
 
 #include <stdexcept>
+#include <utility>
 
 characterowner::CreationRuntime::CreationRuntime(characterownership::Resources& resources,
     const charactercreation::Properties& properties, playerrecord::Record& player, roomlighting::Pool& lights,
@@ -22,6 +23,9 @@ void characterowner::CreationRuntime::bindCapture(CaptureServices* services) { c
 void characterowner::CreationRuntime::bindItemCreation(characteritems::Creation* value) { items = value; }
 
 void characterowner::CreationRuntime::bindUpdates(UpdateServices* services) { updates = services; }
+void characterowner::CreationRuntime::bindProfessorInteraction(std::function<void()> callback) {
+    professorInteraction = std::move(callback);
+}
 
 void characterowner::CreationRuntime::update(Owner& owner) {
     if (!manager || &owner.manager() != manager || !updates || !updates->players.entries) {
@@ -50,7 +54,9 @@ void characterowner::CreationRuntime::update(Owner& owner) {
 
 std::uint32_t characterowner::CreationRuntime::event(Owner& owner, characterevent::Event& event) {
     const auto group = event.message == 26 ? properties.group(owner.actor().type()) : 0;
-    return dispatchEvent(owner, event, group, capture, items);
+    const auto result = dispatchEvent(owner, event, group, capture, items);
+    if (event.message == 19 && owner.actor().type() == 39 && professorInteraction) professorInteraction();
+    return result;
 }
 
 characterownership::ActorLinks& characterowner::CreationRuntime::links(enemies::Actor& actor) {

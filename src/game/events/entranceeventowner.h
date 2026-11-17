@@ -29,6 +29,8 @@ namespace gameevent {
         bool active() const;
         bool cameraActive() const;
         const scenetransition::Request& transition() const;
+        void startFurnitureMessage(unsigned count);
+        void startGalleryConversation();
 
     private:
         std::function<void(bool)> changeRoomLight;
@@ -85,7 +87,12 @@ namespace gameevent {
         void beginChoice(const std::vector<unsigned>& lines) override;
         int choiceResult() override;
         void endChoice() override;
+        unsigned count(unsigned index) const override;
+        void clearCount() override;
+        void startAll() override;
+        void timeActive() override;
         std::vector<std::uint8_t> resource(std::string_view name) const;
+        void startEvent(unsigned event, bool direct);
         bool eligible(unsigned event, unsigned elapsedSeconds) const;
         gameassets::Package& package;
         const enemytypes::Catalog& types;
@@ -110,7 +117,11 @@ namespace gameevent {
         std::uint16_t savedCC = 0, savedCE = 0;
         unsigned cameraFrame = 0, lightFrame = 0;
         unsigned currentEvent = 0;
+        unsigned eventCount = 0;
         std::uint32_t audioFrame = 0;
+        bool directEvent = false;
+        bool resumeAfterMessage = false;
+        bool clockActive = true;
         bool menuAvailable = true;
         bool fullscreenEnabled = false;
     };

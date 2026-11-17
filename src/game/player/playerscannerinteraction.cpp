@@ -127,7 +127,7 @@ bool playerscanner::update(playermodels::ScannerModels& state, const Input& inpu
                 state.state[1] = 1;
                 requireServices(services).markFurniture(furniture.index);
                 if (requireServices(services).mirror(furniture.index)) requestedWarp = true;
-                else if (requireServices(services).furnitureMessage(furniture.index)) requireServices(services).openFurnitureMessage();
+                else requireServices(services).furnitureMessage(furniture.index);
             } else if (actor.index >= 0) {
                 state.state[1] = 1;
                 const auto type = requireServices(services).actorType(actor.index);

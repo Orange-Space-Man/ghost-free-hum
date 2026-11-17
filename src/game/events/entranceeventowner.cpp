@@ -94,20 +94,7 @@ void gameevent::EntranceOwner::update(unsigned elapsedSeconds, std::uint32_t fra
             }
         }
         if (!currentEvent) return;
-        std::vector<std::uint8_t> compressed, bytes;
-        std::string error;
-        const auto number = (currentEvent < 10 ? "0" : "") + std::to_string(currentEvent);
-        if (!package.read("files/Event/event" + number + ".szp", compressed, error) ||
-            !roomarchive::decompress(compressed, bytes, error) || !archive.read(bytes, error))
-            throw std::runtime_error(error);
-        const auto text = resource("event" + number + ".txt");
-        auto messageIndex = archive.findNameResource("message" + number + ".csv");
-        if (messageIndex < 0) messageIndex = archive.findNameResource("message" + std::to_string(currentEvent) + ".csv");
-        if (messageIndex < 0) messageIndex = archive.findNameResource("massage" + std::to_string(currentEvent) + ".csv"); // the training archives misspell the resource name
-        if (messageIndex >= 0) {
-            messageText = std::make_unique<MessageText>(executable, archive.resource(messageIndex));
-        }
-        script = std::make_unique<EntranceScript>(std::string(text.begin(), text.end()));
+        startEvent(currentEvent, false);
         auto& condition = managers.missionEvents().condition(currentEvent);
         condition.flags |= 0x11;
         if (condition.flags & 0x200) {
@@ -119,16 +106,53 @@ void gameevent::EntranceOwner::update(unsigned elapsedSeconds, std::uint32_t fra
     }
     if (lightPath) lightPath->sample(static_cast<float>(lightFrame++), managers.lights());
     const bool completed = script->update(*this);
-    managers.missionEvents().condition(currentEvent).flags |= 0x20;
+    if (!directEvent) managers.missionEvents().condition(currentEvent).flags |= 0x20;
     if (completed) {
+        if (resumeAfterMessage) {
+            managers.actors().setInteractionPaused(false);
+            managers.playerEvents().send(0, 0x3a);
+            resumeAfterMessage = false;
+        }
         lightPath.reset();
         managers.flags().setOff(0x5e);
         managers.playerEvents().player(0)->flags &= ~0xc00u;
-        managers.missionEvents().complete(currentEvent, entry.inventory.at(0x20 + currentEvent));
+        if (!directEvent) managers.missionEvents().complete(currentEvent, entry.inventory.at(0x20 + currentEvent));
         script.reset();
         messageText.reset();
         archive = {};
+        directEvent = false;
     }
+}
+
+void gameevent::EntranceOwner::startEvent(unsigned event, bool direct) {
+    if (script) throw std::logic_error("An entrance script is already active.");
+    std::vector<std::uint8_t> compressed, bytes;
+    std::string error;
+    const auto number = (event < 10 ? "0" : "") + std::to_string(event);
+    if (!package.read("files/Event/event" + number + ".szp", compressed, error) ||
+        !roomarchive::decompress(compressed, bytes, error) || !archive.read(bytes, error))
+        throw std::runtime_error(error);
+    const auto text = resource("event" + number + ".txt");
+    auto messageIndex = archive.findNameResource("message" + number + ".csv");
+    if (messageIndex < 0) messageIndex = archive.findNameResource("message" + std::to_string(event) + ".csv");
+    if (messageIndex < 0) messageIndex = archive.findNameResource("massage" + std::to_string(event) + ".csv");
+    if (messageIndex >= 0) messageText = std::make_unique<MessageText>(executable, archive.resource(messageIndex));
+    script = std::make_unique<EntranceScript>(std::string(text.begin(), text.end()));
+    currentEvent = event;
+    directEvent = direct;
+}
+
+void gameevent::EntranceOwner::startFurnitureMessage(unsigned count) {
+    if (script) return;
+    eventCount = count & 255;
+    startEvent(77, true);
+    managers.actors().setInteractionPaused(true);
+}
+
+void gameevent::EntranceOwner::startGalleryConversation() {
+    if (entry.map != 6 || script) return;
+    managers.flags().setOn(9);
+    startEvent(28, true);
 }
 
 bool gameevent::EntranceOwner::flag(unsigned index) const { return managers.flags().value(static_cast<std::uint8_t>(index)); }
@@ -381,3 +405,17 @@ void gameevent::EntranceOwner::beginChoice(const std::vector<unsigned>& lines) {
 
 int gameevent::EntranceOwner::choiceResult() { return messages.choiceInput(managers.controller().pressed); }
 void gameevent::EntranceOwner::endChoice() { messages.endChoice(); }
+unsigned gameevent::EntranceOwner::count(unsigned index) const {
+    if (index != 0) throw std::out_of_range("Furniture message uses only original counter zero.");
+    return eventCount;
+}
+void gameevent::EntranceOwner::clearCount() { eventCount = 0; }
+void gameevent::EntranceOwner::startAll() {
+    if (currentEvent == 77) {
+        resumeAfterMessage = true;
+        return;
+    }
+    managers.actors().setInteractionPaused(false);
+    managers.playerEvents().send(0, 0x3a);
+}
+void gameevent::EntranceOwner::timeActive() { clockActive = true; }

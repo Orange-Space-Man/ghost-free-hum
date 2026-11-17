@@ -7,6 +7,8 @@
 #include "game/actors/characterownermotion.h"
 #include "game/actors/characterownervacuum.h"
 
+#include <functional>
+
 namespace particles { class Scene; }
 namespace players { class Manager; }
 
@@ -35,6 +37,7 @@ namespace characterowner {
         void bindCapture(CaptureServices* services);
         void bindItemCreation(characteritems::Creation* items);
         void bindUpdates(UpdateServices* services);
+        void bindProfessorInteraction(std::function<void()> callback);
         void update(Owner& owner) override;
         characterownership::Resources& resources() override;
         characterownership::ActorLinks& links(enemies::Actor& actor) override;
@@ -60,6 +63,7 @@ namespace characterowner {
         CaptureServices* capture = nullptr;
         characteritems::Creation* items = nullptr;
         UpdateServices* updates = nullptr;
+        std::function<void()> professorInteraction;
         std::array<std::unique_ptr<characterownership::Links>, 128> actorLinks;
         std::array<enemies::Actor*, 128> linkedActors{};
     };

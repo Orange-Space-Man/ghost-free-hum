@@ -70,6 +70,10 @@ namespace gameevent {
         virtual void beginChoice(const std::vector<unsigned>& lines);
         virtual int choiceResult();
         virtual void endChoice();
+        virtual unsigned count(unsigned index) const;
+        virtual void clearCount();
+        virtual void startAll();
+        virtual void timeActive();
     };
 
     class EntranceScript {
