@@ -1,5 +1,6 @@
 #include "game/scene/gameplaycamerafollow.h"
 #include "resources/dolresources.h"
+#include "resources/gameedition.h"
 
 #include <cmath>
 #include <cstring>
@@ -7,7 +8,6 @@
 #include <stdexcept>
 
 namespace {
-    constexpr unsigned mapDescriptors = 0x802ff218, presetTable = 0x802ffc48;
     constexpr unsigned leadScaleAddress = 0x804d9ce0, leadDecayAddress = 0x804d9ce4;
     constexpr unsigned insetAddress = 0x804d0098, heightThresholdAddress = 0x804d9cec;
     constexpr unsigned followRateAddress = 0x804d9cf0, absentRoomRateAddress = 0x804d9d04;
@@ -45,7 +45,15 @@ namespace {
 gameplaycamera::Follow::Follow(const std::vector<std::uint8_t>& executable, unsigned map) {
     if (map != 1 && map != 2 && map != 3 && map != 6) throw std::runtime_error("Unsupported camera follow map.");
     gallery = map == 6;
-    const auto descriptor = word(executable, mapDescriptors + map * 4);
+    const auto edition = gameedition::identify(executable);
+    const auto addresses = gameedition::cameraFollow(edition);
+    const auto originalWord = [&](unsigned address) {
+        return word(executable, gameedition::cameraFollowConstant(edition, address));
+    };
+    const auto originalScalar = [&](unsigned address) {
+        return scalar(executable, gameedition::cameraFollowConstant(edition, address));
+    };
+    const auto descriptor = word(executable, addresses.descriptors + map * 4);
     const auto count = word(executable, descriptor) >> 24;
     const auto records = word(executable, descriptor + 20);
     for (unsigned index = 0; index < count; ++index) {
@@ -59,41 +67,42 @@ gameplaycamera::Follow::Follow(const std::vector<std::uint8_t>& executable, unsi
         }
         rooms.push_back(room);
     }
-    targetHeight = scalar(executable, 0x804d9d48);
-    targetMinimumDepth = scalar(executable, 0x804d9d58);
-    targetRate = scalar(executable, 0x804d9d14);
-    captureFarDistance = scalar(executable, 0x804d9d6c);
-    captureLookDistance = scalar(executable, 0x804d9da0);
+    targetHeight = originalScalar(0x804d9d48);
+    targetMinimumDepth = originalScalar(0x804d9d58);
+    targetRate = originalScalar(0x804d9d14);
+    captureFarDistance = originalScalar(0x804d9d6c);
+    captureLookDistance = originalScalar(0x804d9da0);
     roomId = 0xffffffff;
     roomFlags = 0;
     for (unsigned mode = 0; mode < presets.size(); ++mode)
-        for (unsigned field = 0; field < 4; ++field) presets[mode][field] = scalar(executable, presetTable + mode * 16 + field * 4);
+        for (unsigned field = 0; field < 4; ++field) presets[mode][field] = scalar(executable,
+            addresses.presets + mode * 16 + field * 4);
     parameters = presets[0];
-    nearDelay = word(executable, nearDelayAddress) >> 24;
-    normalDelay = word(executable, normalDelayAddress) >> 24;
-    leadScale = scalar(executable, leadScaleAddress);
-    leadDecay = scalar(executable, leadDecayAddress);
-    inset = scalar(executable, insetAddress);
-    heightThreshold = scalar(executable, heightThresholdAddress);
-    followRate = scalar(executable, followRateAddress);
-    corridorDepth = scalar(executable, 0x804d9cf4);
-    absentRoomRate = scalar(executable, absentRoomRateAddress);
-    nearThreshold = scalar(executable, nearThresholdAddress);
-    farThreshold = scalar(executable, farThresholdAddress);
-    reactionHeight = scalar(executable, reactionHeightAddress);
-    reactionDepth = scalar(executable, reactionDepthAddress);
-    quantization = scalar(executable, quantizationAddress);
-    inverseQuantization = scalar(executable, inverseQuantizationAddress);
-    smoothingScale = scalar(executable, smoothingScaleAddress);
-    fieldOfView = scalar(executable, fieldOfViewAddress);
-    coincidentOffset = scalar(executable, coincidentOffsetAddress);
-    nearPlane = static_cast<float>(static_cast<std::int32_t>(word(executable, nearPlaneAddress)));
-    farPlane = static_cast<float>(static_cast<std::int32_t>(word(executable, farPlaneAddress)));
-    up = {scalar(executable, upHorizontalAddress), scalar(executable, upVerticalAddress), scalar(executable, upHorizontalAddress)};
-    scannerDirectionDistance = scalar(executable, scannerDirectionDistanceAddress);
-    scannerFieldOfView = scalar(executable, scannerFieldOfViewAddress);
-    scannerNearPlane = scalar(executable, scannerNearPlaneAddress);
-    scannerInvertedUp = scalar(executable, scannerInvertedUpAddress);
+    nearDelay = originalWord(nearDelayAddress) >> 24;
+    normalDelay = originalWord(normalDelayAddress) >> 24;
+    leadScale = originalScalar(leadScaleAddress);
+    leadDecay = originalScalar(leadDecayAddress);
+    inset = originalScalar(insetAddress);
+    heightThreshold = originalScalar(heightThresholdAddress);
+    followRate = originalScalar(followRateAddress);
+    corridorDepth = originalScalar(0x804d9cf4);
+    absentRoomRate = originalScalar(absentRoomRateAddress);
+    nearThreshold = originalScalar(nearThresholdAddress);
+    farThreshold = originalScalar(farThresholdAddress);
+    reactionHeight = originalScalar(reactionHeightAddress);
+    reactionDepth = originalScalar(reactionDepthAddress);
+    quantization = originalScalar(quantizationAddress);
+    inverseQuantization = originalScalar(inverseQuantizationAddress);
+    smoothingScale = originalScalar(smoothingScaleAddress);
+    fieldOfView = originalScalar(fieldOfViewAddress);
+    coincidentOffset = originalScalar(coincidentOffsetAddress);
+    nearPlane = static_cast<float>(static_cast<std::int32_t>(originalWord(nearPlaneAddress)));
+    farPlane = static_cast<float>(static_cast<std::int32_t>(originalWord(farPlaneAddress)));
+    up = {originalScalar(upHorizontalAddress), originalScalar(upVerticalAddress), originalScalar(upHorizontalAddress)};
+    scannerDirectionDistance = originalScalar(scannerDirectionDistanceAddress);
+    scannerFieldOfView = originalScalar(scannerFieldOfViewAddress);
+    scannerNearPlane = originalScalar(scannerNearPlaneAddress);
+    scannerInvertedUp = originalScalar(scannerInvertedUpAddress);
 }
 
 // 80010F20 selects the inset view, and 80021844/80021B04 publish the scanner camera.
@@ -114,6 +123,33 @@ void gameplaycamera::Follow::updateScanner(CameraOwner& camera, const playeracto
 }
 
 unsigned gameplaycamera::Follow::preset() const { return selected; }
+
+// 80024804 installs the 80024680 override for 60 frames after a key chest appears.
+void gameplaycamera::Follow::beginChestReveal(CameraOwner& camera, const std::array<float, 3>& chest) {
+    chestFocus = chest;
+    camera.flags |= 1;
+    camera.callback = chestRevealCallback;
+    camera.fieldE0 = 0;
+    camera.visibilityMode = 0;
+    camera.fieldOfView = fieldOfView;
+}
+
+void gameplaycamera::Follow::updateChestReveal(CameraOwner& camera) const {
+    camera.viewport = {0, 0, 640, 480};
+    camera.aspect = 4.0f / 3.0f;
+    camera.visibilityMode = 0;
+    camera.up = up;
+    camera.nearPlane = nearPlane;
+    camera.farPlane = farPlane;
+    camera.fieldOfView = fieldOfView;
+    const std::array<float, 3> eye{chestFocus[0], chestFocus[1] + 300.0f, chestFocus[2] + 1200.0f};
+    approach(camera.target, chestFocus, targetRate);
+    approach(camera.position, eye, targetRate);
+    if (camera.fieldE0++ == 60) {
+        camera.flags &= ~1u;
+        camera.callback = 0;
+    }
+}
 
 void gameplaycamera::Follow::select(unsigned value, unsigned delay) {
     if (value == selected) return;
@@ -180,6 +216,10 @@ void gameplaycamera::Follow::update(CameraOwner& camera, const playeractor::View
     if (playerIndex >= leadX.size()) throw std::out_of_range("Camera player index exceeds the original subject table.");
     refreshRoom(room);
     camera.viewport = {0, 0, 640, 480};
+    if ((camera.flags & 1) && camera.callback == chestRevealCallback) {
+        updateChestReveal(camera);
+        return;
+    }
     const bool capturing = (camera.flags & 1) && camera.callback == captureCallback;
     if (((camera.flags & 5) && !capturing) || (capturing && (camera.flags & 4)) || player.field894)
         throw std::runtime_error("Camera follow requires the selected original scanner, ladder or override callback.");
@@ -205,7 +245,8 @@ void gameplaycamera::Follow::update(CameraOwner& camera, const playeractor::View
     if ((room >> 24) == 255) approach(camera.target, *player.position, absentRoomRate);
     else {
         const bool far = player.field89E && player.field8AC > farThreshold;
-        if (player.field834 == 1) select(far ? 4 : 3, 0);
+        if (camera.eventMode == 6) select(7, 0);
+        else if (player.field834 == 1) select(far ? 4 : 3, 0);
         else if (far) select(1, 0);
         else if (player.field89E && player.field8AC < nearThreshold && !(roomFlags & 3)) select(2, nearDelay);
         else select(0, normalDelay);

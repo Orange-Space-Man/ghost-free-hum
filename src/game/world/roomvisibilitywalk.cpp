@@ -12,9 +12,7 @@ roomtraversal::Walk::Walk(const std::vector<SceneRoom>& rooms, const doordata::T
 
 std::vector<roomtraversal::Submission> roomtraversal::Walk::stationary(unsigned room, unsigned buffer,
     const roomportal::Matrix& projection, const Bounds& viewport, std::uint8_t clippingMode, std::uint8_t floorOpacity,
-    const Transition* transition) {
-    if (map != 6 && (rooms.at(room).attributes & 1) && floorOpacity)
-        throw std::runtime_error("Room traversal requires the floor-overlap branch.");
+    const Transition* transition, bool scannerMode) {
     visibility.reset(buffer, static_cast<std::int16_t>(rooms.size()));
     std::vector<Submission> result;
     const auto mark = [&](unsigned index, unsigned depth, const Bounds& bounds, std::uint8_t opacity = 255) {
@@ -39,6 +37,25 @@ std::vector<roomtraversal::Submission> roomtraversal::Walk::stationary(unsigned 
             walk(portal.rooms[1], depth + 1, clipped);
         }
     };
+    // Camera mode three uses 80013B34 after drawing the current room in 80014228.
+    // That routine draws each adjacent room at full viewport bounds before its
+    // ordinary directed portal recursion, including the lower Foyer from 2F.
+    if (scannerMode) {
+        mark(room, 0, viewport);
+        for (auto link : rooms.at(room).portals) {
+            const auto& portal = portals.entries.at(link);
+            const bool connected = portal.rooms[0] == room || portal.rooms[1] == room;
+            const bool special = (portal.attributes[0] & 4) != 0 && connected;
+            if (!((!services.doorBlocked(portal.identity) &&
+                (portal.attributes[1] != 2 || portal.rooms[1] != room)) || special)) continue;
+            const auto neighbor = portal.rooms[0] == room ? portal.rooms[1] : portal.rooms[0];
+            mark(neighbor, 0, viewport);
+            walk(neighbor, 0, viewport);
+        }
+        return result;
+    }
+    if (map != 6 && (rooms.at(room).attributes & 1) && floorOpacity)
+        throw std::runtime_error("Room traversal requires the floor-overlap branch.");
     if (transition && transition->mode == TransitionMode::RevealCurrent) {
         const auto previous = transition->previousRoom >> 24;
         if (map != 6 && (rooms.at(previous).attributes & 1) && floorOpacity)

@@ -1,5 +1,7 @@
 #include "platform/windows/controlsettings.h"
 #include "platform/windows/controlbindings.h"
+#include "platform/windows/debugoverlay.h"
+#include "platform/windows/gameassetsetup.h"
 #include "platform/d3d11/enhancementsettings.h"
 #include "imgui.h"
 #include <algorithm>
@@ -10,17 +12,26 @@ namespace {
     HWND host = nullptr;
     bool opened = false;
     unsigned selected = 0;
+    unsigned enhancementPage = 0;
+    unsigned debugPage = 0;
+    unsigned settingsPage = 0;
     int listening = -1;
     double listenUntil = 0;
     controlbindings::Snapshot previous;
     std::string notice, enhancementNotice;
     bool saveFailed = false;
+    controlsettings::ParticleDebug debugParticles;
     const ImVec4 green{0.51f, 0.85f, 0.35f, 1}, muted{0.56f, 0.65f, 0.59f, 1};
 
     void save() {
         std::string error;
         saveFailed = !controlbindings::persist(error);
         notice = saveFailed ? error : "Changes saved";
+    }
+
+    void saveEnhancements() {
+        std::string saveError;
+        enhancementNotice = enhancementsettings::persist(saveError) ? "Changes saved" : saveError;
     }
 
     bool same(const controlbindings::Binding& a, const controlbindings::Binding& b) {
@@ -65,7 +76,7 @@ namespace {
 }
 
 void controlsettings::initialize(HWND window) {
-    host = window; opened = false; listening = -1;
+    host = window; opened = false; listening = -1; debugParticles = {};
     wchar_t path[32768]{};
     const auto length = GetEnvironmentVariableW(L"LOCALAPPDATA", path, 32768);
     if (length && length < 32768) {
@@ -76,6 +87,8 @@ void controlsettings::initialize(HWND window) {
     saveFailed = !notice.empty();
 
 }
+
+const controlsettings::ParticleDebug& controlsettings::particleDebug() { return debugParticles; }
 
 bool controlsettings::visible() { return opened; }
 void controlsettings::setVisible(bool value) {
@@ -129,10 +142,26 @@ void controlsettings::draw() {
     if (ImGui::BeginTabBar("settingsTabs")) {
         if (ImGui::BeginTabItem("Settings")) {
             ImGui::BeginChild("navigation", {105, 0}, ImGuiChildFlags_Borders);
-            ImGui::Selectable("Controls", true);
+            if (ImGui::Selectable("Controls", settingsPage == 0)) settingsPage = 0;
+            if (ImGui::Selectable("Misc", settingsPage == 1)) settingsPage = 1;
             ImGui::EndChild();
             ImGui::SameLine();
             ImGui::BeginChild("content", {0, 0});
+            if (settingsPage == 1) {
+                ImGui::SeparatorText("Game edition");
+                ImGui::BeginDisabled(!gameassetsetup::multipleEditionsAvailable());
+                if (ImGui::Button("Reboot to region select")) {
+                    if (gameassetsetup::rebootToRegionSelect()) PostMessageW(host, WM_CLOSE, 0, 0);
+                    else notice = "Could not restart the game.";
+                }
+                ImGui::EndDisabled();
+                if (ImGui::Button("Import another edition")) {
+                    if (gameassetsetup::rebootToRegionSelect(true)) PostMessageW(host, WM_CLOSE, 0, 0);
+                    else notice = "Could not restart the importer.";
+                }
+                if (!notice.empty()) ImGui::TextUnformatted(notice.c_str());
+                if (ImGui::Button("Back to game")) setVisible(false);
+            } else {
             auto& config = controlbindings::current();
             const int connected = controlbindings::selectedDevice(config, snapshot);
             const auto deviceLabel = [&](int device) {
@@ -182,23 +211,71 @@ void controlsettings::draw() {
             if (ImGui::Button("Reset defaults")) { config = controlbindings::defaults(); listening = -1; save(); }
             ImGui::SameLine();
             if (ImGui::Button("Back to game")) setVisible(false);
+            }
             ImGui::EndChild();
             ImGui::EndTabItem();
         }
         if (ImGui::BeginTabItem("Enhancements")) {
             ImGui::BeginChild("enhancementNavigation", {105, 0}, ImGuiChildFlags_Borders);
-            ImGui::Selectable("Graphics", true);
+            if (ImGui::Selectable("Graphics", enhancementPage == 0)) enhancementPage = 0;
+            if (ImGui::Selectable("Gameplay", enhancementPage == 1)) enhancementPage = 1;
             ImGui::EndChild();
             ImGui::SameLine();
             ImGui::BeginChild("enhancementContent", {0, 0});
-            bool disableCopyFilter = enhancementsettings::disableCopyFilter();
-            if (ImGui::Checkbox("Disable Copy Filter", &disableCopyFilter)) {
-                enhancementsettings::setDisableCopyFilter(disableCopyFilter);
-                std::string saveError;
-                enhancementNotice = enhancementsettings::persist(saveError) ? "Changes saved" : saveError;
+            if (enhancementPage == 0) {
+                bool disableCopyFilter = enhancementsettings::disableCopyFilter();
+                if (ImGui::Checkbox("Disable Copy Filter", &disableCopyFilter)) {
+                    enhancementsettings::setDisableCopyFilter(disableCopyFilter);
+                    saveEnhancements();
+                }
+                if (ImGui::IsItemHovered()) ImGui::SetTooltip("Removes the vertical depth-copy filter and Luigi's self-shadow blotches. Off keeps the original hardware appearance.");
+            } else {
+                ImGui::SeparatorText("GameBoy Horror");
+                bool fullRotation = enhancementsettings::rotateMap360();
+                if (ImGui::Checkbox("Rotate map 360 degrees", &fullRotation)) {
+                    enhancementsettings::setRotateMap360(fullRotation);
+                    saveEnhancements();
+                }
+                if (ImGui::IsItemHovered()) ImGui::SetTooltip("Removes the original map's left and right rotation limits.");
+                ImGui::SeparatorText("World");
+                bool automaticKeyChests = enhancementsettings::automaticallyOpenKeyChests();
+                if (ImGui::Checkbox("Automatically Open Key Chests", &automaticKeyChests)) {
+                    enhancementsettings::setAutomaticallyOpenKeyChests(automaticKeyChests);
+                    saveEnhancements();
+                }
+                if (ImGui::IsItemHovered()) ImGui::SetTooltip("Automatically opens key chests spawned when a room is cleared.");
             }
-            if (ImGui::IsItemHovered()) ImGui::SetTooltip("Removes the vertical depth-copy filter and Luigi's self-shadow blotches. Off keeps the original hardware appearance.");
             ImGui::TextDisabled("%s", enhancementNotice.empty() ? "Changes save automatically." : enhancementNotice.c_str());
+            if (ImGui::Button("Back to game")) setVisible(false);
+            ImGui::EndChild();
+            ImGui::EndTabItem();
+        }
+        if (ImGui::BeginTabItem("Debug")) {
+            ImGui::BeginChild("debugNavigation", {105, 0}, ImGuiChildFlags_Borders);
+            if (ImGui::Selectable("Player", debugPage == 0)) debugPage = 0;
+            if (ImGui::Selectable("Checkpoints", debugPage == 1)) debugPage = 1;
+            ImGui::EndChild();
+            ImGui::SameLine();
+            ImGui::BeginChild("debugContent", {0, 0});
+            if (debugPage == 0) {
+                ImGui::TextUnformatted("Player particles");
+                ImGui::Checkbox("Hide trail dust", &debugParticles.hideTrailDust);
+                ImGui::Checkbox("Hide breathe", &debugParticles.hideBreath);
+                ImGui::Separator();
+                ImGui::Checkbox("Red boxes around trail dust", &debugParticles.outlineTrailDust);
+                ImGui::Checkbox("Red boxes around breathe", &debugParticles.outlineBreath);
+                ImGui::TextDisabled("Visibility changes drawing only. Boxes still show when particles are hidden.");
+            } else {
+                ImGui::SeparatorText("Checkpoints");
+                constexpr const char* destinations[]{"Mansion foyer", "Foyer after first key",
+                    "Training room", "Gallery", "Foyer after training", "Parlor after candle cutscene"};
+                for (unsigned i = 0; i < 6; ++i) {
+                    if (ImGui::Button(destinations[i], {ImGui::GetContentRegionAvail().x, 32})) {
+                        debugoverlay::requestCheckpoint(i + 1);
+                        setVisible(false);
+                    }
+                }
+            }
             if (ImGui::Button("Back to game")) setVisible(false);
             ImGui::EndChild();
             ImGui::EndTabItem();

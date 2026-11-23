@@ -1,4 +1,5 @@
 #include "resources/dolresources.h"
+#include "resources/gameedition.h"
 #include "game/startup/openingresources.h"
 #include "game/startup/startupresources.h"
 #include "game/scene/gamearchive.h"
@@ -43,7 +44,7 @@ namespace {
 }
 
 std::optional<unsigned> openingscene::findCutscene(const std::vector<std::uint8_t>& executable, std::string_view requested) {
-    const auto definitions = range(executable, 0x80373aa4, 78 * 24);
+    const auto definitions = range(executable, gameedition::cutscenes(gameedition::identify(executable)).definitions - 4, 78 * 24);
     for (unsigned index = 0; index < 78; ++index) {
         const auto address = word(definitions, index * 24);
         if (address && name(executable, address) == requested) return index;
@@ -62,9 +63,10 @@ bool openingscene::read(gameassets::Package& package, unsigned cutscene, Resourc
         if (cutscene != 0 && cutscene != 60 && cutscene != 0x4c && (cutscene < 3 || cutscene > 58)) throw std::runtime_error("Unsupported cutscene ID.");
         std::vector<std::uint8_t> executable;
         if (!package.read("sys/main.dol", executable, error)) throw std::runtime_error(error);
+        const auto addresses = gameedition::cutscenes(package.gameId());
         Resources result;
         result.cutscene = cutscene;
-        const auto definition = range(executable, 0x80373aa8 + cutscene * 24, 24);
+        const auto definition = range(executable, addresses.definitions + cutscene * 24, 24);
         result.initialValue = word(definition, 0);
         result.mode = word(definition, 16);
         const auto list = word(definition, 4);
@@ -74,7 +76,7 @@ bool openingscene::read(gameassets::Package& package, unsigned cutscene, Resourc
             const unsigned id = (entry[0] << 8) | entry[1];
             if (id == 255) { terminated = true; break; }
             if (id >= 255) throw std::runtime_error("Invalid opening segment ID.");
-            const auto descriptor = range(executable, 0x803727e8 + id * 20, 20);
+            const auto descriptor = range(executable, addresses.descriptors + id * 20, 20);
             Segment segment;
             segment.id = id;
             segment.archive = name(executable, word(descriptor, 8));

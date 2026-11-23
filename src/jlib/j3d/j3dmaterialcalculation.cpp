@@ -1,7 +1,9 @@
 #include "jlib/j3d/j3dmaterialcalculation.h"
 #include "jlib/j3d/j3dkeyanimation.h"
 
+#include <algorithm>
 #include <cstring>
+#include <type_traits>
 #include <stdexcept>
 
 void j3dmodel::animateMaterialColors(Material& material) {
@@ -26,6 +28,26 @@ void j3dmodel::animateMaterialColors(Material& material) {
             else if (value >= 0 && value <= 255) output = static_cast<std::uint8_t>(value);
         }
     }
+}
+
+void j3dmodel::animateTevColors(Material& material) {
+    if (!material.animation || !material.tev) return;
+    const auto animate = [&](const auto& bindings, auto& colors, unsigned section, int minimum, int maximum) {
+        for (unsigned slot = 0; slot < bindings.size(); ++slot) {
+            if (!bindings[slot]) continue;
+            const auto& binding = *bindings[slot];
+            const auto& animation = *binding.animation;
+            const auto& group = animation.groups[section];
+            for (unsigned component = 0; component < 4; ++component) {
+                const auto value = sampleAnimationKey(animation, group,
+                    group.table + binding.index * 28 + component * 6, component, true, 0);
+                using Color = typename std::decay_t<decltype(colors[slot])>::value_type;
+                colors[slot][component] = static_cast<Color>(std::clamp<int>(int(value), minimum, maximum));
+            }
+        }
+    };
+    animate(material.animation->tevColors, material.tev->colors, 0, -1024, 1023);
+    animate(material.animation->tevConstants, material.tev->constants, 1, 0, 255);
 }
 
 namespace {

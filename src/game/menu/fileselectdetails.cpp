@@ -1,4 +1,5 @@
 #include "resources/glme01addresses.h"
+#include "resources/gameedition.h"
 #include "resources/dolresources.h"
 #include "game/menu/fileselectdetails.h"
 #include "game/startup/startupresources.h"
@@ -71,10 +72,11 @@ bool fileselect::DetailPanes::read(const std::vector<std::uint8_t>& executable, 
                 values[i] = std::move(text);
             }
         };
-        strings(glme01::fileDetailDigits, result.digits, true);
-        strings(glme01::fileDetailAreas, result.areas, false);
+        const auto addresses = gameedition::menu(gameedition::identify(executable));
+        strings(addresses.fileDetailDigits, result.digits, true);
+        strings(addresses.fileDetailAreas, result.areas, false);
         std::vector<std::uint8_t> table;
-        if (!dolresources::read(executable, 0x8033456c, 36, table, error)) throw std::runtime_error(error);
+        if (!dolresources::read(executable, addresses.fileDetailOffsets, 36, table, error)) throw std::runtime_error(error);
         for (unsigned i = 0; i < 9; ++i) result.offsets[i] = static_cast<std::int32_t>(word(table.data() + i * 4));
         *this = std::move(result);
         return true;

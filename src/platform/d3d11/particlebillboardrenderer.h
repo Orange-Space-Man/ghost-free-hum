@@ -9,6 +9,8 @@ namespace particlerenderer {
         void load(ID3D11Device* device);
         void prepare(const particles::EmitterPool& pool);
         void prepare(const particles::Billboard& billboard);
+        void drawDebugOutlines(ID3D11DeviceContext* context, const std::vector<particles::Billboard>& particles,
+            const std::array<float, 12>& view, const std::array<float, 16>& projection);
         void draw(ID3D11DeviceContext* context, const std::vector<particles::Billboard>& particles,
             const std::array<float, 12>& view, const std::array<float, 16>& projection);
 

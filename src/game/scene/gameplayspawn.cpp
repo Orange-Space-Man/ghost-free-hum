@@ -1,4 +1,5 @@
 #include "resources/dolresources.h"
+#include "resources/gameedition.h"
 #include "game/scene/gameplayspawn.h"
 #include "resources/gameassetpackage.h"
 #include "resources/roomarchivereader.h"
@@ -71,7 +72,8 @@ bool gameplayspawn::resolveRoom(const std::vector<std::uint8_t>& executable, uns
     error.clear();
     try {
         if (map != 2) throw std::runtime_error("Unsupported gameplay spawn map.");
-        const auto descriptor = range(executable, word(range(executable, 0x802ff218 + map * 4, 4), 0), 28);
+        const auto descriptor = range(executable, word(range(executable,
+            gameedition::cameraFollow(gameedition::identify(executable)).descriptors + map * 4, 4), 0), 28);
         const auto count = descriptor[0];
         const auto records = range(executable, word(descriptor, 20), count * 48);
         auto position = spawn.position;

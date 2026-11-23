@@ -90,6 +90,7 @@ void gameevent::EntranceOwner::update(unsigned elapsedSeconds, std::uint32_t fra
             if ((event == entranceEvent || event == firstKeyEvent || (entry.map == 2 && event == 1) ||
                 (entry.map == 1 && event == 8) ||
                 (entry.map == 3 && (event == 9 || event == 10)) ||
+                (entry.map == 2 && event == 61) ||
                 (entry.map == 6 && event == 28)) && eligible(event, elapsedSeconds)) {
                 currentEvent = event;
                 break;
@@ -180,6 +181,11 @@ void gameevent::EntranceOwner::music(unsigned index) {
     else if (index == 0) managers.music().requestFirstKey(audioFrame);
     else if (index == 1) managers.music().requestParlor(audioFrame);
     else if (index == 12) managers.music().requestToadFanfare(audioFrame);
+    else if (index == 5) managers.music().requestSequence(0x80000015u, audioFrame);
+    else if (index == 7) {
+        managers.music().stop();
+        managers.music().start();
+    }
     else if (index == 8 || index == 11 || index == 13 || index == 14) {
         // Table 8038EAB4: 8 -> 0x80000008, 13 -> 0x80000027, 14 -> 0x80000026.
         managers.music().requestSequence(index == 8 ? 0x80000008u : index == 11 ? 0x8000001du :
@@ -429,6 +435,9 @@ void gameevent::EntranceOwner::startAll() {
 void gameevent::EntranceOwner::timeActive() { clockActive = true; }
 void gameevent::EntranceOwner::save() {
     if (!saveGame) throw std::runtime_error("Toad save requires the bound game card owner.");
+    savePending = true;
     saveGame();
 }
+bool gameevent::EntranceOwner::saveComplete() const { return !savePending; }
+void gameevent::EntranceOwner::completeSave() { savePending = false; }
 void gameevent::EntranceOwner::stopMusic() { managers.music().stopEventMusic(); }

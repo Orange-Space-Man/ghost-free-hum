@@ -1,5 +1,6 @@
 #include "game/events/eventmessagewindows.h"
 #include "resources/dolresources.h"
+#include "resources/gameedition.h"
 #include <algorithm>
 #include <cstring>
 #include <stdexcept>
@@ -15,8 +16,9 @@ gameevent::MessageWindows::MessageWindows(const std::vector<std::uint8_t>& execu
         if (!dolresources::read(executable, address, count, bytes, error)) throw std::runtime_error(error);
         return bytes;
     };
-    constexpr unsigned windowTiming = 0x804d054c, textScale = 0x804d0518, textLineHeight = 0x804da378;
-    const auto timing = read(windowTiming, 12);
+    constexpr unsigned textLineHeight = 0x804da378;
+    const auto addresses = gameedition::messageGraphics(gameedition::identify(executable));
+    const auto timing = read(addresses.windowTiming, 12);
     auto word = [&](unsigned offset) { return static_cast<std::int16_t>((unsigned(timing[offset]) << 8) | timing[offset + 1]); };
     widthPadding = word(0);
     openingFrames = word(6);
@@ -30,7 +32,7 @@ gameevent::MessageWindows::MessageWindows(const std::vector<std::uint8_t>& execu
         std::memcpy(&value, &bits, sizeof(value));
         return value;
     };
-    scale = number(textScale);
+    scale = number(addresses.textScale);
     lineHeight = number(textLineHeight);
     for (unsigned i = 0; i < windows.size(); ++i) windows[i].color = i;
     windows[2].x = 19;

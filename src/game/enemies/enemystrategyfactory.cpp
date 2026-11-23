@@ -18,6 +18,7 @@
 #include "game/enemies/enemyheartescapestrategy.h"
 #include "game/enemies/enemynegativerandomstrategy.h"
 #include "game/enemies/enemybombstrategy.h"
+#include "game/enemies/enemybananastrategy.h"
 #include "game/enemies/enemybarrierstrategy.h"
 #include "game/enemies/enemybatgeneratorstrategy.h"
 #include "game/enemies/enemygoldratgeneratorstrategy.h"
@@ -72,7 +73,27 @@ void enemystrategy::Factory::clearGlobalDoorBarrier() const {
     if (!globalDoorBarrierClear) throw std::runtime_error("Original door-lock action has no door manager binding.");
     globalDoorBarrierClear();
 }
+void enemystrategy::Factory::bindGlobalDoorBarrierSet(std::function<void()> callback) {
+    globalDoorBarrierSet = std::move(callback);
+}
+void enemystrategy::Factory::bindDoorLockScare(std::function<void()> callback) {
+    doorLockScare = std::move(callback);
+}
+void enemystrategy::Factory::setGlobalDoorBarrier() const {
+    if (!globalDoorBarrierSet) throw std::runtime_error("Original door-lock action has no door manager binding.");
+    globalDoorBarrierSet();
+}
+void enemystrategy::Factory::scareForDoorLock() const {
+    if (!doorLockScare) throw std::runtime_error("Original door-lock scare has no player event binding.");
+    doorLockScare();
+}
+void enemystrategy::Factory::setEventFlag(unsigned flag) const {
+    flags.setOn(static_cast<std::uint8_t>(flag));
+}
 void enemystrategy::Factory::bindKinopioEffects(particles::EffectFactory& effects) { kinopioEffects = &effects; }
+void enemystrategy::Factory::bindCandleCount(std::function<unsigned(unsigned)> callback) {
+    candleCount = std::move(callback);
+}
 void enemystrategy::Factory::lightRoom(unsigned room) const {
     if (!roomLight) throw std::runtime_error("Original room light action has no scene binding.");
     roomLight(room);
@@ -85,9 +106,16 @@ std::unique_ptr<enemystrategy::Strategy> enemystrategy::Factory::construct(std::
         if (training) strategy->bindServices(training->bind(*strategy));
         return strategy;
     }
+    case 0x800f00a0: // EnFindPlayerInf, 100..250 units.
+        if (!ghost) throw std::runtime_error("EnFindPlayerInf requires the ghost environment.");
+        return ghostparent::constructFindPlayerNear(*ghost);
+    case 0x800f00d8: // EnFindPlayerInf, 100..FLT_MAX units.
+        if (!ghost) throw std::runtime_error("EnFindPlayerInf requires the ghost environment.");
+        return ghostparent::constructFindPlayer(*ghost);
+    case glme01::parlorGhostFactory:
     case glme01::ghostParentFactory:
         if (!ghost) throw std::runtime_error("Original ghost parent services are not bound.");
-        return ghostparent::construct(*ghost);
+        return ghostparent::construct(*ghost, constructor == glme01::ghostParentFactory);
     case glme01::barrierFactory:
         if (!barriers) throw std::runtime_error("Original door-barrier services are not bound.");
         return std::make_unique<Barrier>(*barriers);
@@ -107,14 +135,25 @@ std::unique_ptr<enemystrategy::Strategy> enemystrategy::Factory::construct(std::
         if (!ambient) throw std::runtime_error("Original fake-door room color is not bound.");
         return std::make_unique<FakeDoor>(*ambient);
     case 0x800ef3c0:
-        if (!treasureRooms || !treasureSound) throw std::runtime_error("Btakara1 requires its original room and audio services.");
-        return std::make_unique<Treasure>(resources, runtime, *treasureRooms, treasureSound);
+        if (!treasureRooms || !treasureSound || !treasureItem || !treasureRevealCamera ||
+            !automaticallyOpenKeyChests || !treasureMarkOpened)
+            throw std::runtime_error("Btakara1 requires its original room, audio and item services.");
+        return std::make_unique<Treasure>(resources, runtime, *treasureRooms, treasureSound, treasureItem,
+            treasureRevealCamera, automaticallyOpenKeyChests, treasureMarkOpened);
+    case 0x800f0cf0: { // CondCandleAlOn, original constructor at 800F0CF0.
+        auto strategy = std::make_unique<Condition>(ConditionKind::CandleAllOn, runtime, flags);
+        strategy->bindCandleCount(candleCount);
+        return strategy;
+    }
     case glme01::roomObserverFactory:
         if (!catalog) throw std::runtime_error("Original observer strategy catalog is not bound.");
         return std::make_unique<RoomObserver>(*this, *catalog);
     case glme01::bombFactory:
         if (!items) throw std::runtime_error("Original bomb services are not bound.");
         return std::make_unique<Bomb>(*items, *this);
+    case 0x800f0e08: // EnBanana, strategy selector 107.
+        if (!items) throw std::runtime_error("Original banana services are not bound.");
+        return std::make_unique<Banana>(*items);
     case glme01::heartEscapeFactory:
         if (!items) throw std::runtime_error("Original escaping heart services are not bound.");
         return std::make_unique<HeartEscape>(*items, *this);
@@ -175,9 +214,17 @@ std::unique_ptr<enemystrategy::Strategy> enemystrategy::Factory::construct(std::
 
 void enemystrategy::Factory::bindTraining(TrainingEnvironment& environment) { training = &environment; }
 void enemystrategy::Factory::bindTreasure(const std::vector<std::uint32_t>& rooms,
-    std::function<void(unsigned, const std::array<float, 3>&)> sound) {
+    std::function<void(unsigned, const std::array<float, 3>&)> sound,
+    std::function<unsigned(std::string_view, const std::array<float, 3>&)> createItem,
+    std::function<void(const std::array<float, 3>&)> revealCamera,
+    std::function<bool()> autoOpen,
+    std::function<void(unsigned)> markOpened) {
     treasureRooms = &rooms;
     treasureSound = std::move(sound);
+    treasureItem = std::move(createItem);
+    treasureRevealCamera = std::move(revealCamera);
+    automaticallyOpenKeyChests = std::move(autoOpen);
+    treasureMarkOpened = std::move(markOpened);
 }
 
 void enemystrategy::Factory::bindItems(ItemEnvironment* environment) { items = environment; }

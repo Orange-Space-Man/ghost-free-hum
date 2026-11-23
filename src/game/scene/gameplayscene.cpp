@@ -5,6 +5,7 @@
 #include "game/models/modelshadowgeometry.h"
 #include "platform/d3d11/gameshadowrenderer.h"
 #include "platform/d3d11/enhancementsettings.h"
+#include "platform/windows/controlsettings.h"
 #include "game/startup/startupresources.h"
 #include "game/effects/barriereffectpool.h"
 #include "game/effects/cobwebeffectpool.h"
@@ -63,6 +64,24 @@ gameplay::Scene::Scene(const std::filesystem::path& package, gameentry::State& e
     resources.bindControllerInstructions([this] { requestControllerInstructions(); });
     std::string error;
     if (!trig.read(resources.executable(), error) || !poseTables.read(resources.executable(), error)) throw std::runtime_error(error);
+    gameBoyListEnabled = entry.map == 2 || entry.map == 6;
+    if (entry.map == 2) {
+        gameBoyMap = std::make_unique<gameboyhorror::Map>();
+        if (!gameBoyMap->load(resources.executable(), poseTables, resources.rooms(),
+            resources.residentRooms().descriptors(), error))
+            throw std::runtime_error("Game Boy Horror map: " + error);
+        resources.managers().bindMapScene([this](unsigned scene, std::int32_t keyId) {
+            if (scene != 1 || keyId < 0) throw std::runtime_error("Original collected-key map request is invalid.");
+            const auto* player = resources.managers().playerEvents().player(0);
+            if (!player) throw std::logic_error("Original collected-key map requires Luigi.");
+            const auto& keys = *player->components->flags;
+            const auto& saved = resources.inventory();
+            gameBoyMap->refresh(resources.roomFlags(), saved.data(), saved.size(), keys.data, keys.bytes);
+            if (keyId) gameBoyMap->openKey(player->room(), player->position, static_cast<unsigned>(keyId));
+            else gameBoyMap->open(player->room(), player->position);
+            resources.managers().playback()->playGlobal(0x3804);
+        });
+    }
     textureTrigonometry.resize(5120);
     for (unsigned i = 0; i < textureTrigonometry.size(); ++i) textureTrigonometry[i] = poseTables.sineAngle(i * 16);
     opacityDistance = constant<float>(resources.executable(), 0x804d9abc);
@@ -208,7 +227,14 @@ void gameplay::Scene::bindControllerOptions(gamesave::State& saves, const std::u
     controllerOptions = &saves;
     instructionClock = presentationClock;
 }
-void gameplay::Scene::bindSave(std::function<void()> callback) { resources.bindSave(std::move(callback)); }
+void gameplay::Scene::bindSave(std::function<void()> callback) {
+    saveCallback = std::move(callback);
+    resources.bindSave([this] {
+        saveMenuActive = true;
+        saveMenuYes = true;
+        saveMenuFrame = 0;
+    });
+}
 
 void gameplay::Scene::requestControllerInstructions() {
     if (!controllerOptions || !sceneControl.gameplayEnabled || instructions.active())
@@ -232,6 +258,11 @@ void gameplay::Scene::prepareGraphics() {
 }
 
 void gameplay::Scene::prepareModelGraphics(ID3D11Device* device) {
+    if (gameBoyMap) {
+        prepareModel(device, gameBoyMap->model());
+        prepareModel(device, gameBoyMap->marker());
+        for (unsigned i = 0; i < 7; ++i) prepareModel(device, gameBoyMap->doorModel(i));
+    }
     particleRenderer.load(device);
     pointRenderer.load(device);
     sheetRenderer.load(device);
@@ -319,9 +350,31 @@ bool gameplay::Scene::updateRoomResources() {
 }
 
 void gameplay::Scene::update(const playerinput::PadStatus& pad, std::int16_t port, std::uint32_t audioFrame, bool gameplayTick) {
+    const auto stage = [](const char* name, auto action) {
+        try { action(); }
+        catch (const std::exception& exception) {
+            throw std::runtime_error(std::string(name) + ": " + exception.what());
+        }
+    };
     resources.managers().sampleInput(pad, port);
     auto& managers = resources.managers();
     managers.setAudioInterfaceFrame(audioFrame);
+    if (saveMenuActive) {
+        gameBoyPendingPressed = gameBoyPendingRepeat = 0;
+        const auto pressed = managers.controller().pressed;
+        if (pressed & 0x8000008) saveMenuYes = true;
+        if (pressed & 0x4000004) saveMenuYes = false;
+        ++saveMenuFrame;
+        if (pressed & 0x300) {
+            if ((pressed & 0x100) && saveMenuYes) {
+                if (!saveCallback) throw std::logic_error("Toad save requires the selected game card.");
+                saveCallback();
+            }
+            saveMenuActive = false;
+            resources.completeSave();
+        }
+        return;
+    }
     if (instructions.active()) {
         instructions.update(managers.controller().pressed, instructionClock ? *instructionClock : presentationFrame, *instructionServices);
         instructionUpdated = true;
@@ -334,20 +387,104 @@ void gameplay::Scene::update(const playerinput::PadStatus& pad, std::int16_t por
         }
     }
     presentationButtons |= managers.controller().pressed;
-    if (!gameplayTick) return;
+    if (!gameplayTick) {
+        if (gameBoyListActive || (gameBoyMap && gameBoyMap->active())) {
+            gameBoyPendingPressed |= managers.controller().pressed;
+            gameBoyPendingRepeat |= managers.controller().repeat;
+        }
+        return;
+    }
+    const auto gameBoyPressed = managers.controller().pressed | gameBoyPendingPressed;
+    const auto gameBoyRepeat = managers.controller().repeat | gameBoyPendingRepeat;
+    gameBoyPendingPressed = gameBoyPendingRepeat = 0;
+    if (gameBoyListActive) {
+        const auto pressed = gameBoyPressed;
+        if (pressed & 0x10) { gameBoyListActive = false; return; }
+        if (gameBoyListDetail) {
+            if (pressed & 0x300) {
+                gameBoyListDetail = false;
+                managers.playback()->playGlobal(0x380f);
+            }
+            return;
+        }
+        if ((pressed & 0x2000000) && gameBoyListTab == 0) {
+            gameBoyListTab = 1;
+            managers.playback()->playGlobal(0x3807);
+        } else if ((pressed & 0x1000000) && gameBoyListTab == 1) {
+            gameBoyListTab = 0;
+            managers.playback()->playGlobal(0x3807);
+        }
+        if (pressed & 0x200) { gameBoyListActive = false; return; }
+        if (gameBoyListTab == 1) {
+            const unsigned direction = gameBoyRepeat & 0xf0000;
+            if (direction) {
+                unsigned position = gameBoyListSelection;
+                if (direction & 0x20000)
+                    position = position < 18 ? position % 6 == 5 ? position - 5 : position + 1 :
+                        position == 21 ? 18 : position + 1;
+                if (direction & 0x10000)
+                    position = position < 18 ? position % 6 == 0 ? position + 5 : position - 1 :
+                        position == 18 ? 21 : position - 1;
+                if (direction & 0x80000)
+                    position = position < 6 ? (position == 0 || position == 5 ? position + 12 : position + 17) :
+                        position < 18 ? position - 6 : position - 5;
+                if (direction & 0x40000)
+                    position = position < 12 ? position + 6 : position < 18 ?
+                        (position == 12 || position == 17 ? position - 12 : position + 5) : position - 17;
+                if (position >= 22) throw std::logic_error("Original ghost list selection exceeded 22 entries.");
+                if (position != gameBoyListSelection) {
+                    gameBoyListSelection = position;
+                    managers.playback()->playGlobal(0x3807);
+                }
+            }
+            if (pressed & 0x100) {
+                const auto* player = managers.playerEvents().player(0);
+                if (!player || !player->view.bits[0] || !player->view.bits[0]->data)
+                    throw std::logic_error("Original ghost profile requires capture flags.");
+                if (resources.hud().listGhostCaptured(player->view, gameBoyListSelection)) gameBoyListDetail = true;
+                managers.playback()->playGlobal(0x380e);
+            }
+        }
+        return;
+    }
+    if (gameBoyMap && gameBoyMap->active()) {
+        const auto sound = gameBoyMap->update(managers.controller().held, gameBoyPressed,
+            enhancementsettings::rotateMap360());
+        if (sound) managers.playback()->playGlobal(sound);
+        return;
+    }
     if (!sceneControl.gameplayEnabled) return;
-    if (!resources.entranceActive() && (managers.controller().pressed & 0x800)) gameBoyOpen = !gameBoyOpen;
+    if (gameBoyMap && !resources.entranceActive() && (managers.controller().pressed & 0x800)) {
+        const auto* player = managers.playerEvents().player(0);
+        if (player && player->view.field861) {
+            const auto& keys = *player->components->flags;
+            const auto& saved = resources.inventory();
+            gameBoyMap->refresh(resources.roomFlags(), saved.data(), saved.size(), keys.data, keys.bytes);
+            gameBoyMap->open(player->room(), player->position);
+            managers.playback()->playGlobal(0x3804);
+            return;
+        }
+    }
+    if (gameBoyListEnabled && !resources.entranceActive() && (managers.controller().pressed & 0x10) &&
+        managers.playerEvents().player(0)->view.field861) {
+        gameBoyListActive = true;
+        gameBoyListTab = gameBoyListSelection = 0;
+        gameBoyListDetail = false;
+        managers.playback()->playGlobal(0x3804);
+        return;
+    }
     managers.lights().beginFrame();
     const bool cameraWasActive = resources.eventCameraActive();
-    resources.updateEvents(ticks / 30, audioFrame);
+    stage("event update", [&] { resources.updateEvents(ticks / 30, audioFrame); });
     if (!cameraWasActive && resources.eventCameraActive()) {
         flaggedOpacity = 0;
         limitedOpacity = 255;
     }
-    managers.updateGenerators();
+    stage("generator update", [&] { managers.updateGenerators(); });
     const std::array<playermotion::PlatformMotion, 2> platforms{};
     PlayerMainServices playerServices{nullptr, &managers.scanner(),
-        {managers.playerLife(), false, ticks, {}, {}, {}, {}}, platforms};
+        {managers.playerLife(), false, ticks,
+            [&managers](bool enabled) { managers.changeShrinkAudioRate(enabled); }, {}, {}, {}}, platforms};
     const auto scannerTransition = [this](playeractor::Player& target, bool enabled) {
         target.state.flags1140[2] = enabled;
         resources.managers().playback()->play(enabled ? 0x830 : 0x831, target.position);
@@ -358,17 +495,25 @@ void gameplay::Scene::update(const playerinput::PadStatus& pad, std::int16_t por
     auto* player = managers.playerEvents().player(0);
     for (unsigned i = 0; i < managers.enemies().slots().size(); ++i) {
         const auto& slot = managers.enemies().slots()[i];
-        if (slot.state == 2 && slot.owner && &slot.owner->actor() == player) managers.updatePlayerMain(0, playerServices);
-        else managers.updateOwner(i);
+        if (slot.state == 2 && slot.owner && &slot.owner->actor() == player)
+            stage("player update", [&] { managers.updatePlayerMain(0, playerServices); });
+        else {
+            try { managers.updateOwner(i); }
+            catch (const std::exception& exception) {
+                throw std::runtime_error("character slot " + std::to_string(i) + " type " +
+                    std::to_string(slot.owner ? slot.owner->actor().type() : -1) + ": " + exception.what());
+            }
+        }
     }
-    managers.updateContacts();
-    updateRoomResources();
-    resources.updateCamera();
+    stage("contact update", [&] { managers.updateContacts(); });
+    stage("room resource update", [&] { updateRoomResources(); });
+    stage("camera update", [&] { resources.updateCamera(); });
     publishCamera();
     const auto& cameraBounds = resources.cameraViewport();
     rooms = resources.prepareVisibility(visibilityProjection,
         {static_cast<std::int16_t>(cameraBounds[0]), static_cast<std::int16_t>(cameraBounds[1]),
-            static_cast<std::int16_t>(cameraBounds[2]), static_cast<std::int16_t>(cameraBounds[3])});
+            static_cast<std::int16_t>(cameraBounds[2]), static_cast<std::int16_t>(cameraBounds[3])},
+        0, {}, scannerVisibility);
     managers.updateDoors(ticks);
     managers.updateFurniture(ticks);
     auto targetAmbient = resources.rooms().entries().at(player->room() >> 24).ambient;
@@ -395,9 +540,11 @@ void gameplay::Scene::update(const playerinput::PadStatus& pad, std::int16_t por
     managers.updateMoney(moneyCamera.position, {moneyCamera.target[0] - moneyCamera.position[0],
         moneyCamera.target[1] - moneyCamera.position[1], moneyCamera.target[2] - moneyCamera.position[2]});
     managers.particles().update();
+    managers.trails().update();
     resources.hud().update(player->view, resources.fullscreen(), managers.roomCleared(player->room() >> 24));
     resources.hud().updateGhosts(managers.ghostHealth(), ticks);
-    resources.hud().updateDemoPanel(player->view, sceneControl.demoDisplay, resources.messages().visible(), gameBoyOpen);
+    resources.hud().updateDemoPanel(player->view, sceneControl.demoDisplay, resources.messages().visible(),
+        sceneControl.gameplayEnabled && resources.menuEnabled());
     resources.updateMessages();
     ++ticks;
 }
@@ -420,7 +567,8 @@ bool gameplay::Scene::presentKey(bool missingKey, bool front, unsigned doorType)
 bool gameplay::Scene::requestPlayerDemo(std::string_view name) { return keyPresentation.requestNamed(name); }
 
 bool gameplay::Scene::keyPresentationActive() const { return keyPresentation.state().owned; }
-bool gameplay::Scene::gameplaySuspended() const { return !sceneControl.gameplayEnabled || instructions.active(); }
+bool gameplay::Scene::gameplaySuspended() const { return !sceneControl.gameplayEnabled || instructions.active() ||
+    gameBoyListActive || (gameBoyMap && gameBoyMap->active()); }
 
 
 void gameplay::Scene::updateOpacity() {
@@ -485,8 +633,15 @@ void gameplay::Scene::draw(bool present) {
         gamerenderer::drawInterface(screen.graphics().pictures(screen.layout()), present);
         return;
     }
-    const bool gameplayDrawn = sceneControl.gameplayEnabled;
-    if (gameplayDrawn) drawGameplay(false);
+    const bool mapDrawn = gameBoyMap && gameBoyMap->active();
+    const bool listDrawn = gameBoyListActive;
+    const bool gameplayDrawn = sceneControl.gameplayEnabled && !mapDrawn && !listDrawn;
+    if (mapDrawn) drawGameBoyMap();
+    else if (listDrawn) {
+        if (!gamerenderer::useScene("gameplay")) throw std::runtime_error("Game Boy Horror list graphics are unavailable.");
+        gamerenderer::bindSceneTarget(true);
+    }
+    else if (gameplayDrawn) drawGameplay(false);
     const bool movieReady = keyPresentation.state().owned && keyPresentation.state().updated;
     if (movieReady && keyPresentation.state().mode != 1) keyPresentation.draw(present);
     else {
@@ -502,7 +657,17 @@ void gameplay::Scene::draw(bool present) {
         picture.height = 480;
         std::vector<startupscene::Picture> pictures{picture};
         const auto* player = resources.managers().playerEvents().player(0);
-        if (player && player->state.flags1140[2]) {
+        if (mapDrawn) {
+            const auto frame = resources.hud().mapPictures(gameBoyMap->zoomedIn(),
+                gameBoyMap->floor(), gameBoyMap->currentFloor(), player ? player->room() & 255 : 0xff,
+                presentationFrame / 2);
+            pictures.insert(pictures.end(), frame.begin(), frame.end());
+        } else if (listDrawn) {
+            if (!player) throw std::logic_error("Original Game Boy Horror list requires Luigi.");
+            const auto list = resources.hud().listPictures(player->view, gameBoyListTab,
+                gameBoyListSelection, gameBoyListDetail, presentationFrame / 2);
+            pictures.insert(pictures.end(), list.begin(), list.end());
+        } else if (player && player->state.flags1140[2]) {
             const auto sight = resources.hud().scannerPictures(player->components->scanner->state[1] != 0);
             pictures.insert(pictures.end(), sight.begin(), sight.end());
         } else {
@@ -512,8 +677,19 @@ void gameplay::Scene::draw(bool present) {
             const auto hud = resources.hud().pictures();
             pictures.insert(pictures.end(), hud.begin(), hud.end());
         }
-        const auto messages = resources.messagePictures();
-        pictures.insert(pictures.end(), messages.begin(), messages.end());
+        if (!mapDrawn && !listDrawn) {
+            const auto messages = resources.messagePictures();
+            pictures.insert(pictures.end(), messages.begin(), messages.end());
+        }
+        if (saveMenuActive) {
+            const auto* bits = player->components->bits[0].get();
+            if (!bits || !bits->data || bits->bytes <= 0x1b)
+                throw std::logic_error("Original save area requires the player's capture flags.");
+            const unsigned area = bits->data[0x1b] & 0x20 ? 4 : bits->data[0x1b] & 0x10 ? 3 :
+                bits->data[0x1a] & 0x20 ? 2 : bits->data[8] & 1 ? 1 : 0;
+            const auto save = resources.hud().savePictures(saveMenuYes, saveMenuFrame, area);
+            pictures.insert(pictures.end(), save.begin(), save.end());
+        }
         gamerenderer::drawInterface(pictures, present);
     }
 }
@@ -525,10 +701,119 @@ void gameplay::Scene::publishCamera() {
     // The scanner sits behind the normal foreground wall. The first-person view
     // must keep that wall opaque, as the original camera mode does.
     overrideRoomOpacity = camera.visibilityMode == 2 || camera.visibilityMode == 3;
+    scannerVisibility = camera.visibilityMode == 3;
     view = camera.view;
     projection = camera.projection;
     visibilityProjection = camera.worldProjection;
     for (unsigned column = 0; column < 4; ++column) projection[8 + column] += projection[12 + column];
+}
+
+void gameplay::Scene::drawGameBoyMap() {
+    if (!gameBoyMap) throw std::logic_error("Game Boy Horror map drawing requires map resources.");
+    if (!gamerenderer::useScene("gameplay")) throw std::runtime_error("Game Boy Horror map graphics are unavailable.");
+    dooranimation::Matrix mapView{};
+    std::array<float, 16> mapProjection{};
+    gameBoyMap->camera(mapView, mapProjection);
+    const D3D11_VIEWPORT viewport{112, 84, 416, 312, 0, 1};
+    gamerenderer::bindSceneTarget(true, &viewport);
+    auto* context = gamerenderer::modelContext();
+    const D3D11_RECT bounds{112, 84, 528, 396};
+    context->RSSetScissorRects(1, &bounds);
+    modelrenderer::initializeModelState(pipeline);
+    pipeline.scissor = true;
+    retained.fill({});
+    const float scale = constant<float>(resources.executable(), 0x804da06c);
+    const auto* player = resources.managers().playerEvents().player(0);
+    const auto drawRooms = [&](unsigned firstPass, unsigned endPass) {
+        for (const auto& room : gameBoyMap->rooms()) {
+            const auto& model = gameBoyMap->model();
+            if (static_cast<std::int8_t>(room.floor) != gameBoyMap->floor() ||
+                !model.drawing.nodes().count(room.node)) continue;
+            modellighting::State lighting;
+            modellighting::initialize(lighting, mapView, {}, false, {255, 255, 255, 255}, trig);
+            const auto& shadow = resources.managers().shadowProjection();
+            modellighting::prepareModel(lighting, mapView, shadow.position, shadow.target, false, trig);
+            lighting.material.overrideColorValue = gameBoyMap->colors().at(room.color);
+            modeldraw::TraversalState state;
+            state.overrideOpacity = true;
+            for (unsigned pass = firstPass; pass < endPass; ++pass)
+                modeldraw::traverse(model.drawing, pass, 255, state, [&](const modeldraw::DrawCommand& command) {
+                    lighting.material.overrideColor = command.material == 0;
+                    auto matrix = model.initialMatrices.at(command.node);
+                    for (auto& element : matrix) element *= scale;
+                    modelrenderer::VertexMatrices matrices;
+                    matrices.modelView = dooranimation::concatenate(mapView, matrix);
+                    if (!modeldraw::normalMatrix(matrices.modelView, matrices.normal))
+                        throw std::runtime_error("Original Game Boy Horror map has a singular model transform.");
+                    matrices.projection = mapProjection;
+                    models.at(&model).draw(context, command, pass, 0, matrices, trig, lighting,
+                        pipeline, {}, retained, false);
+                }, room.node, true);
+        }
+    };
+    const auto drawPlayer = [&](unsigned firstPass, unsigned endPass) {
+        if (!player || gameBoyMap->floor() != gameBoyMap->currentFloor()) return;
+        const auto& marker = gameBoyMap->marker();
+        const float angle = float(static_cast<std::uint16_t>(player->rotation[1])) *
+            6.2831853071795864769f / 65536.0f;
+        const float cosine = std::cos(angle), sine = std::sin(angle);
+        const float markerScale = gameBoyMap->markerSize();
+        const dooranimation::Matrix markerTransform{
+            markerScale * cosine, 0, markerScale * sine, scale * player->position[0],
+            0, markerScale, 0, scale * player->position[1] + gameBoyMap->markerBounce(),
+            -markerScale * sine, 0, markerScale * cosine, scale * player->position[2]};
+        modellighting::State lighting;
+        modellighting::initialize(lighting, mapView, {}, false, {255, 255, 255, 255}, trig);
+        const auto& shadow = resources.managers().shadowProjection();
+        modellighting::prepareModel(lighting, mapView, shadow.position, shadow.target, false, trig);
+        modeldraw::TraversalState state;
+        state.overrideOpacity = true;
+        for (unsigned pass = firstPass; pass < endPass; ++pass)
+            modeldraw::traverse(marker.drawing, pass, 255, state, [&](const modeldraw::DrawCommand& command) {
+                modelrenderer::VertexMatrices matrices;
+                matrices.modelView = dooranimation::concatenate(mapView,
+                    dooranimation::concatenate(markerTransform, marker.initialMatrices.at(command.node)));
+                if (!modeldraw::normalMatrix(matrices.modelView, matrices.normal))
+                    throw std::runtime_error("Original Game Boy Horror player marker has a singular transform.");
+                matrices.projection = mapProjection;
+                models.at(&marker).draw(context, command, pass, 0, matrices, trig, lighting,
+                    pipeline, {}, retained, false);
+            });
+    };
+    const auto drawDoors = [&](unsigned firstPass, unsigned endPass) {
+        for (const auto& marker : gameBoyMap->doorMarkers()) {
+            if (static_cast<std::int8_t>(marker.floor) != gameBoyMap->floor()) continue;
+            for (unsigned part = 0; part < (marker.keyVisible ? 2u : 1u); ++part) {
+                const auto& icon = gameBoyMap->doorModel(part ? marker.keyModel : marker.doorModel);
+                const auto transform = part ? gameBoyMap->keyTransform(marker) : marker.transform;
+                modellighting::State lighting;
+                modellighting::initialize(lighting, mapView, {}, false, {255, 255, 255, 255}, trig);
+                const auto& shadow = resources.managers().shadowProjection();
+                modellighting::prepareModel(lighting, mapView, shadow.position, shadow.target, false, trig);
+                modeldraw::TraversalState state;
+                state.overrideOpacity = true;
+                for (unsigned pass = firstPass; pass < endPass; ++pass)
+                    modeldraw::traverse(icon.drawing, pass, 255, state,
+                        [&](const modeldraw::DrawCommand& command) {
+                            modelrenderer::VertexMatrices matrices;
+                            matrices.modelView = dooranimation::concatenate(mapView,
+                                dooranimation::concatenate(transform, icon.initialMatrices.at(command.node)));
+                            if (!modeldraw::normalMatrix(matrices.modelView, matrices.normal))
+                                throw std::runtime_error("Original Game Boy Horror door marker has a singular transform.");
+                            matrices.projection = mapProjection;
+                            models.at(&icon).draw(context, command, pass, 0, matrices, trig, lighting,
+                                pipeline, {}, retained, false);
+                        });
+            }
+        }
+    };
+    // 80029DD4 draws the rooms and icons in passes 0/1; 8002A01C revisits them in pass 2.
+    drawRooms(0, 2);
+    drawPlayer(0, 2);
+    drawDoors(0, 2);
+    drawRooms(2, 3);
+    drawPlayer(2, 3);
+    drawDoors(2, 3);
 }
 
 void gameplay::Scene::drawGameplay(bool present) {
@@ -713,9 +998,47 @@ void gameplay::Scene::drawWorld(bool reflection, const s3denvironment::Camera& c
     drawAuxiliary(5);
     particleRenderer.draw(gamerenderer::modelContext(), particleBillboards->prepare(resources.managers().particles().pool(),
         resources.rooms(), resources.visibility(), view), view, projection);
-    particleRenderer.draw(gamerenderer::modelContext(), resources.managers().particles().runningDust().prepare(view), view, projection);
-    particleRenderer.draw(gamerenderer::modelContext(), resources.managers().particles().elemental().prepareBreath(view), view, projection);
+    drawTrails();
+    const auto& particleDebug = controlsettings::particleDebug();
+    if (!particleDebug.hideTrailDust || particleDebug.outlineTrailDust) {
+        const auto dust = resources.managers().particles().runningDust().prepare(view);
+        if (!particleDebug.hideTrailDust) particleRenderer.draw(gamerenderer::modelContext(), dust, view, projection);
+        if (particleDebug.outlineTrailDust) particleRenderer.drawDebugOutlines(gamerenderer::modelContext(), dust, view, projection);
+    }
+    if (!particleDebug.hideBreath || particleDebug.outlineBreath) {
+        const auto breath = resources.managers().particles().elemental().prepareBreath(view);
+        if (!particleDebug.hideBreath) particleRenderer.draw(gamerenderer::modelContext(), breath, view, projection);
+        if (particleDebug.outlineBreath) particleRenderer.drawDebugOutlines(gamerenderer::modelContext(), breath, view, projection);
+    }
     particleRenderer.draw(gamerenderer::modelContext(), resources.managers().particles().elemental().prepareBlow(view), view, projection);
+}
+
+void gameplay::Scene::drawTrails() {
+    std::vector<particles::Billboard> quads;
+    const auto coordinates = actortrail::textureCoordinates();
+    resources.managers().trails().draw([&](const actortrail::Segment& segment, const std::vector<std::uint8_t>& bytes) {
+        auto& texture = trailTextures[&bytes];
+        if (!texture) texture = std::make_shared<std::vector<std::uint8_t>>(bytes);
+        for (unsigned step = 0; step < 5; ++step) {
+            particles::Billboard quad;
+            quad.texture = texture;
+            quad.color = {static_cast<std::uint8_t>(segment.color >> 24),
+                static_cast<std::uint8_t>(segment.color >> 16), static_cast<std::uint8_t>(segment.color >> 8), 255};
+            quad.mode = 8;
+            quad.perVertexColor = true;
+            quad.blend = 0x14;
+            quad.depth = 0x0b;
+            quad.cull = 0;
+            const unsigned indices[]{step * 2, step * 2 + 1, step * 2 + 3, step * 2 + 2};
+            for (unsigned corner = 0; corner < 4; ++corner) {
+                quad.positions[corner] = segment.vertices[indices[corner]];
+                quad.coordinates[corner] = coordinates[indices[corner]];
+                quad.vertexColors[corner] = {255, 255, 255, segment.alphas[indices[corner]]};
+            }
+            quads.push_back(std::move(quad));
+        }
+    });
+    particleRenderer.draw(gamerenderer::modelContext(), quads, view, projection);
 }
 
 void gameplay::Scene::drawSheets(unsigned pass) {
@@ -854,8 +1177,9 @@ void gameplay::Scene::drawScannerEffects() {
     effectLighting->prepare(effectMaterialState, view, resources.managers().lights().lights(), trig);
     gamerenderer::bindSceneTarget(false, &drawViewport);
     const auto draw = [&](j3dmodel::ModelInstance& instance) {
-        j3dmodel::calculateBasic(instance, *modelTransforms);
+        j3dmodel::calculateAnimated(instance, *modelTransforms);
         for (auto& material : instance.model->materials.entries) {
+            j3dmodel::animateTevColors(*material);
             j3dmodel::animateTextureMatrices(*material);
             j3dmodel::calculateMaterial(*material, instance.jointMatrices[0], view,
                 instance.field8 & 12, *modelTransforms);
@@ -1063,7 +1387,7 @@ void gameplay::Scene::drawMoney() {
         moneyLighting.light(0, light);
     }
     const auto instances = managers.moneyModels();
-    gamerenderer::bindSceneTarget(false);
+    gamerenderer::bindSceneTarget(false, &drawViewport);
     for (auto* instance : instances) {
         j3dmodel::calculateBasic(*instance, *modelTransforms);
         for (auto& material : instance->model->materials.entries)
@@ -1082,3 +1406,4 @@ void gameplay::Scene::drawMoney() {
 
 
 const scenetransition::Request& gameplay::Scene::transition() const { return resources.transition(); }
+

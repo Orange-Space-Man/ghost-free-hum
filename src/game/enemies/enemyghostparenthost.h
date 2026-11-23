@@ -8,6 +8,8 @@
 #include "game/effects/modeleffectpool.h"
 #include "game/player/playereventdispatch.h"
 
+namespace actortrail { class Pool; }
+
 namespace ghostparent {
     // The owner-side objects the parent reaches through its character owner (+0x4 / +0x808 / +0x80C chains).
     struct OwnerView {
@@ -42,6 +44,7 @@ namespace ghostparent {
         const actorcollision::Catalog& shapes;
         const roomlocation::Rooms& rooms;
         const gamearchive::Archive& common;
+        const mission::Resources& mission;
         ghostcapture::DropServices drops;
         std::function<void(unsigned, const std::array<float, 3>&)> particle;
         std::function<void(unsigned, const std::array<float, 3>&)> sound;
@@ -49,8 +52,11 @@ namespace ghostparent {
         std::function<actors::MoveActor&(unsigned)> player;
         std::function<bool()> reducedScale;
         std::function<OwnerView(enemies::Owner&)> view; // defaults to viewOf(characterowner::Owner)
+        actortrail::Pool* trails = nullptr;
     };
 
     // 800EED40: the training ghost parent. Owner-specific services are bound when the owner begins the strategy.
-    std::unique_ptr<enemystrategy::Strategy> construct(const Environment& environment);
+    std::unique_ptr<enemystrategy::Strategy> construct(const Environment& environment, bool trainingOverrides = true);
+    std::unique_ptr<enemystrategy::Strategy> constructFindPlayer(const Environment& environment);
+    std::unique_ptr<enemystrategy::Strategy> constructFindPlayerNear(const Environment& environment);
 }

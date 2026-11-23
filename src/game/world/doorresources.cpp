@@ -1,4 +1,5 @@
 #include "resources/glme01addresses.h"
+#include "resources/gameedition.h"
 #include "resources/dolresources.h"
 #include "game/world/doorresources.h"
 #include "resources/roomarchivereader.h"
@@ -31,15 +32,16 @@ bool doors::Resources::load(const std::vector<std::uint8_t>& archive,
     error.clear();
     try {
         Resources result;
+        const auto addresses = gameedition::doors(gameedition::identify(executable));
         if (!result.tables.read(executable, error) || !result.trig.read(executable, error)) return false;
         for (unsigned i = 0; i < result.models.size(); ++i) {
             auto& model = result.models[i];
-            if (!roomarchive::read(archive, resourcePath(executable, glme01::doorModels + i * 4), model.bytes, error) ||
+            if (!roomarchive::read(archive, resourcePath(executable, addresses.models + i * 4), model.bytes, error) ||
                 !model.read(model.bytes, result.tables, error)) return false;
         }
         for (unsigned i = 0; i < result.animations.size(); ++i) {
             std::vector<std::uint8_t> bytes;
-            if (!roomarchive::read(archive, resourcePath(executable, glme01::doorAnimations + i * 4), bytes, error) ||
+            if (!roomarchive::read(archive, resourcePath(executable, addresses.animations + i * 4), bytes, error) ||
                 !result.animations[i].read(bytes, error)) return false;
         }
         result.loaded = true;

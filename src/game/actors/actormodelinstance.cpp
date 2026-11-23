@@ -80,7 +80,8 @@ const actormodel::Matrix& actormodel::Instance::matrix(unsigned bank, unsigned i
 
 actormodel::Attachment& actormodel::Instance::attachment(unsigned index) {
     if (index >= count) {
-        throw std::out_of_range("Actor model attachment index.");
+        throw std::out_of_range("Actor model attachment index " + std::to_string(index) +
+            " exceeds matrix count " + std::to_string(count) + ".");
     }
     return attachments[index];
 }

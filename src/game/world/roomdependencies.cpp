@@ -1,4 +1,5 @@
 #include "resources/dolresources.h"
+#include "resources/gameedition.h"
 #include "game/world/roomdependencies.h"
 #include "game/startup/startupresources.h"
 
@@ -20,8 +21,9 @@ namespace {
 }
 
 roomdependencies::Catalog::Catalog(const std::vector<std::uint8_t>& executable, unsigned map) {
-    if (map > (0xffffffffU - 0x802ff218U) / 4) throw std::out_of_range("Map descriptor address overflows.");
-    const auto descriptor = read(executable, word(read(executable, 0x802ff218 + map * 4, 4), 0), 28);
+    const auto mapPointers = gameedition::cameraFollow(gameedition::identify(executable)).descriptors;
+    if (map > (0xffffffffU - mapPointers) / 4) throw std::out_of_range("Map descriptor address overflows.");
+    const auto descriptor = read(executable, word(read(executable, mapPointers + map * 4, 4), 0), 28);
     const auto pointers = read(executable, word(descriptor, 8), descriptor.at(0) * 4);
     rooms.resize(descriptor.at(0));
     for (unsigned room = 0; room < rooms.size(); ++room) {

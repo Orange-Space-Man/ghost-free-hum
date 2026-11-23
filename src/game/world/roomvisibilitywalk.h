@@ -29,7 +29,7 @@ namespace roomtraversal {
             const WalkServices& services);
         std::vector<Submission> stationary(unsigned room, unsigned buffer, const roomportal::Matrix& projection,
             const Bounds& viewport, std::uint8_t clippingMode, std::uint8_t floorOpacity,
-            const Transition* transition = nullptr);
+            const Transition* transition = nullptr, bool scannerMode = false);
 
     private:
         const std::vector<SceneRoom>& rooms;

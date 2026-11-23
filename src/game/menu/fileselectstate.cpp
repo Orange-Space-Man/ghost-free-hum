@@ -66,7 +66,7 @@ void fileselect::State::update(Input input, const std::array<bool, 3>& used, uns
     } else if (mode == 20) {
         if (!rumbleOpen) {
             if (up && optionSelection > 0) { --optionSelection; sound(0x3801); }
-            if (down && optionSelection < 5) { ++optionSelection; sound(0x3801); }
+            if (down && optionSelection + 1 < optionCount) { ++optionSelection; sound(0x3801); }
             if (optionSelection < 3) {
                 const std::array<unsigned, 3> counts{3, 2, 2};
                 auto& value = options[optionSelection];

@@ -1,4 +1,5 @@
 #include "resources/glme01addresses.h"
+#include "resources/gameedition.h"
 #include "resources/dolresources.h"
 #include "jlib/jaudio/jaudiovoice.h"
 
@@ -184,21 +185,22 @@ bool jaudio::VoiceBank::load(gameassets::Package& package, const Resources& reso
         loadWaveSystem(package, resources, waveId);
         for (const auto id : additionalWaveSystems) if (waveSystems.count(id) == 0) loadWaveSystem(package, resources, id);
         std::vector<std::uint8_t> dol, table;
+        const auto addresses = gameedition::audio(package.gameId());
         if (!package.read("sys/main.dol", dol, error) ||
-            !dolresources::read(dol, glme01::voicePredictorCoefficients, 64, table, error)) throw std::runtime_error(error);
+            !dolresources::read(dol, addresses.voicePredictor, 64, table, error)) throw std::runtime_error(error);
         for (unsigned i = 0; i < coefficients.size(); ++i) coefficients[i] = static_cast<std::int16_t>(word(table, i * 2));
-        if (!dolresources::read(dol, glme01::dspResamplingTable, 512, table, error)) throw std::runtime_error(error);
+        if (!dolresources::read(dol, addresses.resampling, 512, table, error)) throw std::runtime_error(error);
         for (unsigned i = 0; i < resampling.size(); ++i) resampling[i] = static_cast<std::int16_t>(word(table, i * 2));
         if (!dolresources::read(dol, glme01::voiceChannelAndOutputLevels, 8, table, error)) throw std::runtime_error(error);
         channelLevel = static_cast<unsigned>(16384 * real(table, 0));
         outputLevel = static_cast<unsigned>(4096 * real(table, 4));
         if (!dolresources::read(dol, glme01::voiceSineConstants, 8, table, error)) throw std::runtime_error(error);
         for (unsigned i = 0; i < sine.size(); ++i) sine[i] = std::sin((real(table, 0) * i) * real(table, 4));
-        if (!dolresources::read(dol, glme01::voicePitchTable, 128 * 4, table, error)) throw std::runtime_error(error);
+        if (!dolresources::read(dol, addresses.pitch, 128 * 4, table, error)) throw std::runtime_error(error);
         for (unsigned i = 0; i < pitches.size(); ++i) pitches[i] = real(table, i * 4);
-        if (!dolresources::read(dol, glme01::voiceFinePitchTable, 64 * 4, table, error)) throw std::runtime_error(error);
+        if (!dolresources::read(dol, addresses.finePitch, 64 * 4, table, error)) throw std::runtime_error(error);
         for (unsigned i = 0; i < finePitches.size(); ++i) finePitches[i] = real(table, i * 4);
-        if (!dolresources::read(dol, glme01::voiceVibratoParameters, 0x6c, table, error)) throw std::runtime_error(error);
+        if (!dolresources::read(dol, addresses.vibrato, 0x6c, table, error)) throw std::runtime_error(error);
         vibrato.destination = 1;
         vibrato.rate = real(table, 0x58);
         vibrato.scale = real(table, 0x64);
@@ -283,7 +285,13 @@ jaudio::InstrumentVoice jaudio::VoiceBank::voice(unsigned bank, unsigned program
         result.volume = real(bankData, instrument + 8);
         result.pitch = real(bankData, instrument + 12);
         result.envelope = oscillator(bankData, dword(bankData, instrument + 16));
-        require(result.envelope.destination == 0 && dword(bankData, instrument + 20) == 0, "Unported JAudio instrument oscillator.");
+        require(result.envelope.destination == 0, "Unsupported JAudio instrument volume oscillator.");
+        const auto modulation = dword(bankData, instrument + 20);
+        if (modulation) {
+            result.modulation = oscillator(bankData, modulation);
+            require(result.modulation.destination <= 1, "Unsupported JAudio instrument modulation destination.");
+            result.hasModulation = true;
+        }
         for (unsigned i = 24; i < 40; i += 4) require(dword(bankData, instrument + i) == 0, "Unported JAudio instrument effect.");
         const auto keys = dword(bankData, instrument + 40);
         require(keys <= 128, "Invalid JAudio key map count.");

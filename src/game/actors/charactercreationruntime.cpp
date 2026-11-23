@@ -31,6 +31,12 @@ void characterowner::CreationRuntime::bindToadInteraction(std::function<void()> 
 }
 
 void characterowner::CreationRuntime::update(Owner& owner) {
+    const auto stage = [](const char* name, auto action) {
+        try { action(); }
+        catch (const std::exception& exception) {
+            throw std::runtime_error(std::string(name) + ": " + exception.what());
+        }
+    };
     if (!manager || &owner.manager() != manager || !updates || !updates->players.entries) {
         throw std::runtime_error("Original character-owner update services are not bound to EnManager.");
     }
@@ -43,12 +49,14 @@ void characterowner::CreationRuntime::update(Owner& owner) {
     updateDamage(owner, properties, services.models, player, [&](unsigned type, const std::array<float, 3>& position) {
         services.particles.createDamage(type, position);
     });
-    updateVacuum(owner, entries, services.modelEffects, services.parameters, services.collision, services.models, services.runtime);
+    stage("owner vacuum", [&] {
+        updateVacuum(owner, entries, services.modelEffects, services.parameters, services.collision, services.models, services.runtime);
+    });
     owner.updateDependentActors(services.actors);
     owner.ownership().updateAttachments(dynamic_cast<actors::MoveActor&>(owner.actor()));
-    owner.updateProjection(services.modelEffects, services.parameters, services.collision);
-    owner.updateAnimationEffect();
-    owner.updateStrategy();
+    stage("owner projection", [&] { owner.updateProjection(services.modelEffects, services.parameters, services.collision); });
+    stage("owner animation effect", [&] { owner.updateAnimationEffect(); });
+    stage("owner strategy", [&] { owner.updateStrategy(); });
     updateSuction(owner, entries, services.actors, services.creation, services.sound);
     owner.updateReleaseTimer();
     owner.updateEventTimers();

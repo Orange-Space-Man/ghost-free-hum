@@ -9,6 +9,8 @@ namespace particles {
     struct Billboard {
         std::array<std::array<float, 3>, 4> positions{};
         std::array<std::uint8_t, 4> color{}, secondary{};
+        std::array<std::array<std::uint8_t, 4>, 4> vertexColors{};
+        bool perVertexColor = false;
         Resource texture;
         std::array<std::array<float, 2>, 4> coordinates{{{0, 0}, {1, 0}, {1, 1}, {0, 1}}};
         unsigned mode = 0, blend = 0, depth = 0, cull = 2;

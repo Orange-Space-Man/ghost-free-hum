@@ -12,4 +12,8 @@ namespace enhancementsettings {
     // Dolphin "Disable Copy Filter": the EFB copy skips the vertical row filter (6/52/6 for the shadow depth copy).
     bool disableCopyFilter();
     void setDisableCopyFilter(bool value);
+    bool rotateMap360();
+    void setRotateMap360(bool value);
+    bool automaticallyOpenKeyChests();
+    void setAutomaticallyOpenKeyChests(bool value);
 }

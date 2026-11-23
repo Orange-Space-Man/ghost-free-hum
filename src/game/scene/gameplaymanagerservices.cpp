@@ -2,6 +2,7 @@
 #include "game/actors/actorcapturepose.h"
 #include "game/actors/charactercaptureservices.h"
 #include "resources/dolresources.h"
+#include "resources/gameedition.h"
 #include "game/scene/gameplaymanagerservices.h"
 #include "game/enemies/enemytrainingservices.h"
 #include "game/enemies/enemyghostparenthost.h"
@@ -30,18 +31,23 @@
 #include "game/player/playerlightframe.h"
 #include "game/player/playerlightcontacts.h"
 #include "game/player/playeraudioframe.h"
+#include "game/player/playershrinkevent.h"
 #include "game/player/playerbreathframe.h"
 #include "game/player/playerheadtracking.h"
 #include "game/player/playeractionframe.h"
 #include "game/player/playerattachedframe.h"
 #include "game/player/playerreactioneffects.h"
+#include "platform/d3d11/enhancementsettings.h"
 #include "game/player/playerfurnitureowner.h"
 #include "game/world/roomfurnitureresponse.h"
+#include "game/world/roomfurnitureswing.h"
 #include "resources/glme01addresses.h"
 #include "game/audio/roomambientaudio.h"
 #include "game/world/roomstorm.h"
 #include "game/enemies/enemyitemstrategy.h"
+#include "game/effects/moneyscatterattraction.h"
 #include "game/effects/moneyscatterowner.h"
+#include "game/effects/moneyscatterplacements.h"
 #include "game/effects/billscatterscene.h"
 #include "game/effects/scatterattraction.h"
 
@@ -129,6 +135,7 @@ struct gameplay::ManagerServices::State : playerpresentation::Services, playersc
     void openFurnitureMessage() override { openMessage(); }
     unsigned selectedScanMessage = 0;
     std::function<void(unsigned)> scannerMessage;
+    std::function<void(unsigned, std::int32_t)> mapScene;
     void effect(unsigned id, const std::array<float, 3>& position) override {
         particles->effects().create(id, position, furnitureDirection);
     }
@@ -150,9 +157,10 @@ struct gameplay::ManagerServices::State : playerpresentation::Services, playersc
         throw std::runtime_error("Item presentation requires the equipped-player transition.");
     }
     void sound(unsigned id, const std::array<float, 3>& position) override { audio->playback.play(id, position); }
-    void scene(unsigned scene, std::int32_t) override {
+    void scene(unsigned scene, std::int32_t keyId) override {
         if (scene == 1 && !events->player(0)->view.field861) return;
-        throw std::runtime_error("Collected key requires its original map scene admission.");
+        if (!mapScene) throw std::runtime_error("Collected key requires its original map scene owner.");
+        mapScene(scene, keyId);
     }
     void vacuumSound(unsigned id, const std::array<float, 3>* position) {
         if (position) audio->playback.play(id, *position);
@@ -213,11 +221,11 @@ struct gameplay::ManagerServices::State : playerpresentation::Services, playersc
         playerAction(dependencies.executable, dependencies.actors.pose), playerAttached(dependencies.executable),
         playerVelocity(dependencies.executable, dependencies.actors.pose),
         ladderPaths(dependencies.mission), furnitureAdmission(dependencies.executable, dependencies.types),
-        furnitureResponse(dependencies.executable, furnitureAdmission),
+        furnitureResponse(dependencies.executable, furnitureAdmission), furnitureSwing(dependencies.executable),
         storm(dependencies.executable, dependencies.mission, dependencies.actors.pose), shadow(dependencies.executable) {
         std::vector<std::uint8_t> bytes;
         std::string error;
-        if (dependencies.entry.map == 1 || dependencies.entry.map == 3 || dependencies.entry.map == 6) {
+        if (dependencies.entry.map == 1 || dependencies.entry.map == 2 || dependencies.entry.map == 3 || dependencies.entry.map == 6) {
             const auto& rooms = dependencies.actors.rooms.entries();
             roomLights.resize(rooms.size());
             roomBrightness.assign(rooms.size(), 2);
@@ -278,6 +286,7 @@ struct gameplay::ManagerServices::State : playerpresentation::Services, playersc
         captureServices.reset();
         updates.reset();
         playerFurniture.reset();
+        placedCoins.reset();
         coins.reset();
         bills.reset();
         itemCreation.reset();
@@ -295,6 +304,13 @@ struct gameplay::ManagerServices::State : playerpresentation::Services, playersc
     }
 
     void initialize() {
+        const auto stage = [](const char* name, auto action) {
+            try {
+                action();
+            } catch (const std::exception& exception) {
+                throw std::runtime_error(std::string(name) + ": " + exception.what());
+            }
+        };
         mapMode = dependencies.entry.map;
         if (!dependencies.entry.initialized || (mapMode != 1 && mapMode != 2 && mapMode != 3 && mapMode != 6)) {
             throw std::invalid_argument("Manager services require a supported selected save entry.");
@@ -312,23 +328,25 @@ struct gameplay::ManagerServices::State : playerpresentation::Services, playersc
         restored = true;
         std::string error;
         std::vector<std::uint8_t> compressed, archive;
-        if (!dependencies.package.read("files/Game/game_usa.szp", compressed, error) ||
+        if (!dependencies.package.read(gameassets::commonArchive(dependencies.package.gameId()), compressed, error) ||
             !roomarchive::decompress(compressed, archive, error)) throw std::runtime_error(error);
         auto doorResources = std::make_shared<doors::Resources>();
-        if (!doorResources->load(archive, dependencies.executable, error)) throw std::runtime_error(error);
+        if (!doorResources->load(archive, dependencies.executable, error)) throw std::runtime_error("door resources: " + error);
         auto word = [&](std::uint32_t address) {
             std::vector<std::uint8_t> bytes;
             if (!dolresources::read(dependencies.executable, address, 4, bytes, error)) throw std::runtime_error(error);
             return (unsigned(bytes[0]) << 24) | (unsigned(bytes[1]) << 16) | (unsigned(bytes[2]) << 8) | bytes[3];
         };
         doordata::Table descriptors;
-        if (!doordata::read(dependencies.executable, word(word(0x802ff218 + mapMode * 4) + 0x18), descriptors, error)) {
+        if (!doordata::read(dependencies.executable, word(word(
+            gameedition::cameraFollow(gameedition::identify(dependencies.executable)).descriptors + mapMode * 4) + 0x18), descriptors, error)) {
             throw std::runtime_error(error);
         }
         const auto& rooms = dependencies.actors.rooms.entries();
         if (rooms.size() > roomIds.size()) throw std::runtime_error("Door room table exceeds the original room index range.");
         for (unsigned i = 0; i < rooms.size(); ++i) roomIds[i] = rooms[i].id;
-        if (!doors.initialize(descriptors, doorResources, dependencies.executable, savedDoors, error)) throw std::runtime_error(error);
+        if (!doors.initialize(descriptors, doorResources, dependencies.executable, savedDoors, error))
+            throw std::runtime_error("door state: " + error);
         missionEvents = std::make_unique<gameevent::MissionActivation>(dependencies.mission, dependencies.types,
             dependencies.entry, dependencies.flags);
         const auto* characters = dependencies.mission.getJmpResource("characterinfo");
@@ -336,41 +354,72 @@ struct gameplay::ManagerServices::State : playerpresentation::Services, playersc
         const int collisionIndex = dependencies.map.findNameResource("col.mp");
         if (collisionIndex < 0) throw std::runtime_error("Original manager services require map collision.");
         collision.load(dependencies.map.resource(collisionIndex));
-        audio = std::make_shared<Audio>(dependencies, collision);
-        particles = std::make_unique<particles::Scene>(dependencies.executable, commonResources, dependencies.randomState);
-        particles->initializeEffectBatches();
-        players = std::make_unique<players::Manager>(dependencies.common, dependencies.materials, mapMode,
-            &dependencies.map, playerGlobals, dependencies.motors);
-        players->initializeEntries();
-        actors = std::make_unique<actors::Registry>(dependencies.executable, dependencies.actors, *players, playerGlobals,
-            dependencies.camera, actorGlobals, dependencies.collisions, dependencies.roomFlags, mapMode, dependencies.flags.value(0x3d));
-        properties = std::make_unique<charactercreation::Properties>(dependencies.executable, dependencies.creation,
-            dependencies.actors.parameters);
+        stage("audio playback", [&] { audio = std::make_shared<Audio>(dependencies, collision); });
+        stage("particle scene", [&] {
+            particles = std::make_unique<particles::Scene>(dependencies.executable, commonResources, dependencies.randomState);
+        });
+        stage("particle effect batches", [&] { particles->initializeEffectBatches(); });
+        stage("player resources", [&] {
+            players = std::make_unique<players::Manager>(dependencies.common, dependencies.materials, mapMode,
+                &dependencies.map, playerGlobals, dependencies.motors);
+            players->initializeEntries();
+        });
+        stage("actor registry", [&] {
+            actors = std::make_unique<actors::Registry>(dependencies.executable, dependencies.actors, *players, playerGlobals,
+                dependencies.camera, actorGlobals, dependencies.collisions, dependencies.roomFlags, mapMode, dependencies.flags.value(0x3d));
+        });
+        stage("character properties", [&] {
+            properties = std::make_unique<charactercreation::Properties>(dependencies.executable, dependencies.creation,
+                dependencies.actors.parameters);
+        });
         effects = std::make_unique<charactereffects::Resources>(particles->effects(), dependencies.variant);
-        owners = std::make_unique<characterowner::CreationRuntime>(*effects, *properties, *dependencies.records[0], lights, audio->owners);
-        runtime = std::make_unique<enemies::ManagerRuntime>(dependencies.strategies, *owners, *actors, dependencies.actors.rooms,
-            dependencies.visibility, dependencies.roomFlags, dependencies.flags, mapMode, dependencies.randomState);
+        stage("character owners", [&] {
+            owners = std::make_unique<characterowner::CreationRuntime>(*effects, *properties, *dependencies.records[0], lights, audio->owners);
+        });
+        stage("enemy runtime", [&] {
+            runtime = std::make_unique<enemies::ManagerRuntime>(dependencies.strategies, *owners, *actors, dependencies.actors.rooms,
+                dependencies.visibility, dependencies.roomFlags, dependencies.flags, mapMode, dependencies.randomState);
+        });
         enemies = std::make_unique<enemies::Manager>(dependencies.types, dependencies.creation, *runtime,
             dependencies.playerCount, mapMode);
         strategies = std::make_unique<enemystrategy::Factory>(*runtime, dependencies.flags, dependencies.mission);
         strategies->bindKinopioEffects(particles->effects());
         strategies->bindTreasure(dependencies.roomFlags, [this](unsigned id, const auto& position) {
             audio->playback.play(id, position);
+        }, [this](std::string_view name, const auto& position) {
+            const auto source = characteritems::find(dependencies.mission, name);
+            if (!source.table || source.row < 0)
+                throw std::runtime_error("Btakara1 listed item is absent from ItemInfoTable.");
+            return itemCreation->create(source, position);
+        }, dependencies.beginChestReveal, [] { return enhancementsettings::automaticallyOpenKeyChests(); },
+        [this](unsigned packedRoom) {
+            const unsigned group = packedRoom >> 24;
+            dependencies.roomFlags.at(group) |= 0x20u;
+            if (dependencies.entry.map != 2) return;
+            const unsigned number = dependencies.actors.rooms.entries().at(group).id & 255;
+            const unsigned offset = 0xa0 + number * 2;
+            auto& inventory = dependencies.entry.inventory;
+            unsigned saved = (unsigned(inventory.at(offset)) << 8) | inventory.at(offset + 1);
+            saved |= 4;
+            inventory.at(offset) = static_cast<std::uint8_t>(saved >> 8);
+            inventory.at(offset + 1) = static_cast<std::uint8_t>(saved);
         });
         owners->bind(*enemies, *strategies);
         effects->bind(*enemies, *actors);
         runtime->bind(*enemies);
         enemies->attachCharacterInfo(*characters, dependencies.appearPoint);
-        if (dependencies.prepareRooms) dependencies.prepareRooms(*enemies);
-        enemies->initializeActors();
-        particles->bind(*enemies, *actors, dependencies.actors.pose, dependencies.visibility);
-        particles->initializeElements(collision);
-        particles->initializeRunningDust(dependencies.mission, dependencies.actors.rooms, [this](unsigned kind, unsigned amount) {
+        if (dependencies.prepareRooms) stage("initial room preparation", [&] { dependencies.prepareRooms(*enemies); });
+        stage("initial actor spawn", [&] { enemies->initializeActors(); });
+        stage("particle actor binding", [&] {
+            particles->bind(*enemies, *actors, dependencies.actors.pose, dependencies.visibility);
+        });
+        stage("elemental particle initialization", [&] { particles->initializeElements(collision); });
+        stage("running dust initialization", [&] { particles->initializeRunningDust(dependencies.mission, dependencies.actors.rooms, [this](unsigned kind, unsigned amount) {
             playerevents::Payload payload;
             payload.word(0x60, kind);
             payload.word(0x64, amount);
             events->send(0, 0x13, &payload);
-        });
+        }); });
         auto* player = dynamic_cast<playeractor::Player*>(actors->actor(enemies->appearPoint(0).actor));
         if (!player) throw std::runtime_error("Original manager services require Player zero.");
         auto sound = [this](unsigned id, const std::array<float, 3>& position, unsigned parameter) {
@@ -381,12 +430,18 @@ struct gameplay::ManagerServices::State : playerpresentation::Services, playersc
         models = std::make_unique<modeleffects::Manager>(modeleffects::Environment{commonResources, particles->pool(),
             particles->effects(), player->view, elements.pool, elements.ice, elements.water, dependencies.flags,
             collision, particles->effectRandomState(), sound, {}});
-        models->initialize(dependencies.executable, mapMode, mapResources, dependencies.materials);
+        stage("model effect initialization", [&] {
+            models->initialize(dependencies.executable, mapMode, mapResources, dependencies.materials);
+        });
         effects->bindModels(models->factory);
-        players->bindActors(*enemies, *actors, dependencies.records, &dependencies.pad, &dependencies.camera, dependencies.audioLife);
-        players->initializeAuxiliary(dependencies.executable);
+        stage("player actor binding", [&] {
+            players->bindActors(*enemies, *actors, dependencies.records, &dependencies.pad, &dependencies.camera, dependencies.audioLife);
+        });
+        stage("player auxiliary initialization", [&] { players->initializeAuxiliary(dependencies.executable); });
         particles->refresh(nullptr);
-        for (unsigned i = 0; i < captureLight.size(); ++i) captureLight[i] = word(0x80355160 + i * 4);
+        stage("capture light parameters", [&] {
+            for (unsigned i = 0; i < captureLight.size(); ++i) captureLight[i] = word(0x80355160 + i * 4);
+        });
         const auto dustOffsetBits = word(0x804db584);
         std::memcpy(&dustBlowOffset, &dustOffsetBits, sizeof(dustBlowOffset));
         elementDuration = static_cast<std::int32_t>(word(glme01::playerElementDuration));
@@ -403,6 +458,9 @@ struct gameplay::ManagerServices::State : playerpresentation::Services, playersc
             dependencies.audioLife, particles->effects(),
             [this](unsigned id, const auto& position) { audio->playback.play(id, position); },
             [this](const auto& position) { audio->playback.playDeathEffects(position); }, {}});
+        shrinkTransitionFrames = static_cast<std::int32_t>(word(0x804d2c60));
+        shrink = std::make_unique<playerevents::ShrinkEnvironment>(playerevents::ShrinkEnvironment{
+            *life, shrinkTransitionFrames, shrinkAudioScale});
         events->bindScare([this](auto& recipient, const auto& payload) {
             return playerScare.run(recipient, payload, *actors);
         });
@@ -415,9 +473,8 @@ struct gameplay::ManagerServices::State : playerpresentation::Services, playersc
             moneyscatter::SceneDependencies{dependencies.actors.rooms, dependencies.visibility, dependencies.roomFlags,
                 moneySavedRooms, mapMode, collision, player->position, particles->contexts().player, moneyMinimumScale,
                 dependencies.randomState, particles->effects(), particles->batch(0), dispatchMoney,
-                [player](float, moneyscatter::Particle&) {
-                    if (player->view.field8B4) throw std::runtime_error("Coin suction requires the original attraction binding.");
-                    return 0;
+                [player, this](float radius, moneyscatter::Particle& particle) {
+                    return moneyscatter::attract(player->view, particles->contexts().player.suction, radius, particle);
                 }, sound}, moneyRetained);
         const auto& shared = *players->models;
         bills = std::make_unique<billscatter::Scene>(std::array<std::shared_ptr<j3dmodel::ModelData>, 3>{
@@ -425,10 +482,10 @@ struct gameplay::ManagerServices::State : playerpresentation::Services, playersc
             shared.model(playermodels::SharedModel::Bill3)}, dependencies.actors.pose,
             billscatter::SceneDependencies{dependencies.actors.rooms, dependencies.visibility, collision, player->position,
                 particles->contexts().player, dependencies.randomState, particles->effectRandomState(), billFlutter,
-                moneyPaused, moneyBlink, dispatchMoney, [player](billscatter::Particle&) {
-                    if (player->view.field8A0 == 1)
-                        throw std::runtime_error("Bill suction requires the original attraction range binding.");
-                    return 0;
+                moneyPaused, moneyBlink, dispatchMoney, [this, player](billscatter::Particle& particle) {
+                    const auto& context = particles->contexts().player;
+                    return scattraction::apply(particle, player->view.field8A0, context, context.distance,
+                        dependencies.randomState);
                 }});
         life->scatterMoney = [this](const auto& position, const auto& direction, auto count, auto lifetime, double speed, auto mode) {
             coins->scatter(position, direction, count, lifetime, speed, mode);
@@ -456,15 +513,16 @@ struct gameplay::ManagerServices::State : playerpresentation::Services, playersc
             *itemForce, particles->effects(), dependencies.flags, *itemEvents});
         itemServices = std::make_unique<enemystrategy::ItemEnvironment>(enemystrategy::ItemEnvironment{
             dependencies.common, dependencies.types, dependencies.strategies, collision, rotatingSurfaces,
-            dependencies.collisions, *itemCollection, *suction, *itemSuction, *suctionAudio, [player] {
-                if (player->view.field8A0 == 1) throw std::runtime_error("Item attraction requires the original suction scratch state.");
-                return itemsuction::Vector{};
+            dependencies.collisions, *itemCollection, *suction, *itemSuction, *suctionAudio, []() -> itemsuction::Vector {
+                throw std::runtime_error("Original zero-distance item suction scratch state is not recovered.");
             }, 0, itemDuration});
         itemServices->globalSound = [this](unsigned id) { audio->playback.playGlobal(id); };
         itemServices->mansionMode = &dependencies.entry.mansionMode;
         itemServices->life = life.get();
+        itemServices->shrink = shrink.get();
         itemServices->camera = &dependencies.camera;
         itemServices->audioPositions = &audio->owners;
+        itemServices->events = events.get();
         strategies->bindItems(itemServices.get());
         ambient = dependencies.actors.rooms.entries().at(player->room() >> 24).ambient;
         barrierServices = std::make_unique<enemystrategy::BarrierEnvironment>(enemystrategy::BarrierEnvironment{
@@ -475,17 +533,25 @@ struct gameplay::ManagerServices::State : playerpresentation::Services, playersc
         strategies->bindGlobalDoorBarrierClear([this] {
             if (doors.globalBarrier()) doors.setGlobalBarrier(false, *events);
         });
+        strategies->bindGlobalDoorBarrierSet([this] { doors.setGlobalBarrier(true, *events); });
+        strategies->bindDoorLockScare([this] {
+            playerevents::Payload payload;
+            events->send(0, 2, &payload);
+        });
         strategies->bindPose(dependencies.actors.pose);
         trainingServices = std::make_unique<enemystrategy::TrainingEnvironment>(enemystrategy::TrainingEnvironment{
             *runtime, *enemies, dependencies.types, dependencies.actors.pose, models->factory, particles->effects()});
         strategies->bindTraining(*trainingServices);
         std::string ghostError;
         if (!ghostTrigonometry.read(dependencies.executable, ghostError)) throw std::runtime_error(ghostError);
+        trails = std::make_unique<actortrail::Pool>(mapMode);
+        trails->load(dependencies.common);
+        itemServices->trails = trails.get();
         ghostServices = std::make_unique<ghostparent::Environment>(ghostparent::Environment{
             *runtime, dependencies.actors.parameters, dependencies.actors.pose, dependencies.actors.catalog,
             dependencies.actors.resources, collision, dependencies.strategies, *strategies, *events, *actors,
             dependencies.executable, ghostTrigonometry, dependencies.creation, dependencies.collisions,
-            dependencies.actors.rooms, dependencies.common, itemCreation->captureDrops(),
+            dependencies.actors.rooms, dependencies.common, dependencies.mission, itemCreation->captureDrops(),
             [this](unsigned id, const auto& position) { particles->effects().create(id, position, {0, 0, 0}); },
             [this](unsigned id, const auto& position) { audio->playback.play(id, position); },
             [this] { return static_cast<std::uint32_t>(players->frame()); },
@@ -493,7 +559,8 @@ struct gameplay::ManagerServices::State : playerpresentation::Services, playersc
                 auto* target = events->player(static_cast<std::int32_t>(index));
                 if (!target) throw std::out_of_range("Original ghost player index.");
                 return *target;
-            }, [] { return false; }, {}});        strategies->bindGhostParent(*ghostServices);
+            }, [] { return false; }, {}, trails.get()});
+        strategies->bindGhostParent(*ghostServices);
         buildVacuum();
         generators = std::make_unique<charactergenerator::Manager>(dependencies.types, dependencies.creation,
             dependencies.strategies, *strategies, *enemies, *runtime, dependencies.mission);
@@ -506,6 +573,15 @@ struct gameplay::ManagerServices::State : playerpresentation::Services, playersc
         fireworks = std::make_unique<particles::TrainingFireworks>(dependencies.executable, mapResources,
             particles->pool(), [this](unsigned id) { audio->playback.playGlobal(id); });
         eventEffects = std::make_unique<particles::EventEffectPlacements>(commonResources, particles->pool(), *fireworks);
+        coinRoomIndices.fill(-1);
+        for (unsigned index = 0; index < dependencies.actors.rooms.entries().size(); ++index)
+            coinRoomIndices[dependencies.actors.rooms.entries()[index].id & 255] = static_cast<std::int16_t>(index);
+        placedCoins = std::make_unique<moneyscatter::Placements>(*coins, dependencies.actors.rooms,
+            coinRoomIndices, dependencies.roomFlags, [](int) {
+                // The original retained direction is uninitialized, but persistent coins have zero speed.
+                return moneyscatter::Vector{};
+            });
+        sender->addReceiver(placedCoins.get());
         sender->addReceiver(enemies.get());
         sender->addReceiver(candles.get());
         sender->addReceiver(eventEffects.get());
@@ -538,6 +614,7 @@ struct gameplay::ManagerServices::State : playerpresentation::Services, playersc
     std::array<std::uint32_t, 3> captureLight{};
     std::unique_ptr<enemystrategy::TrainingEnvironment> trainingServices;
     std::unique_ptr<ghostparent::Environment> ghostServices;
+    std::unique_ptr<actortrail::Pool> trails;
     dooranimation::PoseTables ghostTrigonometry;
     std::unique_ptr<vacuumcapture::Controller> vacuumEntries;
     std::array<std::unique_ptr<vacuumcapture::Vacuum>, 2> vacuums;
@@ -582,6 +659,7 @@ struct gameplay::ManagerServices::State : playerpresentation::Services, playersc
     ladders::Paths ladderPaths;
     characteritems::Admission furnitureAdmission;
     roomfurniture::Response furnitureResponse;
+    roomfurniture::Swing furnitureSwing;
     roomfurniture::Owner* roomFurniture = nullptr;
     std::array<float, 3> furnitureDirection{};
     std::int32_t elementDuration = 0;
@@ -589,6 +667,8 @@ struct gameplay::ManagerServices::State : playerpresentation::Services, playersc
     std::unique_ptr<characteritems::Creation> itemCreation;
     moneyscatter::RetainedState moneyRetained;
     std::unique_ptr<moneyscatter::Owner> coins;
+    std::unique_ptr<moneyscatter::Placements> placedCoins;
+    std::array<std::int16_t, 256> coinRoomIndices{};
     std::unique_ptr<billscatter::Scene> bills;
     std::array<std::uint16_t, 256> moneySavedRooms{};
     float moneyMinimumScale = 0.3f, billFlutter = 0;
@@ -615,6 +695,9 @@ struct gameplay::ManagerServices::State : playerpresentation::Services, playersc
     std::unique_ptr<enemies::Manager> enemies;
     std::unique_ptr<playerevents::Dispatcher> events;
     std::unique_ptr<playerevents::LifeEnvironment> life;
+    std::int32_t shrinkTransitionFrames = 0;
+    float shrinkAudioScale = 1;
+    std::unique_ptr<playerevents::ShrinkEnvironment> shrink;
     std::unique_ptr<actorcapture::Motion> capture;
     actormodel::Matrix capturePoseTransform{1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0};
     std::unique_ptr<characterowner::NativeCaptureServices> captureServices;
@@ -642,7 +725,9 @@ void gameplay::ManagerServices::State::buildVacuum() {
             // 8006A36C: halfword at +4 of the 28-byte actor type table entry.
             std::vector<std::uint8_t> half;
             std::string error;
-            if (!dolresources::read(dependencies.executable, glme01::actorTypeTable + type * 28 + 4, 2, half, error))
+            if (!dolresources::read(dependencies.executable,
+                gameedition::actors(gameedition::identify(dependencies.executable)).typeTable + type * 28 + 4,
+                2, half, error))
                 throw std::runtime_error(error);
             return static_cast<int>(static_cast<std::int16_t>((half[0] << 8) | half[1]));
         },
@@ -723,7 +808,12 @@ vacuumcapture::Vacuum& gameplay::ManagerServices::State::vacuumFor(unsigned inde
 }
 gameplay::ManagerServices::ManagerServices(const ManagerDependencies& dependencies) : state(std::make_unique<State>(dependencies)) {
     state->initialize();
-    state->strategies->bindRoomLight([this](unsigned room) { setRoomLight(room, true); });
+    state->strategies->bindRoomLight([this](unsigned room) {
+        setRoomLight(room, true);
+    });
+    state->strategies->bindCandleCount([this](unsigned room) {
+        return state->candles->countUnextinguishedSpecial(room);
+    });
 }
 
 gameplay::ManagerServices::~ManagerServices() = default;
@@ -733,6 +823,9 @@ players::Manager& gameplay::ManagerServices::players() { return *state->players;
 playerscanner::Services& gameplay::ManagerServices::scanner() { return *state; }
 void gameplay::ManagerServices::bindScannerMessage(std::function<void(unsigned)> callback) {
     state->scannerMessage = std::move(callback);
+}
+void gameplay::ManagerServices::bindMapScene(std::function<void(unsigned, std::int32_t)> callback) {
+    state->mapScene = std::move(callback);
 }
 void gameplay::ManagerServices::bindProfessorInteraction(std::function<void()> callback) {
     state->owners->bindProfessorInteraction(std::move(callback));
@@ -744,6 +837,7 @@ void gameplay::ManagerServices::snapshotFlags() { state->dependencies.flags.stor
 playerevents::Dispatcher& gameplay::ManagerServices::playerEvents() { return *state->events; }
 playerevents::LifeEnvironment& gameplay::ManagerServices::playerLife() { return *state->life; }
 particles::Scene& gameplay::ManagerServices::particles() { return *state->particles; }
+actortrail::Pool& gameplay::ManagerServices::trails() { return *state->trails; }
 modeleffects::Manager& gameplay::ManagerServices::modelEffects() { return *state->models; }
 mapcollision::State& gameplay::ManagerServices::collision() { return state->collision; }
 s3dshadow::Projection gameplay::ManagerServices::shadowProjection() const {
@@ -1085,6 +1179,11 @@ void gameplay::ManagerServices::updateCaptures(const playermodels::VacuumPath* p
 }
 
 void gameplay::ManagerServices::updateAudio(const std::array<float, 12>& listener) {
+    if (state->mapMode == 2) {
+        const auto* player = state->events->player(0);
+        if (player) state->audio->music.syncRoomLight((state->dependencies.roomFlags.at(player->room() >> 24) & 0x8000) != 0,
+            state->dependencies.flags.value(0x3d));
+    }
     state->audio->listener = listener;
     state->audio->playback.update(listener);
     state->audio->music.updateRequests(state->audioInterfaceFrame);
@@ -1136,7 +1235,7 @@ void gameplay::ManagerServices::setRoomLight(unsigned room, bool enabled) {
 
 void gameplay::ManagerServices::updateRoomLights() {
     const auto& dependencies = state->dependencies;
-    if (dependencies.entry.map != 1 && dependencies.entry.map != 3 && dependencies.entry.map != 6) return;
+    if (dependencies.entry.map != 1 && dependencies.entry.map != 2 && dependencies.entry.map != 3 && dependencies.entry.map != 6) return;
     const auto* player = state->events->player(0);
     for (unsigned i = 0; i < state->roomLights.size(); ++i) {
         if (!dependencies.visibility.marked(i, 0, 0) || (dependencies.roomFlags.at(i) & 0x380)) continue;
@@ -1159,6 +1258,10 @@ void gameplay::ManagerServices::updateRoomLights() {
 }
 
 void gameplay::ManagerServices::setAudioInterfaceFrame(std::uint32_t frame) { state->audioInterfaceFrame = frame; }
+
+void gameplay::ManagerServices::changeShrinkAudioRate(bool enabled) {
+    state->shrinkAudioScale = enabled ? 2.0f : 1.0f;
+}
 const std::array<std::uint32_t, 2>& gameplay::ManagerServices::playerFootstepFrames() const { return state->playerAudio.footsteps; }
 
 void gameplay::ManagerServices::updatePlayerLate(unsigned index, const playeractor::LateFrameServices& provided) {
@@ -1271,6 +1374,52 @@ void gameplay::ManagerServices::updateFurniture(unsigned frame) {
     };
     services.setFlag = [this](unsigned flag) { state->dependencies.flags.setOn(static_cast<std::uint8_t>(flag)); };
     services.cabinetActive = [this](bool active) { state->roomFurniture->cabinetOpen = active; };
+    roomfurniture::SwingServices swingServices;
+    swingServices.suction = [this, player](float radius, const auto& point, auto& direction) {
+        const auto& view = player->view;
+        if (view.field8A0 != 1 || !view.field8B4 || !view.field8B4->intersects(radius, direction, point)) return 0.0f;
+        const auto& suction = state->particles->contexts().player.suction;
+        if (!suction.position) throw std::logic_error("Furniture swing requires the retained suction position.");
+        const float x = point[0] - (*suction.position)[0];
+        const float y = point[1] - (*suction.position)[1];
+        const float z = point[2] - (*suction.position)[2];
+        const float fraction = static_cast<float>(double(std::sqrt(std::fma(z, z, x * x) + y * y)) / 480.0);
+        return (1 - (fraction > 1 ? 1 : fraction)) * suction.strength;
+    };
+    roomfurniture::Object* swingObject = nullptr;
+    swingServices.sound = [this, &swingObject](unsigned id, const auto& position, const auto& velocity) {
+        if (!swingObject) throw std::logic_error("Furniture swing audio requires its active object.");
+        state->audio->playback.updateFurnitureSwing(id, position, velocity, swingObject->swingSound);
+    };
+    roomfurniture::AnimatedSwingServices animated;
+    animated.playerPosition = player->position;
+    animated.enabled = state->dependencies.flags.value(1);
+    animated.scanner = player->view.field895 != 0;
+    animated.messageBusy = [this] { return state->messageSpeaking; };
+    animated.random = [this] { return static_cast<float>(state->runtime->random()) / 4294967296.0f; };
+    animated.camera = [this](bool start) { state->dependencies.camera.eventMode = start ? 6 : 0; };
+    animated.playerAction = [this](unsigned action) {
+        playerevents::Payload payload;
+        payload.word(0x28, action);
+        state->events->send(0, 6, &payload);
+    };
+    animated.playerDamage = services.hurtPlayer;
+    animated.jointPoint = [](const roomfurniture::Object& object, const auto& offset) {
+        const auto& matrix = object.matrices.at(3);
+        return roomfurniture::Vector{matrix[0] * offset[0] + matrix[1] * offset[1] + matrix[2] * offset[2] + matrix[3],
+            matrix[4] * offset[0] + matrix[5] * offset[1] + matrix[6] * offset[2] + matrix[7],
+            matrix[8] * offset[0] + matrix[9] * offset[1] + matrix[10] * offset[2] + matrix[11]};
+    };
+    animated.actorReaction = [this](const auto& position, const auto& parameters, const auto& direction) {
+        actorcollision::Record record{};
+        for (unsigned i = 0; i < 2; ++i) std::memcpy(&record[i], &parameters[i], sizeof(float));
+        for (unsigned i = 0; i < 3; ++i) std::memcpy(&record[i + 2], &direction[i], sizeof(float));
+        state->players->records->append({1, record, std::nullopt}, position);
+    };
+    animated.animationEnd = [](const roomfurniture::Object& object) {
+        return object.animations.at(1)->animation.headerValue();
+    };
+    animated.globalSound = [this](unsigned id) { state->audio->playback.playGlobal(id); };
     state->roomFurniture->update(state->dependencies.visibility, 0, [&](auto& object, auto& row, bool visible) {
         services.persistCollected = [this, rowIndex = object.row] {
             if (state->mapMode == 2)
@@ -1288,6 +1437,18 @@ void gameplay::ManagerServices::updateFurniture(unsigned frame) {
         if (object.behavior == 38) {
             state->furnitureResponse.cabinet(object, row, visible, vacuumActive,
                 static_cast<unsigned>(object.animations.size()), frame, player->position, services);
+            return true;
+        }
+        if (object.behavior == 7) {
+            swingObject = &object;
+            state->furnitureSwing.update(object, row, object.animatedSwing.swing, visible, vacuumActive,
+                state->furnitureResponse, services, swingServices);
+            return true;
+        }
+        if (object.behavior == 20) {
+            swingObject = &object;
+            state->furnitureSwing.updateAnimated(object, row, object.animatedSwing, visible, vacuumActive,
+                state->furnitureResponse, services, swingServices, animated);
             return true;
         }
         if (object.behavior == 17) {
@@ -1332,7 +1493,8 @@ void gameplay::ManagerServices::updateDoors(unsigned frame) {
         return static_cast<int>(strength);
     };
     services.influenceSound = [this](float amount, std::uint8_t material, const auto& position) {
-        constexpr unsigned materialSounds = 0x8038eb8c;
+        const unsigned materialSounds = gameedition::furnitureSoundTable(
+            gameedition::identify(state->dependencies.executable));
         std::vector<std::uint8_t> bytes;
         std::string error;
         if (!dolresources::read(state->dependencies.executable, materialSounds + (material > 25 ? 0 : material) * 4, 4, bytes, error))

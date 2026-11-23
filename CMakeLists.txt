@@ -58,9 +58,11 @@ add_library(Game STATIC
     src/game/effects/moneyscatterinitializer.cpp
     src/game/effects/moneyscattercontact.cpp
     src/game/effects/moneyscatterupdate.cpp
+    src/game/effects/moneyscatterattraction.cpp
     src/game/effects/moneyscattermodels.cpp
     src/game/effects/moneyscatterscenebindings.cpp
     src/game/effects/moneyscatterowner.cpp
+    src/game/effects/moneyscatterplacements.cpp
     src/game/effects/billscatterpool.cpp
     src/game/effects/billscatterinitializer.cpp
     src/game/effects/billscattermodels.cpp
@@ -76,6 +78,7 @@ add_library(Game STATIC
     src/game/events/eventmessagewindows.cpp
     src/game/events/eventmessagetext.cpp
     src/game/scene/gameplayhud.cpp
+    src/game/scene/gameboyhorrormap.cpp
     src/game/events/eventactorcommands.cpp
     src/game/events/eventsoundtable.cpp
     src/game/events/entrancescript.cpp
@@ -181,6 +184,7 @@ add_library(Game STATIC
     src/game/enemies/enemyratgeneratorstrategy.cpp
     src/game/enemies/enemytelesageneratorstrategy.cpp
     src/game/enemies/enemybombstrategy.cpp
+    src/game/enemies/enemybananastrategy.cpp
     src/game/enemies/enemyconditionstrategy.cpp
     src/game/enemies/enemycreationcatalog.cpp
     src/game/enemies/enemycreationrequests.cpp
@@ -211,6 +215,9 @@ add_library(Game STATIC
     src/game/enemies/enemyghostparenthelpers.cpp
     src/game/enemies/enemyghostparentselection.cpp
     src/game/enemies/enemyghostchakasu.cpp
+    src/game/enemies/enemyghostpunch.cpp
+    src/game/enemies/enemyghostbanaoba.cpp
+    src/game/enemies/enemyghostupper.cpp
     src/game/enemies/enemyghostparent.cpp
     src/game/enemies/enemyghostparenthost.cpp
     src/game/enemies/enemycapturesteering.cpp
@@ -416,6 +423,7 @@ add_library(Game STATIC
     src/game/world/roomdoorplacement.cpp
     src/game/world/roomfurnitureowner.cpp
     src/game/world/roomfurnitureresponse.cpp
+    src/game/world/roomfurnitureswing.cpp
     src/game/world/roomfurnitureresources.cpp
     src/game/world/roomgeometry.cpp
     src/game/world/roomlightpool.cpp

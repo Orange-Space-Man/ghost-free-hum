@@ -41,7 +41,7 @@ void itemsuction::Controller::restrictHeight(const actors::MoveActor& actor, Vec
 }
 
 bool itemsuction::Controller::update(actors::MoveActor& actor, double heightOffset, double arrivalRadius,
-    const Vector& unwrittenDirection) {
+    const std::function<Vector()>& unwrittenDirection) {
     if (!visible(actor)) return false;
     auto position = actor.position;
     position[1] += static_cast<float>(heightOffset * scale);
@@ -67,7 +67,7 @@ bool itemsuction::Controller::update(actors::MoveActor& actor, double heightOffs
     return false;
 }
 
-bool itemsuction::Controller::updateVelocity(actors::MoveActor& actor, Vector& output, const Vector& unwrittenDirection) {
+bool itemsuction::Controller::updateVelocity(actors::MoveActor& actor, Vector& output, const std::function<Vector()>& unwrittenDirection) {
     if (!visible(actor)) return false;
     auto velocity = actor.velocity;
     const unsigned result = environment.force.apply(25, actor.position, velocity, acceleration, remaining, duration,

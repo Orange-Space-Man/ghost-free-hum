@@ -8,6 +8,7 @@
 #include "game/scene/gamearchive.h"
 
 namespace playerevents { struct LifeEnvironment; struct ShrinkEnvironment; }
+namespace playerevents { class Dispatcher; }
 namespace actortrail { class Pool; }
 namespace gameplaycamera { struct CameraOwner; }
 namespace jaudio { struct PositionOwners; }
@@ -46,6 +47,7 @@ namespace enemystrategy {
         gameparameters::Parameters bombParameters;
         gameplaycamera::CameraOwner* camera = nullptr;
         jaudio::PositionOwners* audioPositions = nullptr;
+        const playerevents::Dispatcher* events = nullptr;
     };
 
     unsigned itemCondition(unsigned type);

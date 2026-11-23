@@ -1,4 +1,5 @@
 #include "resources/dolresources.h"
+#include "resources/gameedition.h"
 #include "game/world/roomresidency.h"
 #include "game/startup/startupresources.h"
 
@@ -21,7 +22,8 @@ namespace {
 
 roomresidency::InitialRooms::InitialRooms(const std::vector<std::uint8_t>& executable, unsigned map,
     const roomlocation::Rooms& rooms) : rooms(rooms) {
-    const auto descriptor = read(executable, word(read(executable, 0x802ff218 + map * 4, 4), 0), 28);
+    const auto descriptor = read(executable, word(read(executable,
+        gameedition::cameraFollow(gameedition::identify(executable)).descriptors + map * 4, 4), 0), 28);
     const auto count = descriptor[0];
     if (count != rooms.entries().size()) throw std::runtime_error("Room residency descriptor does not match its room owner.");
     const auto records = read(executable, word(descriptor, 20), count * 48);

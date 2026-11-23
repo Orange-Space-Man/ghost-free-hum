@@ -1,4 +1,4 @@
-#include "resources/glme01addresses.h"
+#include "resources/gameedition.h"
 #include "resources/dolresources.h"
 #include "game/actors/actormodelcatalog.h"
 #include "game/startup/startupresources.h"
@@ -44,11 +44,12 @@ bool actormodel::Catalog::read(const std::vector<std::uint8_t>& executable, std:
     error.clear();
     try {
         Catalog result;
-        const auto modelTable = range(executable, glme01::actorModelTable, 262 * 52);
-        const auto auxiliaryTable = range(executable, glme01::actorAuxiliaryTable, 262 * 64);
-        const auto keyTable = range(executable, glme01::actorKeyTable, 262 * 8);
-        const auto typeTable = range(executable, glme01::actorTypeTable, 381 * 28);
-        const auto animationTable = range(executable, glme01::actorAnimationTable, 381 * 8);
+        const auto addresses = gameedition::actors(gameedition::identify(executable));
+        const auto modelTable = range(executable, addresses.modelTable, 262 * 52);
+        const auto auxiliaryTable = range(executable, addresses.auxiliaryTable, 262 * 64);
+        const auto keyTable = range(executable, addresses.keyTable, 262 * 8);
+        const auto typeTable = range(executable, addresses.typeTable, 381 * 28);
+        const auto animationTable = range(executable, addresses.animationTable, 381 * 8);
         const std::array<unsigned, 5> auxiliaryOffsets{32, 16, 40, 48, 56};
         for (unsigned i = 0; i < result.models.size(); ++i) {
             auto& model = result.models[i];

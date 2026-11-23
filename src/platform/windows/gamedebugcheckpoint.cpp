@@ -2,14 +2,16 @@
 #include "platform/windows/debugoverlay.h"
 #include "game/audio/jaudiopositionalplayback.h"
 #include "game/enemies/enemyghostparent.h"
+#include "game/enemies/enemyroomobserverstrategy.h"
 #include "game/actors/characterowner.h"
+#include "game/player/playervacuummodel.h"
 
 #include <cmath>
 #include <algorithm>
 #include <stdexcept>
 
 void gameapplication::Application::loadDebugCheckpoint(unsigned checkpoint) {
-    if (checkpoint < 1 || checkpoint > 5) return;
+    if (checkpoint < 1 || checkpoint > 6) return;
     debugLoading = true;
     debugCloseRequested = false;
     struct LoadingScope {
@@ -155,6 +157,9 @@ void gameapplication::Application::loadDebugCheckpoint(unsigned checkpoint) {
             for (unsigned i = 0; i < 45; ++i) step(pad);
             progress("Advancing ghost and key cutscene");
             until([&] { return gameEntry.inventory[0x20 + 7] == 1; }, 850, "Debug checkpoint: ghost/key event did not finish.");
+            progress("Restoring mansion music after the first-key cue");
+            until([&] { return gameplayScene->checkpointResources().managers().music().currentSound() == 0x80000007; },
+                1200, "Debug checkpoint: mansion music did not resume after the first-key cue.");
             if (checkpoint >= 3) {
                 progress("Collecting the Parlor key");
                 walk(-2.0035901f, -61.82265f);
@@ -207,7 +212,7 @@ void gameapplication::Application::loadDebugCheckpoint(unsigned checkpoint) {
                         }
                         playerinput::PadStatus input;
                         if (i % 6 < 2) input.buttons = 0x100;
-                        if (checkpoint == 5 && !selectedLab &&
+                        if (checkpoint >= 5 && !selectedLab &&
                             gameplayScene->checkpointResources().messages().choices().lines.size() == 2) {
                             input.buttons = 4;
                             selectedLab = true;
@@ -237,11 +242,11 @@ void gameapplication::Application::loadDebugCheckpoint(unsigned checkpoint) {
                         else if (waiting) { ++ghostRounds; waiting = false; }
                     }
                     if (gameplayScene->transition().destination != (checkpoint == 4 ? 6 : 1) || ghostRounds < 4 ||
-                        (checkpoint == 5 && !selectedLab))
+                        (checkpoint >= 5 && !selectedLab))
                         throw std::runtime_error("Debug checkpoint: training did not finish with the selected original choice.");
                     progress(checkpoint == 4 ? "Entering Gallery after training" : "Returning to Lab after training");
                     handoff();
-                    if (checkpoint == 5) {
+                    if (checkpoint >= 5) {
                         progress("Choosing Mansion in the Lab");
                         for (unsigned i = 0; i < 3000 &&
                             gameplayScene->checkpointResources().messages().choices().lines.empty(); ++i) {
@@ -250,8 +255,6 @@ void gameapplication::Application::loadDebugCheckpoint(unsigned checkpoint) {
                         }
                         if (gameplayScene->checkpointResources().messages().choices().lines.empty())
                             throw std::runtime_error("Debug checkpoint: Lab choice did not appear.");
-                        if (gameplayScene->checkpointResources().messages().choices().lines.front().find("Mansion") == std::string::npos)
-                            throw std::runtime_error("Debug checkpoint: Lab first choice is not Mansion.");
                         for (unsigned i = 0; i < 60; ++i) step({});
                         pad = {}; pad.buttons = 0x100; step(pad); step({});
                         dialogue(2, 3000);
@@ -278,15 +281,91 @@ void gameapplication::Application::loadDebugCheckpoint(unsigned checkpoint) {
                         }
                         if (gameplayScene->checkpointResources().entranceActive())
                             throw std::runtime_error("Debug checkpoint: post-training Foyer did not release control.");
+                        if (checkpoint == 6)
+                            checkpointStates[5] = DebugCheckpointState{checkpointSaves, gameEntry};
                     }
                 }
             }
 
         }
     }
+    if (checkpoint == 6) {
+        progress("Entering Parlor after training");
+        auto& sceneResources = gameplayScene->checkpointResources();
+        auto& managers = sceneResources.managers();
+        auto* player = managers.playerEvents().player(0);
+        if (!player) throw std::runtime_error("Debug checkpoint: Parlor requires Luigi.");
+        const std::array<float, 3> position{0.0f, 600.0f, -1500.0f};
+        const auto parlorRoom = sceneResources.rooms().resolve(position);
+        if ((parlorRoom & 255) != 35) throw std::runtime_error("Debug checkpoint: Parlor room is unavailable.");
+        player->setPosition(position);
+        player->fieldB4 = parlorRoom;
+        player->view.previousRoom = parlorRoom;
+        managers.flags().setOn(1);
+        for (unsigned i = 0; i < 10; ++i) step({});
+        enemystrategy::RoomObserver* candleObserver = nullptr;
+        for (const auto& slot : managers.enemies().slots()) {
+            if (slot.state != 2 || !slot.owner || !slot.owner->source.table || slot.owner->source.row != 120) continue;
+            auto& character = dynamic_cast<characterowner::Owner&>(*slot.owner);
+            candleObserver = dynamic_cast<enemystrategy::RoomObserver*>(character.ownership().strategy.get());
+            break;
+        }
+        if (!candleObserver) throw std::runtime_error("Debug checkpoint: Parlor candle observer did not spawn.");
+        std::vector<particles::Emitter*> flames;
+        for (auto& ring : managers.particles().pool().active)
+            for (auto* flame = ring.sentinel.next; flame != &ring.sentinel; flame = flame->next)
+                if (flame->fieldC4 && sceneResources.rooms().resolve(flame->position) == parlorRoom &&
+                    flame->position[1] >= 875 && flame->position[1] <= 895 &&
+                    flame->position[2] <= -2700 && flame->position[2] >= -2790)
+                    flames.push_back(flame);
+        if (flames.size() != 6) throw std::runtime_error("Debug checkpoint: six Parlor candle flames were not admitted.");
+        struct CandleHitVolume final : playermodels::VacuumVolume {
+            bool intersects(double, std::array<float, 3>& direction,
+                const std::array<float, 3>&) const override {
+                direction = {0, 0, 1};
+                return true;
+            }
+        } hit;
+        const auto priorVacuum = player->view.field8B4;
+        const auto priorEquipment = player->view.field8A0;
+        const auto priorSuction = player->view.field8B0;
+        const auto priorMode = player->view.field89E;
+        player->view.field89E = 1;
+        player->view.field8A0 = 1;
+        player->view.field8B0 = 1;
+        player->view.field8B4 = &hit;
+        progress("Extinguishing the six Parlor candles");
+        for (auto* flame : flames) {
+            for (unsigned i = 0; i < 4 && flame->flags != 0xc; ++i) flame->fieldC4->advance(*flame);
+            if (flame->flags != 0xc) throw std::runtime_error("Debug checkpoint: Parlor candle did not go out.");
+            candleObserver->update();
+            candleObserver->update();
+        }
+        player->view.field8B4 = priorVacuum;
+        player->view.field8A0 = priorEquipment;
+        player->view.field8B0 = priorSuction;
+        player->view.field89E = priorMode;
+        candleObserver->update();
+        if (!managers.flags().value(14))
+            throw std::runtime_error("Debug checkpoint: Parlor portrait event was not triggered.");
+        progress("Completing the Parlor portrait cutscene");
+        bool cutsceneStarted = false;
+        for (unsigned i = 0; i < 1800; ++i) {
+            playerinput::PadStatus input;
+            if (i % 20 == 0) input.buttons = 0x100;
+            step(input);
+            cutsceneStarted |= sceneResources.entranceActive();
+            if (cutsceneStarted && !sceneResources.entranceActive() &&
+                gameEntry.inventory[0x20 + 61] == 1) break;
+        }
+        if (!cutsceneStarted || sceneResources.entranceActive() ||
+            gameEntry.inventory[0x20 + 61] != 1 || !managers.flags().value(91) ||
+            !managers.doors().globalBarrier())
+            throw std::runtime_error("Debug checkpoint: Parlor cutscene did not finish with the door barred.");
+    }
     progress("Finishing checkpoint");
     step({});
-    if (!cached) checkpointStates[checkpoint - 1] = DebugCheckpointState{checkpointSaves, gameEntry};
+    if (!cached && checkpoint != 6) checkpointStates[checkpoint - 1] = DebugCheckpointState{checkpointSaves, gameEntry};
     debugoverlay::setLoading({});
     if (debugCloseRequested) {
         PostMessageW(window, WM_CLOSE, 0, 0);

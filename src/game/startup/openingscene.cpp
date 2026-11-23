@@ -1,4 +1,5 @@
 #include "resources/glme01addresses.h"
+#include "resources/gameedition.h"
 #include "resources/dolresources.h"
 #include "game/startup/openingscene.h"
 #include "platform/d3d11/gamerenderer.h"
@@ -16,7 +17,7 @@ bool openingscene::Scene::load(const std::filesystem::path& path, unsigned cutsc
         std::vector<std::uint8_t> executable, table;
         if (!package.open(path, error) || !read(package, cutscene, result.resources, error) ||
             !package.read("sys/main.dol", executable, error) ||
-            !dolresources::read(executable, glme01::sineTable, 5120 * 4, table, error)) throw std::runtime_error(error);
+            !dolresources::read(executable, gameedition::startup(package.gameId()).sineTable, 5120 * 4, table, error)) throw std::runtime_error(error);
         result.trigonometry.resize(5120);
         for (unsigned i = 0; i < 5120; ++i) {
             const auto offset = i * 4;

@@ -1,4 +1,4 @@
-#include "resources/glme01addresses.h"
+#include "resources/gameedition.h"
 #include "resources/dolresources.h"
 #include "jlib/j3d/j3dmaterialfactory.h"
 
@@ -290,9 +290,10 @@ namespace {
 
 bool j3dmodel::MaterialDefaults::read(const std::vector<std::uint8_t>& executable, std::string& error) {
     MaterialDefaults result;
-    if (!dolresources::read(executable, glme01::j3dDefaultFormats, 0x190, result.formats, error) ||
-        !dolresources::read(executable, glme01::j3dDefaultRegisters, 0x38, result.registers, error) ||
-        !dolresources::read(executable, glme01::j3dDefaultColors, 0x20, result.colors, error)) {
+    const auto addresses = gameedition::materials(gameedition::identify(executable));
+    if (!dolresources::read(executable, addresses.formats, 0x190, result.formats, error) ||
+        !dolresources::read(executable, addresses.registers, 0x38, result.registers, error) ||
+        !dolresources::read(executable, addresses.colors, 0x20, result.colors, error)) {
         return false;
     }
     *this = std::move(result);

@@ -1,4 +1,5 @@
 #include "resources/dolresources.h"
+#include "resources/gameedition.h"
 #include "game/menu/fileselectpanes.h"
 #include "game/startup/startupresources.h"
 
@@ -59,20 +60,22 @@ bool fileselect::OptionsPanes::read(const std::vector<std::uint8_t>& executable,
     error.clear();
     try {
         OptionsPanes result;
-        for (unsigned i = 0; i < result.helpText.size(); ++i) {
+        const auto id = gameedition::identify(executable);
+        const auto addresses = gameedition::menu(id);
+        for (unsigned i = 0; i < addresses.helpTextCount; ++i) {
             std::vector<std::uint8_t> pointer, text;
-            if (!dolresources::read(executable, 0x803346d8 + i * 4, 4, pointer, error)) throw std::runtime_error(error);
+            if (!dolresources::read(executable, addresses.helpText + i * 4, 4, pointer, error)) throw std::runtime_error(error);
             const unsigned address = (unsigned(pointer[0]) << 24) | (pointer[1] << 16) | (pointer[2] << 8) | pointer[3];
             if (!dolresources::read(executable, address, 256, text, error)) throw std::runtime_error(error);
             const auto end = std::find(text.begin(), text.end(), 0);
             if (end == text.end()) throw std::runtime_error("Unterminated options help text.");
-            result.helpText[i].assign(text.begin(), end);
+            result.helpText[id == "GLMP01" ? i : i < 1 ? 0 : i + 1].assign(text.begin(), end);
         }
-        const unsigned addresses[]{0x80334144,0x804d05c8,0x804d05d0,0x80334208,0x804d05d8,0x804d05e0};
+        if (id != "GLMP01") result.helpText[1] = result.helpText[0];
         for (unsigned group = 0; group < 6; ++group) {
             std::vector<std::uint8_t> data;
             const unsigned count = group % 3 == 0 ? 3 : 2;
-            if (!dolresources::read(executable, addresses[group], count * 4, data, error)) throw std::runtime_error(error);
+            if (!dolresources::read(executable, addresses.optionTextures[group], count * 4, data, error)) throw std::runtime_error(error);
             for (unsigned entry = 0; entry < count; ++entry) {
                 const auto offset = entry * 4;
                 const std::uint32_t address = (std::uint32_t(data[offset]) << 24) | (data[offset + 1] << 16) |
@@ -103,13 +106,15 @@ std::vector<std::string> fileselect::OptionsPanes::textures() const {
 void fileselect::OptionsPanes::reset(menulayout::Layout& layout) {
     phase = 255;
     for (const auto* tag : {"o1sa","o1va","o1ca","o1ba","o1oa","o1pa","d1sa","d1va","d1ca","o2sa","o2va","o2ca"}) {
+        if (!layout.find(tag)) continue;
         pane(layout, tag).alpha = 0;
         std::string paired = tag;
         paired.back() = 'b';
-        pane(layout, paired.c_str()).alpha = 0;
+        if (layout.find(paired.c_str())) pane(layout, paired.c_str()).alpha = 0;
     }
-    for (const auto* tag : {"oc1s","oc1v","oc1c","oc1b","oc1o","oc1p","arsl","arvl","arcl","arsr","arvr","arcr", "smpl","chg1","chg2","chg3","chl1","frao"}) pane(layout, tag).visible = false;
-    pane(layout, "dlby").alpha = 0;
+    for (const auto* tag : {"oc1s","oc1v","oc1c","oc1b","oc1o","oc1p","arsl","arvl","arcl","arsr","arvr","arcr", "smpl","chg1","chg2","chg3","chl1","frao"})
+        if (layout.find(tag)) pane(layout, tag).visible = false;
+    if (layout.find("dlby")) pane(layout, "dlby").alpha = 0;
     auto& message = pane(layout, "mesw");
     message.alpha = 0;
     message.colors = {0x6ea0d4ff,0x6ea0d4ff,0x6ea0d420,0x6ea0d420};
@@ -134,12 +139,13 @@ void fileselect::OptionsPanes::reset(menulayout::Layout& layout) {
 }
 
 void fileselect::OptionsPanes::update(menulayout::Layout& layout, const State& state) {
-    if (state.optionSelection > 5 || state.options[0] > 2 || state.options[1] > 1 || state.options[2] > 1)
+    const unsigned optionCount = layout.find("o1pa") ? 6 : 5;
+    if (state.optionSelection >= optionCount || state.options[0] > 2 || state.options[1] > 1 || state.options[2] > 1)
         throw std::runtime_error("Invalid options presentation state.");
     const bool shown = state.mode == 20;
     const char* labels[]{"o1sa","o1va","o1ca","o1ba","o1oa","o1pa"};
     const char* cursors[]{"oc1s","oc1v","oc1c","oc1b","oc1o","oc1p"};
-    for (unsigned i = 0; i < 6; ++i) {
+    for (unsigned i = 0; i < optionCount; ++i) {
         fade(pane(layout, labels[i]), shown);
         pane(layout, cursors[i]).visible = shown && state.optionSelection == i;
     }
@@ -163,11 +169,11 @@ void fileselect::OptionsPanes::update(menulayout::Layout& layout, const State& s
     for (const auto* tag : {"helpPortrait", "helpShadow", "helpText"}) {
         auto& help = pane(layout, tag);
         help.visible = pane(layout, "mesw").alpha == 255;
-        help.text = helpText[state.optionSelection < 2 ? 0 : state.optionSelection - 1];
+        help.text = helpText[state.optionSelection];
     }
     fade(pane(layout, "dlby"), shown && state.options[0] == 2 && state.optionSelection != 3);
     phase = (phase + 1) % 210;
-    for (const auto* tag : labels) pulse(layout, tag, phase);
+    for (unsigned i = 0; i < optionCount; ++i) pulse(layout, labels[i], phase);
     for (const auto* tag : descriptions) pulse(layout, tag, phase);
     for (const auto* tag : values) pulse(layout, tag, phase);
 }

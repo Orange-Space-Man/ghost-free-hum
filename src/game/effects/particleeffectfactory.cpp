@@ -1,4 +1,5 @@
 #include "resources/dolresources.h"
+#include "resources/gameedition.h"
 #include "game/effects/particleeffectfactory.h"
 #include "game/startup/startupresources.h"
 #include "game/effects/particlesuction.h"
@@ -130,7 +131,8 @@ particles::Emitter* particles::EffectFactory::create(unsigned type, const std::a
     for (unsigned i = 49; i > 0; --i) history[i] = history[i - 1];
     history[0] = type;
     if (type > (0xffffffffu - 0x803825e8u) / 12) throw std::out_of_range("Original particle effect type is invalid.");
-    const auto record = range(executable, 0x803825e8 + type * 12, 12);
+    const auto record = range(executable,
+        gameedition::particleEffectRecord(executable, 0x803825e8 + type * 12), 12);
     std::array<Resource, 3> data;
     for (unsigned i = 0; i < data.size(); ++i) {
         const auto address = word(record, i * 4);
@@ -140,11 +142,7 @@ particles::Emitter* particles::EffectFactory::create(unsigned type, const std::a
     if (emitter) {
         emitter->position = position;
         emitter->field220 = vector;
-        const auto initial = range(executable, 0x8021da40, 12);
-        for (unsigned i = 0; i < 3; ++i) {
-            const auto bits = word(initial, i * 4);
-            std::memcpy(&emitter->field22C[i], &bits, sizeof(bits));
-        }
+        emitter->field22C = {};
         emitter->fieldC4 = 0;
         emitter->fieldC8 = 0;
     }

@@ -15,7 +15,10 @@ bool jaudio::Playback::loadMusic(gameassets::Package& package, const Resources& 
     entryPoint = 0;
     tempo = 120;
     timebase = 48;
-    if (!readSequence(resources, id, sequence, error) || !bank.load(package, resources, error) ||
+    // BattleClear selects instrument bank 6 and its wave system 2; the mansion theme uses bank 4 and wave system 1.
+    const std::vector<unsigned> extraBanks = id == 0x80000032 ? std::vector<unsigned>{6} : std::vector<unsigned>{};
+    const std::vector<unsigned> extraWaves = id == 0x80000032 ? std::vector<unsigned>{2} : std::vector<unsigned>{};
+    if (!readSequence(resources, id, sequence, error) || !bank.load(package, resources, error, 4, 1, extraWaves, extraBanks) ||
         !mixer.configure(resources.effects, error)) return false;
     const auto info = soundInfo(resources, id);
     if (!info) { error = "Missing music metadata."; return false; }
@@ -34,16 +37,20 @@ bool jaudio::Playback::loadMenuEffect(gameassets::Package& package, const Resour
     if (!readSequence(resources, 0x80000800, sequence, error) || !bank.load(package, resources, error, 8, 8) ||
         !mixer.configure(resources.effects, error)) return false;
     const auto info = soundInfo(resources, id);
-    const std::array<unsigned, 3> dispatch{0x6063,0x6088,0x60b2};
-    const auto entry = dispatch[id - 0x3801];
+    // The Japanese game's effect sequence is shorter. Its dispatch table and
+    // effect bodies precede the corresponding North American/PAL positions.
+    const auto table = package.gameId() == "GLMJ01" ? 0x5e60u : 0x5fb0u;
+    const auto slot = table + (id - 0x3800) * 3;
+    const auto address = [this](std::size_t offset) -> unsigned {
+        return (sequence.at(offset) << 16) | (sequence.at(offset + 1) << 8) | sequence.at(offset + 2);
+    };
+    if (sequence.size() <= slot + 2) { error = "Unsupported JAudio Start sound dispatch."; return false; }
+    const auto entry = address(slot);
     if (!info || sequence.size() <= entry + 7 || sequence[entry] != 0xc1 || sequence[entry + 1] != 0) {
         error = "Unsupported JAudio Start sound dispatch.";
         return false;
     }
-    const auto address = [this](std::size_t offset) -> unsigned {
-        return (sequence.at(offset) << 16) | (sequence.at(offset + 1) << 8) | sequence.at(offset + 2);
-    };
-    if (address(0x5fb0 + (id - 0x3800) * 3) != entry || address(entry + 2) != entry + 7) {
+    if (address(entry + 2) != entry + 7) {
         error = "Unsupported JAudio Start sound entry.";
         return false;
     }
@@ -329,7 +336,11 @@ void jaudio::Playback::event(const SequenceEvent& event) {
     for (auto& voice : voices) {
         if (voice.track == event.track && (voice.slot == event.slot || event.type == EventType::finish)) {
             voice.noteAttached = false;
-            if (!voice.envelope.released) voice.envelope.release(voice.instrument.envelope, event.type == EventType::finish ? 10 : voice.instrument.release);
+            if (!voice.envelope.released) {
+                const auto duration = event.type == EventType::finish ? 10 : voice.instrument.release;
+                voice.envelope.release(voice.instrument.envelope, duration);
+                if (voice.instrument.hasModulation) voice.modulation.release(voice.instrument.modulation, duration);
+            }
         }
     }
     if (event.type != EventType::noteOn) return;
@@ -356,6 +367,7 @@ void jaudio::Playback::event(const SequenceEvent& event) {
     voice.hasVibrato = track.vibrato && track.oscillatorRoute == 0x11;
     voice.vibratoDefinition = bank.vibrato;
     voice.envelope.advance(voice.instrument.envelope);
+    if (voice.instrument.hasModulation) voice.modulation.advance(voice.instrument.modulation);
     if (voice.hasVibrato) voice.vibrato.advance(voice.vibratoDefinition);
     voices.push_back(std::move(voice));
     if (voices.size() > 256) throw std::runtime_error("JAudio voice capacity exceeded.");
@@ -391,7 +403,10 @@ bool jaudio::Playback::mix(DspMixer& destination, std::string& error, const Spat
                 voice.instrument.pitch += (voice.pitchTarget - voice.instrument.pitch) / voice.pitchRemaining;
                 --voice.pitchRemaining;
             }
-            if (voice.remaining > 0 && --voice.remaining == 0) voice.envelope.release(voice.instrument.envelope, voice.instrument.release);
+            if (voice.remaining > 0 && --voice.remaining == 0) {
+                voice.envelope.release(voice.instrument.envelope, voice.instrument.release);
+                if (voice.instrument.hasModulation) voice.modulation.release(voice.instrument.modulation, voice.instrument.release);
+            }
             const auto& track = interpreter.track(voice.track);
             float volume = track.parameters[0].value * externalVolume(track);
             float pitch = bank.pitch(track.parameters[1].value, track.bendRange) * externalPitch(track);
@@ -401,6 +416,11 @@ bool jaudio::Playback::mix(DspMixer& destination, std::string& error, const Spat
             }
             volume *= voice.instrument.volume * voice.envelope.advance(voice.instrument.envelope) * spatial.volume;
             if (voice.envelope.ended) { voice.ended = true; continue; }
+            if (voice.instrument.hasModulation) {
+                const float modulation = voice.modulation.advance(voice.instrument.modulation);
+                if (voice.instrument.modulation.destination == 0) volume *= modulation;
+                else pitch *= modulation;
+            }
             if (voice.hasVibrato) {
                 auto& oscillator = voice.vibratoDefinition;
                 if (track.parameterWritten[9]) oscillator.scale = track.parameters[9].value;
@@ -415,17 +435,19 @@ bool jaudio::Playback::mix(DspMixer& destination, std::string& error, const Spat
             auto fxmix = track.parameters[2].value;
             auto dolby = track.parameters[4].value;
             bool effectBound = false;
+            bool externalBound = false;
             for (int index = static_cast<int>(voice.track); index >= 0; index = interpreter.track(index).parent) {
                 effectBound |= interpreter.track(index).effectControl;
+                externalBound |= interpreter.track(index).externalControl;
             }
-            if (effectBound) {
+            if (effectBound || externalBound) {
                 const auto inherited = effectTrackSpatial(voice.track);
                 pan = inherited.pan;
                 fxmix = inherited.fxmix;
                 dolby = inherited.dolby;
             }
             if (spatial.pan != 0.5f) pan += spatial.pan - 0.5f;
-            if (!effectBound && (syncFlags & 8) != 0) pan = pan * (1 - 16384.0f / 32767) + 0.5f * (16384.0f / 32767);
+            if (!effectBound && !externalBound && (syncFlags & 8) != 0) pan = pan * (1 - 16384.0f / 32767) + 0.5f * (16384.0f / 32767);
             const std::array<float, 3> parameters{std::clamp(pan, 0.0f, 1.0f),
                 std::clamp(fxmix + spatial.fxmix, 0.0f, 1.0f),
                 std::clamp(dolby + spatial.dolby, 0.0f, 1.0f)};

@@ -1,4 +1,5 @@
 #include "resources/dolresources.h"
+#include "resources/gameedition.h"
 #include "game/player/playerweaponparameters.h"
 #include "game/startup/startupresources.h"
 
@@ -63,7 +64,8 @@ playerweapons::Part::Part(const std::vector<std::uint8_t>& executable, int actor
 }
 
 std::array<std::uint32_t, 19> playerweapons::readParameters(const std::vector<std::uint8_t>& executable, int actorType, int partType) {
-    const auto source = range(executable, parameterAddress(actorType, partType), 76);
+    const auto source = range(executable, gameedition::playerActionDescriptor(
+        gameedition::identify(executable), parameterAddress(actorType, partType)), 76);
     std::array<std::uint32_t, 19> result;
     for (unsigned i = 0; i < result.size(); ++i) result[i] = word(source, i * 4);
     return result;

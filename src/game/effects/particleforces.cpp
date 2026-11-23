@@ -1,4 +1,5 @@
 #include "resources/dolresources.h"
+#include "resources/gameedition.h"
 #include "game/effects/particleforces.h"
 #include "game/startup/startupresources.h"
 
@@ -50,7 +51,9 @@ namespace {
 particles::Forces::Forces(const std::vector<std::uint8_t>& executable) {
     std::vector<std::uint8_t> pointers;
     std::string error;
-    if (!dolresources::read(executable, 0x80381678, 24, pointers, error)) throw std::runtime_error(error);
+    if (!dolresources::read(executable,
+        gameedition::particleNoisePointers(gameedition::identify(executable)), 24, pointers, error))
+        throw std::runtime_error(error);
     for (unsigned i = 0; i < noise.size(); ++i) {
         const unsigned address = (unsigned(pointers[i * 4]) << 24) | (unsigned(pointers[i * 4 + 1]) << 16) |
             (unsigned(pointers[i * 4 + 2]) << 8) | pointers[i * 4 + 3];

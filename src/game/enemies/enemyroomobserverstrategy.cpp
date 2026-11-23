@@ -9,6 +9,27 @@ namespace {
     public:
         void behavior() override { setNextState(0x100); }
     };
+    class SetEventFlag final : public enemystrategy::Strategy {
+    public:
+        explicit SetEventFlag(const enemystrategy::Factory& factory) : factory(factory) {}
+        void initializeBehavior() override {
+            if (!owner || !owner->source.table || owner->source.row < 0)
+                throw std::runtime_error("Event flag action requires its original observer row.");
+            unsigned flag = 0;
+            owner->source.table->getValue(owner->source.row, "arg0", flag);
+            if (flag) factory.setEventFlag(flag);
+        }
+    private:
+        const enemystrategy::Factory& factory;
+    };
+    class LockDoorBarrier final : public enemystrategy::Strategy {
+    public:
+        explicit LockDoorBarrier(const enemystrategy::Factory& factory) : factory(factory) {}
+        void initializeBehavior() override { factory.setGlobalDoorBarrier(); }
+        void behavior() override { if (frames == 7) factory.scareForDoorLock(); }
+    private:
+        const enemystrategy::Factory& factory;
+    };
     class ClearDoorBarrier final : public enemystrategy::Strategy {
     public:
         explicit ClearDoorBarrier(const enemystrategy::Factory& factory) : factory(factory) {}
@@ -86,7 +107,9 @@ void enemystrategy::RoomObserver::behavior() {
         if (action == 1) actionStrategy = std::make_unique<LightRoom>(factory);
         else if (action == 0 || action == 2 || action == 4 || action == 5 || action == 6 || action > 12)
             actionStrategy = std::make_unique<CompletedAction>();
+        else if (action == 7) actionStrategy = std::make_unique<SetEventFlag>(factory);
         else if (action == 10) actionStrategy = std::make_unique<ChangeMotion>();
+        else if (action == 11) actionStrategy = std::make_unique<LockDoorBarrier>(factory);
         else if (action == 12) actionStrategy = std::make_unique<ClearDoorBarrier>(factory);
         if (actionStrategy) {
             actionStrategy->owner = owner;

@@ -1,4 +1,5 @@
 #include "resources/glme01addresses.h"
+#include "resources/gameedition.h"
 #include "resources/dolresources.h"
 #include "game/startup/startupresources.h"
 #include "resources/gameassetpackage.h"
@@ -80,8 +81,11 @@ bool startupresources::readLayout(const std::vector<std::uint8_t>& data, const s
             } else if (kind == "END1") {
                 require(depth-- == 1, "Invalid title pane hierarchy.");
             } else if (kind == "EXT1") {
-                require(depth == 0 && offset + size == data.size(), "Invalid title layout terminator.");
+                require(depth == 0 && data.size() - offset - size <= 31 &&
+                    std::all_of(data.begin() + offset + size, data.end(), [](std::uint8_t byte) { return byte == 0; }),
+                    "Invalid title layout terminator.");
                 ended = true;
+                offset = data.size() - size;
             } else if (kind == "PIC1") {
                 require(depth == 1 && size >= 24, "Invalid title picture.");
                 Pane pane;
@@ -135,10 +139,11 @@ bool startupresources::read(const std::filesystem::path& path, Resources& resour
     try {
         gameassets::Package package;
         std::vector<std::uint8_t> dol, header, archive, compressed, decoded;
-        if (!package.open(path, error) || !package.read("sys/main.dol", dol, error) ||
-            !dolresources::read(dol, glme01::titleArchive, 8, header, error)) throw std::runtime_error(error);
+        if (!package.open(path, error) || !package.read("sys/main.dol", dol, error)) throw std::runtime_error(error);
+        const auto addresses = gameedition::startup(package.gameId());
+        if (!dolresources::read(dol, addresses.titleArchive, 8, header, error)) throw std::runtime_error(error);
         require(tag(header, 0) == "RARC", "Unsupported boot archive.");
-        if (!dolresources::read(dol, glme01::titleArchive, dword(header, 4), archive, error) ||
+        if (!dolresources::read(dol, addresses.titleArchive, dword(header, 4), archive, error) ||
             !roomarchive::read(archive, "nintendo.szp", compressed, error) ||
             !roomarchive::decompress(compressed, decoded, error)) throw std::runtime_error(error);
         Resources result;
@@ -152,7 +157,7 @@ bool startupresources::read(const std::filesystem::path& path, Resources& resour
             !roomarchive::decompress(compressed, decoded, error)) throw std::runtime_error(error);
         std::vector<std::uint8_t> layout;
         if (!roomarchive::read(decoded, "scrn/testtitl.blo", layout, error) || !readLayout(layout, decoded, result, error)) throw std::runtime_error(error);
-        if (!dolresources::read(dol, glme01::sineTable, 4096 * 4, decoded, error)) throw std::runtime_error(error);
+        if (!dolresources::read(dol, addresses.sineTable, 4096 * 4, decoded, error)) throw std::runtime_error(error);
         for (std::size_t i = 0; i < decoded.size(); i += 4) {
             const auto bits = dword(decoded, i);
             float value;
@@ -160,7 +165,7 @@ bool startupresources::read(const std::filesystem::path& path, Resources& resour
             require(std::isfinite(value), "Invalid original title sine table.");
             result.sine.push_back(value);
         }
-        if (!dolresources::read(dol, glme01::initialSaveFlags, 31, result.initialSaveFlags, error) ||
+        if (!dolresources::read(dol, addresses.initialSaveFlags, 31, result.initialSaveFlags, error) ||
             !jaudio::read(package, result.audio, error)) throw std::runtime_error(error);
         resources = std::move(result);
         return true;

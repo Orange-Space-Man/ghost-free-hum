@@ -1,4 +1,5 @@
-#include "resources/glme01addresses.h"
+#include "resources/gameedition.h"
+#include "resources/regionfactories.h"
 #include "resources/dolresources.h"
 #include "game/enemies/enemystrategycatalog.h"
 #include "game/startup/startupresources.h"
@@ -25,10 +26,12 @@ bool enemystrategy::Catalog::read(const std::vector<std::uint8_t>& executable, s
     error.clear();
     try {
         Catalog result;
-        const auto types = range(executable, glme01::strategyTypes, 381 * 16);
-        const auto factories = range(executable, glme01::strategyFactories, 187 * 4);
+        const auto addresses = gameedition::actors(gameedition::identify(executable));
+        const auto types = range(executable, addresses.strategyTypes, 381 * 16);
+        const auto factories = range(executable, addresses.strategyFactories, 187 * 4);
         for (unsigned i = 0; i < result.constructors.size(); ++i) {
-            result.constructors[i] = word(factories, i * 4);
+            result.constructors[i] = regionfactories::canonical(gameedition::identify(executable),
+                word(factories, i * 4));
         }
         for (unsigned i = 0; i < result.selectors.size(); ++i) {
             result.attachmentJoints[i] = word(types, i * 16 + 12);
@@ -38,7 +41,7 @@ bool enemystrategy::Catalog::read(const std::vector<std::uint8_t>& executable, s
             if (generatorDisplacement & 0x02000000) generatorDisplacement |= 0xfc000000;
             if (word(generatorCode, 0) != 0x7c0802a6 || (word(generatorCode, 4) & 0xffff0000) != 0x38800000 ||
                 word(generatorCode, 8) != 0x90010004 || word(generatorCode, 12) != 0x9421fff8 ||
-                (word(generatorCode, 16) & 0xfc000003) != 0x48000001 || generatorAddress + 16 + generatorDisplacement != 0x800db168 ||
+                (word(generatorCode, 16) & 0xfc000003) != 0x48000001 || generatorAddress + 16 + generatorDisplacement != addresses.generatorSelector ||
                 word(generatorCode, 20) != 0x8001000c || word(generatorCode, 24) != 0x38210008 ||
                 word(generatorCode, 28) != 0x7c0803a6 || word(generatorCode, 32) != 0x4e800020) {
                 throw std::runtime_error("Unsupported original generator strategy selector.");
@@ -61,7 +64,7 @@ bool enemystrategy::Catalog::read(const std::vector<std::uint8_t>& executable, s
                 }
                 if (word(code, 0) != 0x7c0802a6 || (word(code, 4) & 0xffff0000) != 0x38800000 ||
                     word(code, 8) != 0x90010004 || word(code, 12) != 0x9421fff8 ||
-                    (branch & 0xfc000003) != 0x48000001 || address + 16 + displacement != 0x800db0d8 ||
+                    (branch & 0xfc000003) != 0x48000001 || address + 16 + displacement != addresses.strategySelector ||
                     word(code, 20) != 0x8001000c || word(code, 24) != 0x38210008 ||
                     word(code, 28) != 0x7c0803a6 || word(code, 32) != 0x4e800020) {
                     throw std::runtime_error("Unsupported original enemy strategy selector.");

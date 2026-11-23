@@ -22,6 +22,7 @@ namespace fileselect {
         unsigned confirmation = 0;
         unsigned copyDestination = 0;
         unsigned optionSelection = 0;
+        unsigned optionCount = 6;
         std::array<unsigned, 3> options{1, 1, 0};
         unsigned frames = 0;
         unsigned timer = 0;

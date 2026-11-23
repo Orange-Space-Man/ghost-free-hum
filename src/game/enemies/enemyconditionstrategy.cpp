@@ -7,6 +7,10 @@
 enemystrategy::Condition::Condition(ConditionKind kind, enemies::Runtime& runtime, const gameflags::State& flags) :
     kind(kind), runtime(runtime), flags(flags) {}
 
+void enemystrategy::Condition::bindCandleCount(std::function<unsigned(unsigned)> callback) {
+    candleCount = std::move(callback);
+}
+
 void enemystrategy::Condition::initializeBehavior() {
     if (kind != ConditionKind::FlagOn && kind != ConditionKind::FlagOff) return;
     if (!owner) throw std::runtime_error("Original condition strategy has no owner.");
@@ -30,6 +34,10 @@ void enemystrategy::Condition::behavior() {
     const auto room = character.actor().room();
     bool ready = false;
     switch (kind) {
+    case ConditionKind::CandleAllOn:
+        if (!candleCount) throw std::runtime_error("Original candle condition has no candle manager binding.");
+        ready = candleCount(room) == 0;
+        break;
     case ConditionKind::RoomEmpty:
         ready = manager.countRoom(room) == 0;
         break;

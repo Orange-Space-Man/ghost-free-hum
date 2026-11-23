@@ -1,12 +1,14 @@
 #include "game/audio/roomambientaudio.h"
 #include "resources/dolresources.h"
+#include "resources/gameedition.h"
 
 #include <cstring>
 #include <stdexcept>
 
 gameplayaudio::RoomAmbience::RoomAmbience(const std::vector<std::uint8_t>& executable, jaudio::PositionalPlayback& playback) :
     playback(playback) {
-    constexpr unsigned windPositionAddress = 0x8038e710;
+    const unsigned windPositionAddress = gameedition::thunderPosition(
+        gameedition::identify(executable)) - 12;
     std::vector<std::uint8_t> bytes;
     std::string error;
     if (!dolresources::read(executable, windPositionAddress, 12, bytes, error)) throw std::runtime_error(error);

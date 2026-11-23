@@ -1,4 +1,5 @@
 #include "resources/glme01addresses.h"
+#include "resources/gameedition.h"
 #include "resources/dolresources.h"
 #include "game/menu/gamefont.h"
 
@@ -22,9 +23,10 @@ namespace {
 
 bool gamefont::Font::readExecutable(const std::vector<std::uint8_t>& dol, std::string& error) {
     std::vector<std::uint8_t> header, data, ascii;
-    if (!dolresources::read(dol, glme01::fontResource, 16, header, error) ||
-        !dolresources::read(dol, glme01::fontResource, dword(header, 8), data, error) ||
-        !dolresources::read(dol, glme01::fontAsciiTable, 190, ascii, error)) return false;
+    const auto addresses = gameedition::menu(gameedition::identify(dol));
+    if (!dolresources::read(dol, addresses.fontResource, 16, header, error) ||
+        !dolresources::read(dol, addresses.fontResource, dword(header, 8), data, error) ||
+        !dolresources::read(dol, addresses.fontAsciiTable, 190, ascii, error)) return false;
     return read(data, ascii, error);
 }
 

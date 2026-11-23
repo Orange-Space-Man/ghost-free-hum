@@ -7,7 +7,19 @@
 
 #include <functional>
 
+namespace jaudio { class PositionalSound; }
+
 namespace roomfurniture {
+    struct SwingState {
+        std::array<float, 2> target{}, previousVelocity{};
+        float collected = 0;
+    };
+
+    struct AnimatedSwingState {
+        SwingState swing;
+        float mode = 0, delay = 0, proximity = 0, hit = 0;
+    };
+
     struct RowState {
         std::uint32_t flags = 0;
         std::int16_t occupant = -1;
@@ -28,6 +40,8 @@ namespace roomfurniture {
         float frame = 0, previousFrame = 0, frameDelta = 0;
         float rotationAmplitude = 0, previousRotation = 0;
         std::array<float, 2> swing{}, swingVelocity{};
+        AnimatedSwingState animatedSwing;
+        jaudio::PositionalSound* swingSound = nullptr;
         const doors::ModelResource* model = nullptr;
         std::vector<const Animation*> animations;
         dooranimation::Matrix world{};

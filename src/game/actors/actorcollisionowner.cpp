@@ -1,4 +1,4 @@
-#include "resources/glme01addresses.h"
+#include "resources/gameedition.h"
 #include "resources/dolresources.h"
 #include "game/actors/actorcollisionowner.h"
 #include "game/startup/startupresources.h"
@@ -29,11 +29,12 @@ namespace {
 }
 
 actorcollision::Catalog::Catalog(const std::vector<std::uint8_t>& executable, const actormodel::Catalog& models) {
-    initial = record<5>(executable, glme01::collisionInitialPrimary);
-    initialSecondary = record<5>(executable, glme01::collisionInitialSecondary);
-    initialExtended = record<6>(executable, glme01::collisionInitialExtended);
-    const auto modelTable = range(executable, glme01::collisionModelTable, 262 * 4);
-    const auto typeTable = range(executable, glme01::collisionTypeTable, types.size() * 4);
+    const auto addresses = gameedition::collisions(gameedition::identify(executable));
+    initial = record<5>(executable, addresses.initial);
+    initialSecondary = record<5>(executable, addresses.initial + 20);
+    initialExtended = record<6>(executable, addresses.initial + 40);
+    const auto modelTable = range(executable, addresses.modelTable, 262 * 4);
+    const auto typeTable = range(executable, addresses.typeTable, types.size() * 4);
     std::map<unsigned, std::shared_ptr<Descriptor>> loaded;
     for (unsigned type = 0; type < types.size(); ++type) {
         unsigned address = word(typeTable, type * 4);

@@ -34,7 +34,7 @@ bool menulayout::Graphics::loadOptionsPortrait(const std::filesystem::path& pack
     gameassets::Package package;
     std::vector<std::uint8_t> data, decoded, archive;
     roommaterials::Texture texture;
-    if (!package.open(packagePath, error) || !package.read("files/Game/game_usa.szp", data, error) ||
+    if (!package.open(packagePath, error) || !package.read(gameassets::commonArchive(package.gameId()), data, error) ||
         !roomarchive::decompress(data, archive, error) ||
         !roomarchive::read(archive, "kawano/dmman/pressed/hakase_icon.bti", data, error)) return false;
     if (data.size() >= 4 && data[0] == 'Y' && data[1] == 'a' && data[2] == 'y' && data[3] == '0') {
@@ -92,8 +92,19 @@ bool menulayout::Graphics::loadTextures(const Layout& layout, std::string& error
             for (auto& character : path) if (character >= 'A' && character <= 'Z') character += 'a' - 'A';
             std::vector<std::uint8_t> data;
             roommaterials::Texture texture;
-            if (!read(path, data, error) || !startupresources::decodeTexture(data, texture, error)) {
+            if (!read(path, data, error)) {
+                if (name == "bg_file_select_2.bti") {
+                    result.names[name] = 0;
+                    continue;
+                }
                 throw std::runtime_error(path + ": " + error);
+            }
+            if (!startupresources::decodeTexture(data, texture, error)) {
+                throw std::runtime_error(path + ": " + error);
+            }
+            // J2DPicture uses constant alpha when ResTIMG::alphaEnabled is zero.
+            if (data[1] == 0) {
+                for (std::size_t pixel = 3; pixel < texture.pixels.size(); pixel += 4) texture.pixels[pixel] = 255;
             }
             result.names[name] = result.textures.size();
             result.textures.push_back(std::move(texture));
@@ -224,13 +235,13 @@ std::vector<startupscene::Picture> menulayout::Graphics::pictures(const Layout& 
             }
             for (unsigned i : {1u, 3u}) {
                 const unsigned flags = (pane.mirror >> (6 - i * 2)) & 3;
-                const float u = flags & 2 ? 1.0f : 0.0f, v = flags & 1 ? 0.0f : 1.0f;
+                const float u = flags & 2 ? 1.0f : 0.0f, v = flags & 1 ? 1.0f : 0.0f;
                 picture(indices[i], static_cast<float>(first.width), i == 1 ? 0 : bottom,
                     right - first.width, static_cast<float>(textures.at(indices[i]).height), u, v, u, 1-v);
             }
             for (unsigned i : {2u, 3u}) {
                 const unsigned flags = (pane.mirror >> (6 - i * 2)) & 3;
-                const float u = flags & 2 ? 0.0f : 1.0f, v = flags & 1 ? 1.0f : 0.0f;
+                const float u = flags & 2 ? 1.0f : 0.0f, v = flags & 1 ? 1.0f : 0.0f;
                 picture(indices[i], i == 2 ? 0 : right, static_cast<float>(first.height),
                     static_cast<float>(textures.at(indices[i]).width), bottom - first.height, u, v, 1-u, v);
             }

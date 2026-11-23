@@ -48,8 +48,8 @@ jaudio::EffectRank jaudio::rankEffect(std::vector<EffectListenerDistance>& liste
         score = static_cast<std::uint32_t>(listener.squared) + inversePriority * inversePriority * 5776u;
         if (listener.z > 0) {
             const float depth = 6.0f * listener.z;
-            if (depth >= 2147483648.0f) throw std::runtime_error("Unrecovered effect depth conversion overflow.");
-            score += static_cast<std::uint32_t>(depth);
+            // The original fctiwz conversion yields 0x80000000 on signed overflow.
+            score += depth >= 2147483648.0f ? 0x80000000u : static_cast<std::uint32_t>(depth);
         }
         if (listener.squared < nearest) nearest = listener.squared;
     }

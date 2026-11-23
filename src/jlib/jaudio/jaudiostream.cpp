@@ -1,4 +1,5 @@
 #include "resources/glme01addresses.h"
+#include "resources/gameedition.h"
 #include "resources/dolresources.h"
 #include "jlib/jaudio/jaudiostream.h"
 #include "jlib/jaudio/jaudioresources.h"
@@ -73,7 +74,8 @@ bool jaudio::readStream(gameassets::Package& package, const std::string& path, S
     try {
         std::vector<std::uint8_t> data, executable, table;
         if (!package.read(path, data, error) || !package.read("sys/main.dol", executable, error) ||
-            !dolresources::read(executable, glme01::streamPredictorCoefficients, 64, table, error)) return false;
+            !dolresources::read(executable,
+                gameedition::audio(gameedition::identify(executable)).streamPredictor, 64, table, error)) return false;
         std::array<std::int16_t, 32> coefficients{};
         for (unsigned i = 0; i < coefficients.size(); ++i) coefficients[i] = static_cast<std::int16_t>(word(table, i * 2));
         StreamAudio result;
@@ -98,7 +100,8 @@ bool jaudio::readStream(gameassets::Package& package, const std::string& path, S
         const auto gain = static_cast<std::int16_t>(32767 * volume);
         if (!dolresources::read(executable, glme01::streamOutputLevel, 4, table, error)) return false;
         const auto outputLevel = static_cast<std::int16_t>(4096 * number(table, 0));
-        if (!dolresources::read(executable, glme01::dspResamplingTable, 512, table, error)) return false;
+        if (!dolresources::read(executable,
+            gameedition::audio(gameedition::identify(executable)).resampling, 512, table, error)) return false;
         std::array<std::int16_t, 256> resampling{};
         for (unsigned i = 0; i < resampling.size(); ++i) resampling[i] = static_cast<std::int16_t>(word(table, i * 2));
         std::array<Wave, 2> channels;

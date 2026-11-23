@@ -1,4 +1,5 @@
 #include "resources/glme01addresses.h"
+#include "resources/gameedition.h"
 #include "platform/windows/gameapplication.h"
 #include "platform/windows/debugoverlay.h"
 #include "platform/windows/controlsettings.h"
@@ -119,6 +120,7 @@ void gameapplication::Application::enterMenu() {
     menu.open();
     menu.reset();
     menuState = {};
+    menuState.optionCount = menu.optionCount();
     menuState.options = {gamesave::soundMode(saves), gamesave::rumbleEnabled(saves) ? 1U : 0U, saves.working[0xb1e]};
     menuInput = {};
     menuActive = true;
@@ -172,8 +174,8 @@ void gameapplication::Application::advanceMenu() {
 
 void gameapplication::Application::advance(bool audioFinished) {
     if (const auto checkpoint = debugoverlay::takeCheckpoint()) debugCheckpoint = checkpoint;
-    startupaudio::setPaused(controlsettings::visible() || debugoverlay::checkpointVisible());
-    if (controlsettings::visible() || debugoverlay::checkpointVisible()) return;
+    startupaudio::setPaused(controlsettings::visible());
+    if (controlsettings::visible()) return;
     ++presentationFrames;
     if (debugCheckpoint) {
         const auto checkpoint = debugCheckpoint;
@@ -384,7 +386,7 @@ void gameapplication::Application::restart() {
     saves = defaults;
     if (!savePath.empty()) {
         std::string error;
-        card.open(savePath, saves, error);
+        card.open(savePath, saves, error, saveGameId);
         if (!error.empty()) OutputDebugStringA((error + "\n").c_str());
     }
     if (!gamerenderer::useScene("title")) gamerenderer::setInterfaceTextures(resources.textures);
@@ -431,41 +433,57 @@ LRESULT gameapplication::Application::handleMessage(HWND window, UINT message, W
 }
 
 
-void gameapplication::Application::initialize(HINSTANCE instance, const std::filesystem::path& assetPath, bool live, bool preload) {
-    currentAssets = assetPath;
-    std::string error;
-    if (!startupresources::read(assetPath, resources, error)) throw std::runtime_error(error);
-    if (!gamesave::initialize(resources.initialSaveFlags, saves, error)) throw std::runtime_error(error);
-    defaults = saves;
-    {
-        gameassets::Package package;
-        std::vector<std::uint8_t> executable, banner;
-        if (!package.open(assetPath, error) || !package.read("sys/main.dol", executable, error) ||
-            !dolresources::read(executable, glme01::memoryCardBanner, 0x1c00, banner, error)) throw std::runtime_error(error);
-        std::copy(banner.begin(), banner.end(), cardBanner.begin());
-        std::snprintf(reinterpret_cast<char*>(cardBanner.data() + 0x1c00), 32, "Luigi's Mansion");
-    }
-    if (live) {
-        wchar_t executable[32768]{};
-        if (!GetModuleFileNameW(nullptr, executable, 32768)) throw std::runtime_error("Cannot locate ghost-free-hum.");
-        savePath = std::filesystem::path(executable).parent_path() / "saves" / "slot-a.gci";
-        card.open(savePath, saves, error);
-        if (!error.empty()) OutputDebugStringA((error + "\n").c_str());
-    }
-    audioEnabled = live;
-    if (audioEnabled) startupaudio::prepare(assetPath, resources.audio);
+HWND gameapplication::Application::initializeSetup(HINSTANCE instance, int show) {
+    if (window) return window;
     WNDCLASSW windowClass{};
     activeApplication = this;
     windowClass.lpfnWndProc = windowProcedure;
     windowClass.hInstance = instance;
     windowClass.lpszClassName = L"GhostFreeHumApplication";
     windowClass.hCursor = LoadCursorW(nullptr, IDC_ARROW);
-    if (!RegisterClassW(&windowClass)) throw std::runtime_error("Could not register the game window.");
+    if (!RegisterClassW(&windowClass) && GetLastError() != ERROR_CLASS_ALREADY_EXISTS)
+        throw std::runtime_error("Could not register the game window.");
     window = CreateWindowW(windowClass.lpszClassName, L"ghost-free-hum", WS_OVERLAPPEDWINDOW,
         CW_USEDEFAULT, CW_USEDEFAULT, 960, 760, nullptr, nullptr, instance, nullptr);
-    if (window == nullptr) throw std::runtime_error("Could not create the game window.");
+    if (!window) throw std::runtime_error("Could not create the game window.");
     applicationWindow = window;
-    gamerenderer::open(window, resources.textures);
+    gamerenderer::open(window, {});
+    ShowWindow(window, show);
+    return window;
+}
+
+void gameapplication::Application::initialize(HINSTANCE instance, const std::filesystem::path& assetPath, bool live, bool preload) {
+    currentAssets = assetPath;
+    std::string error;
+    gameassets::Package edition;
+    if (!edition.open(assetPath, error)) throw std::runtime_error(error);
+    if (!startupresources::read(assetPath, resources, error)) throw std::runtime_error(error);
+    if (!gamesave::initialize(resources.initialSaveFlags, saves, error)) throw std::runtime_error(error);
+    defaults = saves;
+    {
+        gameassets::Package package;
+        std::vector<std::uint8_t> executable, banner;
+        if (!package.open(assetPath, error) || !package.read("sys/main.dol", executable, error)) throw std::runtime_error(error);
+        if (gameedition::identify(executable) != edition.gameId())
+            throw std::runtime_error("The asset package's executable does not match its selected edition.");
+        if (!dolresources::read(executable, gameedition::startup(package.gameId()).memoryCardBanner, 0x1c00, banner, error))
+            throw std::runtime_error(error);
+        std::copy(banner.begin(), banner.end(), cardBanner.begin());
+        std::snprintf(reinterpret_cast<char*>(cardBanner.data() + 0x1c00), 32, "Luigi's Mansion");
+    }
+    if (live) {
+        wchar_t executable[32768]{};
+        if (!GetModuleFileNameW(nullptr, executable, 32768)) throw std::runtime_error("Cannot locate ghost-free-hum.");
+        saveGameId = edition.gameId();
+        savePath = std::filesystem::path(executable).parent_path() / "saves" /
+            (edition.gameId() == "GLME01" ? "slot-a.gci" : "slot-a-" + edition.gameId() + ".gci");
+        card.open(savePath, saves, error, saveGameId);
+        if (!error.empty()) OutputDebugStringA((error + "\n").c_str());
+    }
+    audioEnabled = live;
+    if (audioEnabled) startupaudio::prepare(assetPath, resources.audio);
+    initializeSetup(instance, SW_HIDE);
+    gamerenderer::setInterfaceTextures(resources.textures);
     gamerenderer::cacheScene("title");
     if (preload) {
         if (!menu.load(currentAssets, error)) throw std::runtime_error(error);

@@ -49,17 +49,17 @@ void particles::Scene::bind(enemies::Manager& manager, actors::Registry& actors,
 void particles::Scene::refresh(const SecondarySource* secondary) {
     if (!binding) throw std::runtime_error("Particle scene context has no player binding.");
     shared.refresh(binding->player.view, binding->pose, binding->manager, binding->visibility, secondary);
+    if (elementalScene) elementalScene->refreshForceRanges(shared.player);
     binding->refreshed = true;
 }
 
 void particles::Scene::update() {
     emitters.update(simulation);
     if (elementalScene && binding && binding->refreshed) {
-        elementalScene->updateBreath(binding->player.view, shared.player, randomState);
+        elementalScene->updateBreath(binding->player.view, shared.player, *collision, randomState);
         elementalScene->updateBlow(binding->player.view, binding->player.flags, shared.player, *collision, randomState);
     }
     if (dust) {
-        elementalScene->refreshForceRanges(shared.player);
         const auto& context = shared.player;
         dustForce.mode = runningdust::selectForce(false, false, binding->player.view.field8B4 != nullptr,
             binding->player.view.field8A0);

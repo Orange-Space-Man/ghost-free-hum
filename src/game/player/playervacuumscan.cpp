@@ -114,7 +114,9 @@ unsigned vacuumcapture::Vacuum::scan() {
     for (const auto& candidate : services_.candidates()) {
         auto& actor = *candidate.actor;
         if (services_.typeGroup(actor.type()) < 0) continue;
-        const unsigned room = (actor.fieldB4 >> 24) & 0xff;
+        // The room visibility service consumes the packed actor room ID and extracts its high-byte index.
+        // Passing only that index makes every ghost appear to occupy room zero to the visibility lookup.
+        const unsigned room = actor.fieldB4;
         if (!services_.roomVisible(room, 0) && !services_.roomVisible(room, 1)) continue;
         if (!inside(actor, volume)) continue;
         if (debugFlags_ & 8) {

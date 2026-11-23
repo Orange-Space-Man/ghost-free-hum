@@ -1,4 +1,5 @@
 #include "resources/dolresources.h"
+#include "resources/gameedition.h"
 #include "game/scene/gameplaycamera.h"
 #include "game/startup/startupresources.h"
 
@@ -28,7 +29,9 @@ bool gameplaycamera::initialize(const std::vector<std::uint8_t>& executable, con
     error.clear();
     try {
         if (map != 1 && map != 2 && map != 3 && map != 6) throw std::runtime_error("Unsupported initial gameplay camera map.");
-        const auto descriptor = word(executable, 0x802ff218 + map * 4);
+        const auto edition = gameedition::identify(executable);
+        const auto addresses = gameedition::cameraFollow(edition);
+        const auto descriptor = word(executable, addresses.descriptors + map * 4);
         const auto index = spawn.roomId >> 24;
         if ((word(executable, descriptor) >> 24) <= index) throw std::runtime_error("Missing initial camera room.");
         const auto room = word(executable, descriptor + 20) + index * 48;
@@ -38,17 +41,20 @@ bool gameplaycamera::initialize(const std::vector<std::uint8_t>& executable, con
         const float minimumY = static_cast<float>(static_cast<std::int32_t>(word(executable, room + 12)));
         const float maximumX = static_cast<float>(static_cast<std::int32_t>(word(executable, room + 20)));
         const float maximumZ = static_cast<float>(static_cast<std::int32_t>(word(executable, room + 28)));
-        const float depth = value(executable, 0x802ffc48), margin = value(executable, 0x802ffc4c);
-        const float targetHeight = value(executable, 0x802ffc50), eyeHeight = value(executable, 0x802ffc54);
-        const float inset = value(executable, 0x804d0098), threshold = value(executable, 0x804d9cec);
+        const float depth = value(executable, addresses.presets), margin = value(executable, addresses.presets + 4);
+        const float targetHeight = value(executable, addresses.presets + 8), eyeHeight = value(executable, addresses.presets + 12);
+        const auto originalValue = [&](unsigned original) {
+            return value(executable, gameedition::cameraFollowConstant(edition, original));
+        };
+        const float inset = originalValue(0x804d0098), threshold = originalValue(0x804d9cec);
         auto position = spawn.position;
         for (float component : position) if (!std::isfinite(component)) throw std::runtime_error("Invalid camera owner position.");
-        position[1] += value(executable, 0x804d9ab8);
+        position[1] += originalValue(0x804d9ab8);
         s3denvironment::Camera result;
-        result.aspect = value(executable, 0x804d9c80);
-        result.fieldOfView = value(executable, 0x804d9c84);
-        result.nearPlane = value(executable, 0x804d9c78);
-        result.farPlane = value(executable, 0x804d9c7c);
+        result.aspect = originalValue(0x804d9c80);
+        result.fieldOfView = originalValue(0x804d9c84);
+        result.nearPlane = originalValue(0x804d9c78);
+        result.farPlane = originalValue(0x804d9c7c);
         result.target = position;
         if (result.target[0] < minimumX + margin) result.target[0] = minimumX + margin;
         else if (maximumX - margin < result.target[0]) result.target[0] = maximumX - margin;

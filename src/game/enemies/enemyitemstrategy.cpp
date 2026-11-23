@@ -158,7 +158,7 @@ void enemystrategy::Item::updateActive() {
 void enemystrategy::FiniteItem::updateFinite(bool infinite) {
     if (canAttract()) {
         auto& object = actor();
-        suction.update(object, 0, 25, environment.unwrittenDirection());
+        suction.update(object, 0, 25, environment.unwrittenDirection);
         object.scale = {1, 1, 1};
         object.rotation[0] = object.rotation[1] = 0;
         object.previousRotation[1] = object.previousRotation[2] = 0;

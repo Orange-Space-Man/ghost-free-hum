@@ -4,6 +4,7 @@
 #include "game/enemies/enemycapturelifecycle.h"
 
 #include "game/actors/actorregistry.h"
+#include "game/actors/actortrailcontroller.h"
 #include "game/actors/charactercreationruntime.h"
 #include "game/scene/gamearchiveresources.h"
 #include "game/audio/jaudiopositionalplayback.h"
@@ -79,6 +80,7 @@ namespace gameplay {
         unsigned variant = 0;
         std::function<void(const enemies::Manager&)> prepareRooms;
         std::function<void(const std::array<std::uint8_t, 262>&)> updateActorResources;
+        std::function<void(const std::array<float, 3>&)> beginChestReveal;
     };
 
     class ManagerServices {
@@ -93,6 +95,7 @@ namespace gameplay {
         players::Manager& players();
         playerscanner::Services& scanner();
         void bindScannerMessage(std::function<void(unsigned)> callback);
+        void bindMapScene(std::function<void(unsigned, std::int32_t)> callback);
         void bindProfessorInteraction(std::function<void()> callback);
         void bindToadInteraction(std::function<void()> callback);
         void snapshotFlags();
@@ -104,6 +107,7 @@ namespace gameplay {
         unsigned frightenPlayer(const actors::MoveActor& source, unsigned player);
         playerevents::LifeEnvironment& playerLife();
         particles::Scene& particles();
+        actortrail::Pool& trails();
         modeleffects::Manager& modelEffects();
         mapcollision::State& collision();
         roomlighting::Pool& lights();
@@ -141,6 +145,7 @@ namespace gameplay {
         void updatePlayerLate(unsigned index, const playeractor::LateFrameServices& services);
         void completePlayerFrame(const playeractor::LateFrameServices& services, bool resetLights = true);
         void setAudioInterfaceFrame(std::uint32_t frame);
+        void changeShrinkAudioRate(bool enabled);
         const std::array<std::uint32_t, 2>& playerFootstepFrames() const;
         bool beginPlayerCapture(std::int32_t index, const std::array<float, 3>& position, std::int32_t recipient);
         void updatePlayerCapture(std::int32_t index);

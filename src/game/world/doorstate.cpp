@@ -1,4 +1,5 @@
 #include "resources/glme01addresses.h"
+#include "resources/gameedition.h"
 #include "resources/dolresources.h"
 #include "game/world/doorstate.h"
 #include "game/world/doorpresentation.h"
@@ -70,7 +71,8 @@ bool doors::State::initialize(const doordata::Table& descriptors, std::shared_pt
             if (descriptor.identity == 0xff) continue;
             const unsigned type = (descriptor.identity >> 8) & 255;
             std::vector<std::uint8_t> configuration;
-            if (!dolresources::read(executable, glme01::doorConfigurations + type * 20, 20, configuration, error)) return false;
+            const auto addresses = gameedition::doors(gameedition::identify(executable));
+            if (!dolresources::read(executable, addresses.configurations + type * 20, 20, configuration, error)) return false;
             const unsigned count = configuration[0] == 2 ? 2 : 1;
             for (unsigned side = 0; side < count; ++side) {
                 if (result.leaves.size() >= 128) throw std::runtime_error("Unsupported signed-byte door initialization overflow.");
@@ -97,7 +99,7 @@ bool doors::State::initialize(const doordata::Table& descriptors, std::shared_pt
                 value.transform = result.resources->poseTables().world(value.position, value.angles, {1, 1, 1});
                 if (type) {
                     std::vector<std::uint8_t> box;
-                    if (!dolresources::read(executable, glme01::doorCollisionBoxes + configuration[16] * 24, 24, box, error)) return false;
+                    if (!dolresources::read(executable, addresses.collisionBoxes + configuration[16] * 24, 24, box, error)) return false;
                     value.collision = collisionBox(box, value.transform);
                 }
                 const auto index = static_cast<std::uint8_t>(result.leaves.size());
@@ -109,7 +111,9 @@ bool doors::State::initialize(const doordata::Table& descriptors, std::shared_pt
         if (result.leaves.size() != descriptors.liveCount) throw std::runtime_error("Door allocation count differs from descriptor traversal.");
         for (auto& value : result.leaves) {
             std::vector<std::uint8_t> configuration;
-            if (!dolresources::read(executable, glme01::doorConfigurationFlags + value.type * 20, 2, configuration, error)) return false;
+            if (!dolresources::read(executable,
+                gameedition::doors(gameedition::identify(executable)).configurations + 18 + value.type * 20,
+                2, configuration, error)) return false;
             value.pose.bind(result.resources);
             value.pose.selectModel((unsigned(configuration[0]) << 8) | configuration[1]);
             value.pose.initializeMatrices();

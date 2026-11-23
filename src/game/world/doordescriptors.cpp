@@ -1,4 +1,5 @@
 #include "resources/glme01addresses.h"
+#include "resources/gameedition.h"
 #include "resources/dolresources.h"
 #include "game/world/doordescriptors.h"
 #include "game/startup/startupresources.h"
@@ -43,7 +44,9 @@ bool doordata::read(const std::vector<std::uint8_t>& executable, std::uint32_t a
             if (entry.identity != 0xff) {
                 std::vector<std::uint8_t> configuration;
                 const auto type = (entry.identity >> 8) & 0xff;
-                if (!dolresources::read(executable, glme01::doorConfigurations + type * 20, 1, configuration, error)) return false;
+                if (!dolresources::read(executable,
+                    gameedition::doors(gameedition::identify(executable)).configurations + type * 20,
+                    1, configuration, error)) return false;
                 result.liveCount = static_cast<std::uint16_t>(result.liveCount + (configuration[0] == 2 ? 2 : 1));
             }
             result.entries.push_back(entry);

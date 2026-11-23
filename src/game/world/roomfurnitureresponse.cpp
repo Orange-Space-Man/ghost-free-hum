@@ -1,5 +1,6 @@
 #include "roomfurnitureresponse.h"
 #include "resources/dolresources.h"
+#include "resources/gameedition.h"
 
 #include <algorithm>
 #include <cstring>
@@ -21,7 +22,7 @@ roomfurniture::Response::Response(const std::vector<std::uint8_t>& executable, c
     admission(admission) {
     std::string error;
     if (!trig.read(executable, error)) throw std::runtime_error(error);
-    constexpr unsigned furnitureSoundTable = 0x8038eb8c;
+    const unsigned furnitureSoundTable = gameedition::furnitureSoundTable(gameedition::identify(executable));
     constexpr unsigned furnitureEmissionParameters = 0x804da150;
     for (unsigned i = 0; i < sounds.size(); ++i) sounds[i] = constant<unsigned>(executable, furnitureSoundTable + i * 4);
     ceilingOffset = constant<float>(executable, furnitureEmissionParameters);

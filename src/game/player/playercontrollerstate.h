@@ -30,7 +30,8 @@ namespace playerinput {
 
     struct Pad {
         std::int16_t port = -1;
-        std::uint32_t held = 0, pressed = 0, released = 0;
+        std::uint32_t held = 0, pressed = 0, released = 0, repeat = 0;
+        std::uint32_t repeatHeld = 0, repeatCount = 0;
         std::array<float, 2> stick{}, substick{};
         float stickMagnitude = 0, substickMagnitude = 0;
         std::uint8_t analogA = 0, analogB = 0, triggerLeft = 0, triggerRight = 0;

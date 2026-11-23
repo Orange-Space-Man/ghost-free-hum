@@ -36,8 +36,8 @@ namespace itemsuction {
     public:
         Controller(Environment& environment, std::uint8_t retainedRemaining);
         void initialize(const actors::MoveActor& actor, std::uint8_t countdown, std::uint8_t durationBase);
-        bool update(actors::MoveActor& actor, double heightOffset, double arrivalRadius, const Vector& unwrittenDirection);
-        bool updateVelocity(actors::MoveActor& actor, Vector& velocity, const Vector& unwrittenDirection);
+        bool update(actors::MoveActor& actor, double heightOffset, double arrivalRadius, const std::function<Vector()>& unwrittenDirection);
+        bool updateVelocity(actors::MoveActor& actor, Vector& velocity, const std::function<Vector()>& unwrittenDirection);
         void complete(actors::MoveActor& actor);
         void updateScale(actors::MoveActor& actor);
         void recoverScale(actors::MoveActor& actor);

@@ -1,5 +1,6 @@
 #include "game/effects/trainingfireworks.h"
 #include "resources/dolresources.h"
+#include "resources/gameedition.h"
 
 #include <cstring>
 #include <stdexcept>
@@ -10,7 +11,8 @@ particles::TrainingFireworks::TrainingFireworks(const std::vector<std::uint8_t>&
     resources(resources), pool(pool), sound(std::move(sound)) {
     std::vector<std::uint8_t> bytes;
     std::string error;
-    if (!dolresources::read(executable, 0x8020d2f0, 27 * 12, bytes, error)) throw std::runtime_error(error);
+    if (!dolresources::read(executable, gameedition::trainingFireworks(executable),
+        27 * 12, bytes, error)) throw std::runtime_error(error);
     for (unsigned i = 0; i < positions.size(); ++i) for (unsigned axis = 0; axis < 3; ++axis) {
         const auto offset = i * 12 + axis * 4;
         const std::uint32_t bits = (unsigned(bytes[offset]) << 24) | (unsigned(bytes[offset + 1]) << 16) |

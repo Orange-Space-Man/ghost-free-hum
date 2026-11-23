@@ -22,6 +22,7 @@ namespace particles {
         bool remove(jmp::ToolDataRef& entry) override;
         bool message(jmp::ToolDataRef& entry, const char* command) override;
         unsigned count() const;
+        unsigned countUnextinguishedSpecial(unsigned room) const;
 
     private:
         struct Candle final : EmitterCallback {

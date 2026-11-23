@@ -164,6 +164,8 @@ playerscanner::FurnitureInteraction playerscanner::FurnitureCache::automatic(con
 
 bool playerscanner::FurnitureCache::mirror(unsigned target) const {
     const auto row = rows.at(target);
-    for (const auto sheet : sheets) if (sheet == static_cast<int>(target)) return false;
-    return (owner.rowState(row).flags & 0x10) != 0;
+    const auto rowFlags = owner.rowState(row).flags;
+    for (const auto sheet : sheets)
+        if (sheet == static_cast<int>(target) && (rowFlags & 2)) return false;
+    return (rowFlags & 0x10) != 0;
 }

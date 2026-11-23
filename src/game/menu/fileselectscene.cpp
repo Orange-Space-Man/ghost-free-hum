@@ -1,4 +1,5 @@
 #include "resources/glme01addresses.h"
+#include "resources/gameedition.h"
 #include "resources/dolresources.h"
 #include "game/menu/fileselectscene.h"
 #include "resources/gameassetpackage.h"
@@ -10,6 +11,11 @@
 
 bool fileselect::Scene::ready(unsigned group) const { return selection.expanded(group); }
 
+unsigned fileselect::Scene::optionCount() const {
+    return std::any_of(layouts[2].panes.begin(), layouts[2].panes.end(),
+        [](const menulayout::Pane& pane) { return pane.tag == "o1pa"; }) ? 6 : 5;
+}
+
 bool fileselect::Scene::load(const std::filesystem::path& path, std::string& error) {
     error.clear();
     try {
@@ -17,11 +23,11 @@ bool fileselect::Scene::load(const std::filesystem::path& path, std::string& err
         gameassets::Package package;
         gamefont::Font font;
         std::vector<std::uint8_t> data, archive, executable, table;
-        if (!package.open(path, error) || !package.read("files/Kawano/ENGLISH/res_slct.szp", data, error) ||
+        if (!package.open(path, error) || !package.read(gameassets::fileSelectArchive(package.gameId()), data, error) ||
             !roomarchive::decompress(data, archive, error) || !package.read("sys/main.dol", executable, error) ||
             !font.readExecutable(executable, error) || !result.options.read(executable, error) ||
             !result.details.read(executable, error) ||
-            !dolresources::read(executable, glme01::sineTable, 5120 * 4, table, error)) throw std::runtime_error(error);
+            !dolresources::read(executable, gameedition::startup(package.gameId()).sineTable, 5120 * 4, table, error)) throw std::runtime_error(error);
         result.trigonometry.resize(5120);
         for (std::size_t i = 0; i < result.trigonometry.size(); ++i) {
             const auto offset = i * 4;

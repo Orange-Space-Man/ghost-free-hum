@@ -39,8 +39,7 @@ namespace {
         std::copy(data.begin(), data.end(), image.begin() + 0x40 + index * 0x2000);
     }
 
-    bool metadataValid(const gamecard::Image& image) {
-        const std::string identity = "GLME01";
+    bool metadataValid(const gamecard::Image& image, const std::string& identity) {
         const std::string filename = "LUIGI_MANSION_SAVEDATA_v3";
         return std::equal(identity.begin(), identity.end(), image.begin()) &&
             std::equal(filename.begin(), filename.end(), image.begin() + 8) && image[8 + filename.size()] == 0 &&
@@ -72,8 +71,9 @@ bool gamecard::valid(const Block& data) {
     return read32(data, 8) == 0x3b0 && read32(data, 0x1ffc) == checksum(data);
 }
 
-gamecard::LoadResult gamecard::decode(const Image& image, gamesave::State& state) {
-    if (!metadataValid(image)) return LoadResult::damaged;
+gamecard::LoadResult gamecard::decode(const Image& image, gamesave::State& state,
+    const std::string& gameId) {
+    if (!metadataValid(image, gameId)) return LoadResult::damaged;
     const auto first = block(image, 1);
     const auto second = block(image, 2);
     const auto firstValid = valid(first);
@@ -85,11 +85,10 @@ gamecard::LoadResult gamecard::decode(const Image& image, gamesave::State& state
     return LoadResult::loaded;
 }
 
-gamecard::Image gamecard::create() {
+gamecard::Image gamecard::create(const std::string& gameId) {
     Image result{};
-    const std::string identity = "GLME01";
     const std::string filename = "LUIGI_MANSION_SAVEDATA_v3";
-    std::copy(identity.begin(), identity.end(), result.begin());
+    std::copy(gameId.begin(), gameId.end(), result.begin());
     std::copy(filename.begin(), filename.end(), result.begin() + 8);
     result[6] = 0xff;
     result[7] = 5;
@@ -121,20 +120,25 @@ void gamecard::update(Image& image, gamesave::State& state, const Block& banner,
     state.committed = data;
 }
 
-gamecard::LoadResult gamecard::Storage::open(const std::filesystem::path& filename, gamesave::State& state, std::string& error) {
+gamecard::LoadResult gamecard::Storage::open(const std::filesystem::path& filename, gamesave::State& state,
+    std::string& error, const std::string& gameId) {
     path = filename;
     error.clear();
     image = {};
     result = LoadResult::unavailable;
+    if (gameId != "GLME01" && gameId != "GLMJ01" && gameId != "GLMP01") {
+        error = "Unsupported memory-card game edition.";
+        return result;
+    }
     std::error_code failure;
     const bool exists = std::filesystem::exists(path, failure);
     if (failure) {
         error = failure.message();
     } else if (!exists) {
-        image = create();
+        image = create(gameId);
         result = LoadResult::empty;
     } else if (readImage(path, image)) {
-        result = decode(image, state);
+        result = decode(image, state, gameId);
     } else {
         const auto size = std::filesystem::file_size(path, failure);
         result = !failure && size != image.size() ? LoadResult::damaged : LoadResult::unavailable;

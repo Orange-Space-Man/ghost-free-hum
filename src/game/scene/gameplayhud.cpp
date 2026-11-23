@@ -1,6 +1,8 @@
 #include "game/scene/gameplayhud.h"
 #include "resources/dolresources.h"
 #include "resources/glme01addresses.h"
+#include "resources/gameedition.h"
+#include "resources/roomarchivereader.h"
 
 #include <algorithm>
 #include <cmath>
@@ -39,13 +41,13 @@ std::size_t gameplay::Hud::load(const gamearchive::Archive& archive, const std::
     return images.size() - 1;
 }
 
-gameplay::Hud::Hud(const gamearchive::Archive& archive, const std::vector<std::uint8_t>& executable, const std::vector<unsigned>& rooms, unsigned map) : locationEnabled(map == 2) {
-    constexpr unsigned lifeNumberTable = 0x80305020, floorNameTable = 0x803058ec;
+gameplay::Hud::Hud(const gamearchive::Archive& archive, const std::vector<std::uint8_t>& executable, const std::vector<unsigned>& rooms, unsigned map, gameassets::Package* package) : locationEnabled(map == 2) {
+    const auto hudAddresses = gameedition::hud(gameedition::identify(executable));
     for (const auto room : rooms) addRoom(archive, executable, room);
-    for (unsigned i = 0; i < digits.size(); ++i) digits[i] = load(archive, name(executable, lifeNumberTable, i));
-    for (unsigned i = 0; i < floors.size(); ++i) floors[i] = load(archive, name(executable, floorNameTable, i));
+    for (unsigned i = 0; i < digits.size(); ++i) digits[i] = load(archive, name(executable, hudAddresses.lifeNumbers, i));
+    for (unsigned i = 0; i < floors.size(); ++i) floors[i] = load(archive, name(executable, hudAddresses.floorNames, i));
     ghostShocks = {load(archive, "/kawano/2dsub/ghost_life_a.bti"), load(archive, "/kawano/2dsub/ghost_life_b.bti")};
-    const auto ghostScaleBits = word(read(executable, 0x804d0534, 4), 0);
+    const auto ghostScaleBits = word(read(executable, hudAddresses.ghostScale, 4), 0);
     std::memcpy(&ghostScale, &ghostScaleBits, 4);
     hearts = {load(archive, "/kawano/lifemeter/heartD.bti"), load(archive, "/kawano/lifemeter/heartD2.bti"),
         load(archive, "/kawano/lifemeter/heartD_KAGE.bti")};
@@ -65,7 +67,7 @@ gameplay::Hud::Hud(const gamearchive::Archive& archive, const std::vector<std::u
     moneyNoise = load(archive, "/kawano/base/timg/sgb_noise.bti");
     std::vector<std::string> extraDigits;
     for (unsigned i = 0; i < moneyDigits.size(); ++i) {
-        const auto path = name(executable, 0x80338950, i);
+        const auto path = name(executable, hudAddresses.moneyNumbers, i);
         moneyDigits[i] = path.substr(path.find_last_of('/') + 1);
         extraDigits.push_back(moneyDigits[i]);
     }
@@ -90,18 +92,95 @@ gameplay::Hud::Hud(const gamearchive::Archive& archive, const std::vector<std::u
         throw std::runtime_error("Game Boy scanner frame: " + moneyError);
     scannerFrameGraphics.textureOffset = images.size();
     images.insert(images.end(), scannerFrameGraphics.textures.begin(), scannerFrameGraphics.textures.end());
-    const auto panelPositions = read(executable, 0x804d0524, 10);
+    if (map == 2) {
+        const int mapResource = archive.findPathResource("/kawano/base/blo/map_1.blo");
+        for (unsigned i = 0; i < mapStickTextures.size(); ++i) {
+            const auto path = name(executable, hudAddresses.mapStick, i);
+            mapStickTextures[i] = path.substr(path.find_last_of('/') + 1);
+        }
+        const std::vector<std::string> stickFrames(mapStickTextures.begin(), mapStickTextures.end());
+        if (mapResource < 0 || !menulayout::read(archive.resource(mapResource), mapLayout, moneyError) ||
+            !mapGraphics.load(archive, mapLayout, moneyError, stickFrames))
+            throw std::runtime_error("Game Boy Horror map controls: " + moneyError);
+        mapGraphics.textureOffset = images.size();
+        images.insert(images.end(), mapGraphics.textures.begin(), mapGraphics.textures.end());
+    }
+    if (map == 2 || map == 6) {
+        std::vector<std::uint8_t> compressed, listBytes, layoutBytes, ghostTable;
+        std::vector<std::string> listFrames;
+        for (unsigned digit = 0; digit < 10; ++digit)
+            listFrames.push_back("list_number_" + std::to_string(digit) + ".bti");
+        for (unsigned frame = 1; frame <= 3; ++frame)
+            listFrames.push_back("list_stick_" + std::to_string(frame) + ".bti");
+        if (!dolresources::readStaticArchiveResource(executable, "res_list.szp", compressed, moneyError) ||
+            !roomarchive::decompress(compressed, listBytes, moneyError) ||
+            !roomarchive::read(listBytes, "blo/list_1.blo", layoutBytes, moneyError) ||
+            !menulayout::read(layoutBytes, listLayout, moneyError))
+            throw std::runtime_error("Original Game Boy Horror list: " + moneyError);
+        auto* listNoiseSource = listLayout.find("nois");
+        if (!listNoiseSource) throw std::runtime_error("Original Game Boy Horror list noise pane is missing.");
+        listNoisePane = *listNoiseSource;
+        listNoiseSource->visible = false;
+        std::vector<std::uint8_t> noiseBytes;
+        roommaterials::Texture noiseImage;
+        if (!roomarchive::read(listBytes, "timg/list_noise.bti", noiseBytes, moneyError) ||
+            !startupresources::decodeTexture(noiseBytes, noiseImage, moneyError))
+            throw std::runtime_error("Original Game Boy Horror list noise: " + moneyError);
+        listNoise = images.size();
+        images.push_back(std::move(noiseImage));
+        if (
+            !listGraphics.load(listBytes, listLayout, moneyError, listFrames))
+            throw std::runtime_error("Original Game Boy Horror list: " + moneyError);
+        listGraphics.textureOffset = images.size();
+        images.insert(images.end(), listGraphics.textures.begin(), listGraphics.textures.end());
+        if (!roomarchive::read(listBytes, "blo/list_2.blo", layoutBytes, moneyError) ||
+            !menulayout::read(layoutBytes, profileLayout, moneyError))
+            throw std::runtime_error("Original ghost profile layout: " + moneyError);
+        auto* profileBackdrop = profileLayout.find("BACK");
+        if (!profileBackdrop) throw std::runtime_error("Original ghost profile backdrop is missing.");
+        profileBackdrop->visible = false;
+        profileBackdrop->textures.fill({});
+        if (!profileGraphics.load(listBytes, profileLayout, moneyError))
+            throw std::runtime_error("Original ghost profile graphics: " + moneyError);
+        gamefont::Font listFont;
+        if (!listFont.readExecutable(executable, moneyError)) throw std::runtime_error(moneyError);
+        profileGraphics.setFont(listFont);
+        profileGraphics.textureOffset = images.size();
+        images.insert(images.end(), profileGraphics.textures.begin(), profileGraphics.textures.end());
+        if (!dolresources::read(executable, hudAddresses.ghostTypes, listGhostTypes.size() * 4, ghostTable, moneyError))
+            throw std::runtime_error("Original ghost list types: " + moneyError);
+        for (unsigned i = 0; i < listGhostTypes.size(); ++i) listGhostTypes[i] = word(ghostTable, i * 4);
+    }
+    if (map == 2 && package) {
+        std::vector<std::uint8_t> compressed, archiveBytes, layoutBytes;
+        auto saveArchive = gameassets::fileSelectArchive(package->gameId());
+        saveArchive.replace(saveArchive.find("res_slct.szp"), sizeof("res_slct.szp") - 1, "res_save.szp");
+        if (!package->read(saveArchive, compressed, moneyError) ||
+            !roomarchive::decompress(compressed, archiveBytes, moneyError) ||
+            !roomarchive::read(archiveBytes, "save_2.blo", layoutBytes, moneyError) ||
+            !menulayout::read(layoutBytes, saveLayout, moneyError) ||
+            !saveGraphics.load(archiveBytes, saveLayout, moneyError))
+            throw std::runtime_error("Original Toad save screen: " + moneyError);
+        gamefont::Font saveFont;
+        if (!saveFont.readExecutable(executable, moneyError)) throw std::runtime_error(moneyError);
+        if (hudAddresses.saveAreas) for (unsigned i = 0; i < saveAreaText.size(); ++i)
+            saveAreaText[i] = name(executable, hudAddresses.saveAreas, std::min(i, 3u));
+        saveGraphics.setFont(saveFont);
+        saveGraphics.textureOffset = images.size();
+        images.insert(images.end(), saveGraphics.textures.begin(), saveGraphics.textures.end());
+    }
+    const auto panelPositions = read(executable, hudAddresses.panelPositions, 10);
     for (unsigned i = 0; i < demoPanelPositions.size(); ++i)
         demoPanelPositions[i] = static_cast<std::int16_t>((panelPositions[i * 2] << 8) | panelPositions[i * 2 + 1]);
     demoPanelY = demoPanelPositions[1];
-    const auto constants = read(executable, 0x804d052e, 14);
+    const auto constants = read(executable, hudAddresses.alpha, 2);
     healthAlpha = constants[0];
     demoPanelMinimumAlpha = constants[1];
-    const auto bits = word(constants, 10);
+    const auto bits = word(read(executable, hudAddresses.digitScale, 4), 0);
     std::memcpy(&digitScale, &bits, 4);
-    const auto step = read(executable, 0x804d04e0, 2);
+    const auto step = read(executable, hudAddresses.slideStep, 2);
     slideStep = (unsigned(step[0]) << 8) | step[1];
-    const auto table = read(executable, glme01::sineTable, 4096 * 4);
+    const auto table = read(executable, gameedition::startup(gameedition::identify(executable)).sineTable, 4096 * 4);
     sine.resize(4096);
     for (unsigned i = 0; i < sine.size(); ++i) {
         const auto value = word(table, i * 4);
@@ -111,9 +190,8 @@ gameplay::Hud::Hud(const gamearchive::Archive& archive, const std::vector<std::u
 
 bool gameplay::Hud::addRoom(const gamearchive::Archive& archive, const std::vector<std::uint8_t>& executable, unsigned room) {
     if (!locationEnabled) return false;
-    constexpr unsigned roomNameTable = 0x80305f20;
     if (roomTextures.count(room)) return false;
-    const auto path = name(executable, roomNameTable, room);
+    const auto path = name(executable, gameedition::hud(gameedition::identify(executable)).roomNames, room);
     if (path.empty()) return false;
     const auto texture = load(archive, path);
     roomTextures.emplace(room, texture);
@@ -197,9 +275,9 @@ startupscene::Picture gameplay::Hud::picture(std::size_t texture, int x, int y, 
     return result;
 }
 
-void gameplay::Hud::updateDemoPanel(const playeractor::View& player, bool active, bool messageVisible, bool opened) {
-    demoConversation = active;
-    demoPanelActive = player.field861 && (active || opened || demoPanelY < demoPanelPositions[1]);
+void gameplay::Hud::updateDemoPanel(const playeractor::View& player, bool conversation, bool messageVisible, bool gameplayEnabled) {
+    demoConversation = conversation;
+    demoPanelActive = player.field861 && (gameplayEnabled || demoPanelY < demoPanelPositions[1]);
     ++moneyFrame;
     for (unsigned row = 0; row < 3; ++row) {
         const unsigned places = row == 2 ? 3 : 4;
@@ -215,7 +293,7 @@ void gameplay::Hud::updateDemoPanel(const playeractor::View& player, bool active
         }
     }
     // Normal counters and conversation use the same sliding panel in 8003CFC0.
-    const int target = !player.field861 || player.field895 || (!active && !opened) ? demoPanelPositions[1] :
+    const int target = !player.field861 || player.field895 || !gameplayEnabled ? demoPanelPositions[1] :
         messageVisible ? demoPanelPositions[3] : demoPanelPositions[2];
     if (player.field895) demoPanelY = target;
     else {
@@ -314,6 +392,173 @@ std::vector<startupscene::Picture> gameplay::Hud::scannerPictures(bool discovere
     auto sight = scannerGraphics.pictures(layout);
     result.insert(result.end(), sight.begin(), sight.end());
     return result;
+}
+
+std::vector<startupscene::Picture> gameplay::Hud::mapPictures(bool zoomed, int floor,
+    int playerFloor, unsigned playerRoom, std::uint64_t animationFrame) const {
+    auto result = scannerFrameGraphics.pictures(scannerFrameLayout);
+    auto layout = mapLayout;
+    auto* stick = layout.find("stik");
+    if (!stick) throw std::logic_error("Original Game Boy Horror map stick pane is absent.");
+    unsigned stickFrame = static_cast<unsigned>((animationFrame / 10) % 4);
+    if (stickFrame == 3) stickFrame = 1;
+    stick->textures[0] = mapStickTextures[stickFrame];
+    for (const auto* tag : {"arc1", "arc2", "arc3", "arc4",
+                             "bcc1", "bcc2", "bcc3", "bcc4"}) {
+        auto* arrow = layout.find(tag);
+        if (!arrow) throw std::logic_error("Original Game Boy Horror map arrow is absent.");
+        arrow->visible = zoomed;
+    }
+    auto controls = mapGraphics.pictures(layout);
+    result.insert(result.end(), controls.begin(), controls.end());
+    const auto floorIndex = floor < 0 ? 4u : static_cast<unsigned>(floor);
+    if (floorIndex >= floors.size()) throw std::out_of_range("Original map floor name index.");
+    const auto title = [&](std::size_t texture, int x) {
+        const int top = 129 - int(images.at(texture).height * 0.8f);
+        result.push_back(picture(texture, x + 2, top + 2, 0.8f, false, {0, 0, 0, 220 / 255.0f}));
+        result.push_back(picture(texture, x, top, 0.8f, false, {1, 1, 1, 220 / 255.0f}));
+    };
+    if (floor == playerFloor) {
+        const auto found = roomTextures.find(playerRoom);
+        if (found != roomTextures.end()) title(found->second, 207);
+    }
+    title(floors.at(floorIndex), 145);
+    return result;
+}
+
+std::vector<startupscene::Picture> gameplay::Hud::listPictures(const playeractor::View& player,
+    unsigned tab, unsigned selected, bool detail, std::uint64_t animationFrame) const {
+    if (listLayout.panes.empty() || profileLayout.panes.empty())
+        throw std::logic_error("Original Game Boy Horror list is not loaded.");
+    if (tab > 1 || selected >= listGhostTypes.size())
+        throw std::out_of_range("Original Game Boy Horror list selection.");
+    const auto* captures = player.bits[0];
+    if (!captures || !captures->data)
+        throw std::logic_error("Original ghost list requires the player's capture flags.");
+    const auto captured = [&](unsigned type) {
+        return (type >> 3) < captures->bytes &&
+            (captures->data[type >> 3] & (1u << (type & 7))) != 0;
+    };
+    const auto pane = [](menulayout::Layout& layout, const std::string& tag) -> menulayout::Pane& {
+        auto* result = layout.find(tag);
+        if (!result) throw std::logic_error("Original Game Boy Horror list pane is absent: " + tag);
+        return *result;
+    };
+    const auto ghostNumber = [](unsigned index) {
+        const unsigned number = index < 19 ? index + 1 : index + 2;
+        return std::string(number < 10 ? "0" : "") + std::to_string(number);
+    };
+    auto result = scannerFrameGraphics.pictures(scannerFrameLayout);
+    const auto& noiseTexture = images.at(listNoise);
+    const auto noiseTint = std::array<float, 4>{
+        ((listNoisePane.white >> 24) & 255) / 255.0f,
+        ((listNoisePane.white >> 16) & 255) / 255.0f,
+        ((listNoisePane.white >> 8) & 255) / 255.0f,
+        (listNoisePane.white & 255) * listNoisePane.alpha / (255.0f * 255.0f)};
+    // 8005232C updates the original noise pane's mirror every two frames and
+    // its quarter-turn every four frames using the global game frame counter.
+    const bool mirror = (animationFrame / 2) % 2 == 0;
+    const bool rotate = (animationFrame / 4) % 2 == 0;
+    for (int y = 0; y < listNoisePane.height; y += noiseTexture.height)
+        for (int x = 0; x < listNoisePane.width; x += noiseTexture.width) {
+            auto tile = picture(listNoise, listNoisePane.x + x, listNoisePane.y + y, 1, false,
+                noiseTint);
+            tile.width = float(std::min(int(noiseTexture.width), listNoisePane.width - x));
+            tile.height = float(std::min(int(noiseTexture.height), listNoisePane.height - y));
+            const float u = tile.width / noiseTexture.width;
+            const float v = tile.height / noiseTexture.height;
+            if (rotate) {
+                tile.coordinates = mirror ? std::array<std::array<float, 2>, 4>{{{0, 0}, {0, u}, {v, 0}, {v, u}}} :
+                    std::array<std::array<float, 2>, 4>{{{0, 1}, {0, 1 - u}, {v, 1}, {v, 1 - u}}};
+            } else {
+                tile.coordinates = mirror ? std::array<std::array<float, 2>, 4>{{{0, 1}, {u, 1}, {0, 1 - v}, {u, 1 - v}}} :
+                    std::array<std::array<float, 2>, 4>{{{0, 0}, {u, 0}, {0, v}, {u, v}}};
+            }
+            result.push_back(tile);
+        }
+    auto layout = listLayout;
+    pane(layout, "win1").visible = tab == 0;
+    pane(layout, "wn01").visible = tab == 1;
+    pane(layout, "tl1a").visible = tab == 1;
+    pane(layout, "tl1b").visible = tab == 0;
+    pane(layout, "tl2a").visible = tab == 0;
+    pane(layout, "tl2b").visible = tab == 1;
+    const unsigned phase = static_cast<unsigned>((animationFrame / 10) % 4);
+    pane(layout, "stik").textures[0] = "list_stick_" +
+        std::to_string(phase == 0 ? 2 : phase == 2 ? 3 : 1) + ".bti";
+    for (unsigned i = 0; i < 12; ++i) {
+        const auto id = std::string("0") + (i < 9 ? std::to_string(i + 1) : std::string(1, char('a' + i - 9)));
+        const unsigned count = player.fieldsED4.at(i);
+        const bool shown = i < 3 || count != 0 || (i >= 9 &&
+            (player.fieldsED4[9] + player.fieldsED4[10] + player.fieldsED4[11] != 0));
+        pane(layout, "ic" + id).visible = shown;
+        pane(layout, "xx" + id).visible = shown;
+        const unsigned numberPlaces = i < 2 ? 4 : i == 9 || i == 10 ? 3 : 2;
+        for (unsigned digit = 1; digit <= numberPlaces; ++digit) {
+            auto& number = pane(layout, id + "n" + std::to_string(digit));
+            number.visible = shown;
+            unsigned power = 1;
+            for (unsigned place = 1; place < digit; ++place) power *= 10;
+            number.textures[0] = "list_number_" + std::to_string((count / power) % 10) + ".bti";
+        }
+    }
+    for (unsigned i = 0; i < 5; ++i)
+        pane(layout, "ici" + std::to_string(i + 1)).visible = player.flagsF04[i] != 0;
+    for (unsigned i = 0; i < 3; ++i)
+        pane(layout, "ici" + std::string(1, char('a' + i))).visible = player.flagsF12[i] != 0;
+    for (unsigned i = 0; i < listGhostTypes.size(); ++i) {
+        const auto suffix = ghostNumber(i);
+        pane(layout, "wn" + suffix).visible = tab == 1;
+        pane(layout, "gh" + suffix).visible = tab == 1 && captured(listGhostTypes[i]);
+        pane(layout, "cu" + suffix).visible = tab == 1 && i == selected;
+    }
+    auto list = listGraphics.pictures(layout);
+    result.insert(result.end(), list.begin(), list.end());
+    if (detail) {
+        auto profile = profileLayout;
+        const auto selectedSuffix = ghostNumber(selected);
+        for (unsigned i = 0; i < listGhostTypes.size(); ++i) {
+            const auto suffix = ghostNumber(i);
+            const bool shown = suffix == selectedSuffix;
+            for (const auto prefix : {"fa", "f", "s", "o", "c"}) {
+                auto& first = pane(profile, std::string(prefix) + suffix + (std::string(prefix) == "fa" ? "" : "a"));
+                first.visible = shown;
+                if (std::string(prefix) != "fa") pane(profile, std::string(prefix) + suffix + "b").visible = shown;
+            }
+        }
+        auto overlay = profileGraphics.pictures(profile);
+        result.insert(result.end(), overlay.begin(), overlay.end());
+    }
+    return result;
+}
+
+bool gameplay::Hud::listGhostCaptured(const playeractor::View& player, unsigned selected) const {
+    if (selected >= listGhostTypes.size()) throw std::out_of_range("Original ghost list selection.");
+    const auto* captures = player.bits[0];
+    if (!captures || !captures->data) throw std::logic_error("Original ghost list requires capture flags.");
+    const unsigned type = listGhostTypes[selected];
+    return (type >> 3) < captures->bytes && (captures->data[type >> 3] & (1u << (type & 7))) != 0;
+}
+
+std::vector<startupscene::Picture> gameplay::Hud::savePictures(bool yes, unsigned frame, unsigned area) const {
+    if (saveLayout.panes.empty()) throw std::logic_error("Original save screen was not loaded.");
+    auto layout = saveLayout;
+    if (area >= saveAreaText.size()) throw std::out_of_range("Original save area index is invalid.");
+    auto* areaPane = layout.find("1plc");
+    if (!areaPane) throw std::logic_error("Original save area pane is absent.");
+    areaPane->text = saveAreaText[area];
+    const unsigned phase = frame % 210;
+    for (const auto* tag : {"m11b", "m12b", "m13b"}) {
+        auto* pane = layout.find(tag);
+        if (!pane) throw std::logic_error("Original save question pane is absent.");
+        pane->alpha = phase < 60 ? phase * 255 / 60 : phase > 119 ? (210 - phase) * 255 / 90 : 255;
+    }
+    for (const auto* tag : {"oc1y", "oc2y", "oc1n", "oc2n"}) {
+        auto* pane = layout.find(tag);
+        if (!pane) throw std::logic_error("Original save choice pane is absent.");
+        pane->visible = (tag[3] == 'y') == yes;
+    }
+    return saveGraphics.pictures(layout);
 }
 
 const std::vector<roommaterials::Texture>& gameplay::Hud::textures() const { return images; }

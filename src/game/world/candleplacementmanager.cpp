@@ -126,6 +126,12 @@ bool particles::CandlePlacements::message(jmp::ToolDataRef& entry, const char* c
 }
 
 unsigned particles::CandlePlacements::count() const { return static_cast<unsigned>(active.size()); }
+unsigned particles::CandlePlacements::countUnextinguishedSpecial(unsigned room) const {
+    unsigned count = 0;
+    for (const auto* candle : active)
+        if (candle->room == room && (candle->flags & 4) && candle->state != 4) ++count;
+    return count;
+}
 void particles::CandlePlacements::Candle::advance(Emitter&) { manager->update(*this); }
 
 float particles::CandlePlacements::random() {
@@ -149,12 +155,12 @@ void particles::CandlePlacements::update(Candle& candle) {
     if (candle.state == 1 && !(candle.flags & 1)) {
         parameters.flags &= ~0x300000u;
         parameters.field1E4 = 0;
-        if (visible && player.field89E && player.field8A0 == 1) {
+        if (visible && player.field89E &&
+            (player.field8A0 == 1 || player.field8A0 == 6 || player.field8A0 == 4)) {
             disturb(candle);
             candle.state = 3;
-        } else if (visible && player.field89E &&
-            (player.field8A0 == 4 || player.field8A0 == 6 || player.field8A0 == 3))
-            throw std::runtime_error("Elemental candle interaction requires its original equipment path.");
+        } else if (visible && player.field89E && player.field8A0 == 3)
+            throw std::runtime_error("Fire-element candle collision requires its original particle query.");
         if (candle.state == 1 && distance < 90000.0f) {
             disturb(candle);
             candle.state = 2;
@@ -172,12 +178,14 @@ void particles::CandlePlacements::update(Candle& candle) {
             parameters.field1E4 = 2;
         }
     } else if (candle.state == 3) {
-        if (!visible || !player.field89E || player.field8A0 != 1) {
+        if (!visible || !player.field89E ||
+            (player.field8A0 != 1 && player.field8A0 != 6 && player.field8A0 != 4)) {
             emitter.flags = 0xe;
             candle.state = 1;
         } else {
+            const float strength = player.field8A0 == 1 ? player.field8B0 : player.controls->fieldC8;
             std::array<float, 3> direction;
-            if (player.field8B4 && player.field8B4->intersects(50.0 * player.field8B0, direction, candle.position) &&
+            if (player.field8B4 && player.field8B4->intersects(50.0 * strength, direction, candle.position) &&
                 !(candle.flags & 16)) {
                 emitter.flags = 0xc;
                 candle.state = 4;
@@ -189,17 +197,17 @@ void particles::CandlePlacements::update(Candle& candle) {
                 const float dz = candle.position[2] - nozzle[2];
                 const float length = std::sqrt(dx * dx + dy * dy + dz * dz);
                 const float alignment = length > 0 ? (dx * aim[0] + dy * aim[1] + dz * aim[2]) / length : 0;
-                const float strength = 1000.0f / (1000.0f + length) *
-                    (0.5f * (1.0f + alignment) * player.field8B0);
-                if (strength > 0.5f && random() > 0.97f && !(candle.flags & 16)) {
+                const float influence = 1000.0f / (1000.0f + length) *
+                    (0.5f * (1.0f + alignment) * strength);
+                if (influence > 0.5f && random() > 0.97f && !(candle.flags & 16)) {
                     emitter.flags = 0xc;
                     candle.state = 4;
                 } else {
                     if (random() < 0.8f) disturb(candle);
                     parameters.flags |= 0x300000;
                     for (unsigned i = 0; i < 3; ++i) parameters.fields1AC[i] = bits(candle.disturbance[i]);
-                    parameters.fields1AC[3] = bits(strength);
-                    parameters.fields1BC.fill(bits(0.25f * strength));
+                    parameters.fields1AC[3] = bits(influence);
+                    parameters.fields1BC.fill(bits(0.25f * influence));
                     parameters.fields1C8 = {2, 5, 2};
                     parameters.field1E4 = 2;
                 }

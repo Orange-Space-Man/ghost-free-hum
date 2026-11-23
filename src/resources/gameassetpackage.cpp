@@ -1,4 +1,5 @@
 #include "resources/gameassetpackage.h"
+#include "resources/gameedition.h"
 #include "resources/roomdiscreader.h"
 
 #include <algorithm>
@@ -72,6 +73,7 @@ namespace {
 
 bool gameassets::Package::open(const std::filesystem::path& path, std::string& error) {
     index.clear();
+    identity.clear();
     file.close();
     file.clear();
     error.clear();
@@ -113,10 +115,22 @@ bool gameassets::Package::open(const std::filesystem::path& path, std::string& e
         if (consumed != indexSize || expectedOffset != size || index.count("sys/main.dol") == 0) {
             throw std::runtime_error("Incomplete asset package.");
         }
+        if (index.count("sys/disc.id")) {
+            std::vector<std::uint8_t> data;
+            std::string readError;
+            if (!read("sys/disc.id", data, readError) || data.size() != 6)
+                throw std::runtime_error("Invalid disc identity: " + readError);
+            identity.assign(data.begin(), data.end());
+            if (identity != "GLME01" && identity != "GLMJ01" && identity != "GLMP01")
+                throw std::runtime_error("Unsupported disc identity in asset package.");
+        } else {
+            identity = "GLME01";
+        }
         return true;
     } catch (const std::exception& exception) {
         error = exception.what();
         index.clear();
+        identity.clear();
         file.close();
         return false;
     }
@@ -151,8 +165,10 @@ const std::map<std::string, gameassets::Entry>& gameassets::Package::entries() c
     return index;
 }
 
+const std::string& gameassets::Package::gameId() const { return identity; }
+
 bool gameassets::importDisc(const std::filesystem::path& disc, const std::filesystem::path& destination,
-    std::string& error, const Progress& progress) {
+    std::string& error, const Progress& progress, const Stage& stage) {
     error.clear();
     const auto staging = std::filesystem::path(destination.wstring() + L".importing");
     bool ownsStaging = false;
@@ -161,11 +177,18 @@ bool gameassets::importDisc(const std::filesystem::path& disc, const std::filesy
         if (!destination.parent_path().empty()) std::filesystem::create_directories(destination.parent_path());
         if (!std::filesystem::create_directory(staging)) throw std::runtime_error("An unfinished import exists. Remove the .importing folder after closing other ghost-free-hum instances, then retry.");
         ownsStaging = true;
+        if (stage) stage("Reading disc identity and file table");
+        std::string gameId;
+        if (!roomdisc::readGameId(disc, gameId, error)) throw std::runtime_error(error);
         std::vector<roomdisc::File> files;
         std::vector<std::uint8_t> executable;
         if (!roomdisc::listFiles(disc, files, error) || !roomdisc::readExecutable(disc, executable, error)) throw std::runtime_error(error);
+        if (gameedition::identify(executable) != gameId)
+            throw std::runtime_error("Disc ID and executable edition do not match.");
+        if (stage) stage("Indexing " + std::to_string(files.size()) + " disc files");
         std::map<std::string, Entry> entries;
         std::map<std::string, roomdisc::File> sources;
+        entries.emplace("sys/disc.id", Entry{0, gameId.size(), 0});
         entries.emplace("sys/main.dol", Entry{0, executable.size(), 0});
         for (const auto& entry : files) {
             const auto name = "files/" + entry.path;
@@ -188,11 +211,16 @@ bool gameassets::importDisc(const std::filesystem::path& disc, const std::filesy
         writeIndex(output, entries, indexSize, total);
         std::vector<std::uint8_t> buffer(1024 * 1024);
         std::uint64_t completed = 0;
+        if (stage) stage("Copying original assets into the package");
         for (auto& item : entries) {
             auto& entry = item.second;
             entry.offset = headerSize + indexSize + completed;
             auto crc = std::uint32_t{0xffffffff};
-            if (item.first == "sys/main.dol") {
+            if (item.first == "sys/disc.id") {
+                output.write(gameId.data(), static_cast<std::streamsize>(gameId.size()));
+                crc = checksum(crc, reinterpret_cast<const std::uint8_t*>(gameId.data()), gameId.size());
+                completed += gameId.size();
+            } else if (item.first == "sys/main.dol") {
                 output.write(reinterpret_cast<const char*>(executable.data()), static_cast<std::streamsize>(executable.size()));
                 crc = checksum(crc, executable.data(), executable.size());
                 completed += executable.size();
@@ -219,11 +247,13 @@ bool gameassets::importDisc(const std::filesystem::path& disc, const std::filesy
         if (!output) throw std::runtime_error("Could not finish the asset package.");
         output.close();
         if (!output) throw std::runtime_error("Could not close the asset package.");
+        if (stage) stage("Checking the completed package");
         Package check;
-        if (!check.open(temporary, error)) throw std::runtime_error(error);
+        if (!check.open(temporary, error) || check.gameId() != gameId) throw std::runtime_error(error.empty() ? "Imported disc identity does not match." : error);
         check = Package{};
         std::filesystem::rename(temporary, destination);
         std::filesystem::remove(staging);
+        if (stage) stage("Import complete: " + gameId);
         return true;
     } catch (const std::exception& exception) {
         error = exception.what();
@@ -234,4 +264,14 @@ bool gameassets::importDisc(const std::filesystem::path& disc, const std::filesy
         }
         return false;
     }
+}
+
+std::string gameassets::commonArchive(const std::string& gameId) {
+    return gameId == "GLMJ01" ? "files/Game/game.szp" :
+        gameId == "GLMP01" ? "files/Game/game_e.szp" : "files/Game/game_usa.szp";
+}
+
+std::string gameassets::fileSelectArchive(const std::string& gameId) {
+    return gameId == "GLMJ01" ? "files/Kawano/res_slct.szp" :
+        gameId == "GLMP01" ? "files/Kawano/e/res_slct.szp" : "files/Kawano/ENGLISH/res_slct.szp";
 }

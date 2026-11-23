@@ -1,4 +1,4 @@
-#include "resources/glme01addresses.h"
+#include "resources/gameedition.h"
 #include "resources/dolresources.h"
 #include "game/actors/actorinitialpose.h"
 #include "game/actors/actorposeblend.h"
@@ -32,11 +32,12 @@ namespace {
 actormodel::InitialPose::InitialPose(const std::vector<std::uint8_t>& executable) {
     std::vector<std::uint8_t> bytes;
     std::string error;
-    if (!dolresources::read(executable, glme01::sineTable, 4096 * 4, bytes, error)) throw std::runtime_error(error);
+    const auto sineAddress = gameedition::startup(gameedition::identify(executable)).sineTable;
+    if (!dolresources::read(executable, sineAddress, 4096 * 4, bytes, error)) throw std::runtime_error(error);
     for (unsigned i = 0; i < sine.size(); ++i) sine[i] = number(bytes, i * 4);
-    if (!dolresources::read(executable, glme01::cosineTable, 4096 * 4, bytes, error)) throw std::runtime_error(error);
+    if (!dolresources::read(executable, sineAddress + 0x1000, 4096 * 4, bytes, error)) throw std::runtime_error(error);
     for (unsigned i = 0; i < cosine.size(); ++i) cosine[i] = number(bytes, i * 4);
-    if (!dolresources::read(executable, glme01::arctangentTable, 1025 * 2, bytes, error)) throw std::runtime_error(error);
+    if (!dolresources::read(executable, sineAddress + 0x5000, 1025 * 2, bytes, error)) throw std::runtime_error(error);
     for (unsigned i = 0; i < arcTangent.size(); ++i) arcTangent[i] = static_cast<std::uint16_t>(half(bytes, i * 2));
 }
 

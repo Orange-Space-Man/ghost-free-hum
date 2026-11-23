@@ -1,4 +1,5 @@
 #include "resources/glme01addresses.h"
+#include "resources/gameedition.h"
 #include "game/world/roomdoorplacement.h"
 
 #include <stdexcept>
@@ -33,9 +34,10 @@ bool roomdoors::read(const std::vector<std::uint8_t>& executable, unsigned room,
     error.clear();
     try {
         // GLME01 revision 0: map descriptors, door model configuration, and model paths.
-        constexpr std::uint32_t mapPointers = 0x802ff218;
-        constexpr std::uint32_t doorConfigurations = glme01::doorConfigurations;
-        constexpr std::uint32_t doorModels = glme01::doorModels;
+        const std::uint32_t mapPointers = gameedition::cameraFollow(gameedition::identify(executable)).descriptors;
+        const auto addresses = gameedition::doors(gameedition::identify(executable));
+        const std::uint32_t doorConfigurations = addresses.configurations;
+        const std::uint32_t doorModels = addresses.models;
         const auto pointer = [&](std::uint32_t address) { return read32(executable, offset(executable, address, 4)); };
         const auto map = pointer(mapPointers + 2 * 4);
         const auto doors = pointer(map + 0x18);

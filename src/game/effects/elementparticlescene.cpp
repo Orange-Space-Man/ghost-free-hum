@@ -1,4 +1,5 @@
 #include "resources/dolresources.h"
+#include "resources/gameedition.h"
 #include "game/effects/elementparticlescene.h"
 #include "game/startup/startupresources.h"
 
@@ -8,6 +9,20 @@
 #include <stdexcept>
 
 namespace {
+    unsigned elementDataAddress(const std::vector<std::uint8_t>& executable, unsigned northAmerican) {
+        const auto edition = gameedition::identify(executable);
+        if (edition == "GLMJ01") return northAmerican - 0xaf00;
+        if (edition == "GLMP01") return northAmerican - 0xef80;
+        return northAmerican;
+    }
+
+    unsigned elementPositionAddress(const std::vector<std::uint8_t>& executable, unsigned northAmerican) {
+        const auto edition = gameedition::identify(executable);
+        if (edition == "GLMJ01") return northAmerican - 0xae48;
+        if (edition == "GLMP01") return northAmerican + 0x5128;
+        return northAmerican;
+    }
+
     std::vector<std::uint8_t> range(const std::vector<std::uint8_t>& executable, unsigned address, unsigned size) {
         std::vector<std::uint8_t> bytes;
         std::string error;
@@ -34,6 +49,11 @@ namespace {
         return std::sqrt(value[0] * value[0] + value[1] * value[1] + value[2] * value[2]);
     }
 
+    void limitSpeed(std::array<float, 3>& velocity, float maximum) {
+        const float speed = length(velocity);
+        if (speed > maximum) for (auto& component : velocity) component *= maximum / speed;
+    }
+
     std::array<float, 3> cross(const std::array<float, 3>& a, const std::array<float, 3>& b) {
         return {a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]};
     }
@@ -56,32 +76,35 @@ elements::Scene::Scene(const std::vector<std::uint8_t>& executable) : pool(1500,
     contextScale(scalar(executable, 0x804dc2d0)) {
     std::string error;
     if (!trig.read(executable, error)) throw std::runtime_error(error);
-    const auto sineBytes = range(executable, 0x80218238, 4096 * 4);
+    const auto sineBytes = range(executable,
+        gameedition::startup(gameedition::identify(executable)).sineTable, 4096 * 4);
     for (unsigned i = 0; i < sine.size(); ++i) {
         const auto bits = word(sineBytes.data() + i * 4);
         std::memcpy(&sine[i], &bits, 4);
     }
     for (unsigned i = 0; i < 4; ++i) {
-        for (unsigned axis = 0; axis < 3; ++axis) corners[i][axis] = scalar(executable, 0x80377d00 + i * 12 + axis * 4);
-        for (unsigned axis = 0; axis < 2; ++axis) coordinates[i][axis] = scalar(executable, 0x80377d30 + i * 8 + axis * 4);
+        for (unsigned axis = 0; axis < 3; ++axis) corners[i][axis] = scalar(executable,
+            elementDataAddress(executable, 0x80377d00 + i * 12 + axis * 4));
+        for (unsigned axis = 0; axis < 2; ++axis) coordinates[i][axis] = scalar(executable,
+            elementDataAddress(executable, 0x80377d30 + i * 8 + axis * 4));
     }
     auto texture = std::make_shared<std::vector<std::uint8_t>>(32);
     (*texture)[0] = 1;
     (*texture)[3] = (*texture)[5] = 32;
-    const auto pointer = range(executable, 0x803767ac, 4);
+    const auto pointer = range(executable, elementDataAddress(executable, 0x803767ac), 4);
     const auto image = range(executable, word(pointer.data()), 1024);
     texture->insert(texture->end(), image.begin(), image.end());
     blowImage = texture;
     auto breathTexture = std::make_shared<std::vector<std::uint8_t>>(32);
     (*breathTexture)[0] = 1;
     (*breathTexture)[3] = (*breathTexture)[5] = 32;
-    const auto breathPointer = range(executable, 0x803767a0, 4);
+    const auto breathPointer = range(executable, elementDataAddress(executable, 0x803767a0), 4);
     const auto breathPixels = range(executable, word(breathPointer.data()), 1024);
     breathTexture->insert(breathTexture->end(), breathPixels.begin(), breathPixels.end());
     breathImage = breathTexture;
-    const auto defaultBreath = range(executable, 0x80376808, 168);
+    const auto defaultBreath = range(executable, elementDataAddress(executable, 0x80376808), 168);
     std::copy(defaultBreath.begin(), defaultBreath.end(), breathDefaults.begin());
-    const auto breathLevels = range(executable, 0x80377330, 48);
+    const auto breathLevels = range(executable, elementDataAddress(executable, 0x80377330), 48);
     std::copy(breathLevels.begin(), breathLevels.end(), breathModes.begin());
     blowThreshold = scalar(executable, 0x804d5934);
     timerScale = scalar(executable, 0x804d5930);
@@ -89,6 +112,7 @@ elements::Scene::Scene(const std::vector<std::uint8_t>& executable) : pool(1500,
     timerControl = scalar(executable, 0x804dc2b4);
     collisionThreshold = scalar(executable, 0x804dc284);
     collisionScale = scalar(executable, 0x804dc288);
+    maximumParticleSpeed = scalar(executable, 0x804d591c);
     radiansPerDegree = scalar(executable, 0x804dc2bc);
     particleScale = scalar(executable, 0x804dc2d4);
     breathSpecialScale = scalar(executable, 0x804dc280);
@@ -105,17 +129,18 @@ elements::Scene::Scene(const std::vector<std::uint8_t>& executable) : pool(1500,
     const auto secondTranslation = scalar(executable, 0x804dc280);
     firstTextureMatrix = {1, 0, 0, firstTranslation, 0, 1, 0, firstTranslation, 0, 0, 1, 0};
     secondTextureMatrix = {1, 0, 0, secondTranslation, 0, 1, 0, secondTranslation, 0, 0, 1, 0};
-    const auto zero = vector(executable, 0x8021da40);
-    auto position = vector(executable, 0x8020cc0c);
+    const std::array<float, 3> zero{};
+    auto position = vector(executable, elementPositionAddress(executable, 0x8020cc0c));
     position[1] = scalar(executable, 0x804dc2d8) + scalar(executable, 0x804d5938);
-    const auto direction = vector(executable, 0x8020cc18);
+    const auto direction = vector(executable, elementPositionAddress(executable, 0x8020cc18));
     initialize(0, zero, zero);
     initialize(10, zero, zero);
     initialize(9, position, direction);
     initialize(11, zero, zero);
     initialize(2, position, direction);
-    const auto upward = vector(executable, 0x8020cc24);
-    for (unsigned i = 0; i < 4; ++i) initialize(8, vector(executable, 0x8020cc30 + i * 12), upward);
+    const auto upward = vector(executable, elementPositionAddress(executable, 0x8020cc24));
+    for (unsigned i = 0; i < 4; ++i) initialize(8,
+        vector(executable, elementPositionAddress(executable, 0x8020cc30 + i * 12)), upward);
 }
 
 void elements::Scene::initialize(unsigned type, const std::array<float, 3>& position, const std::array<float, 3>& direction) {
@@ -126,7 +151,7 @@ void elements::Scene::initialize(unsigned type, const std::array<float, 3>& posi
     emitter.type = type;
     if (type == 0) breath = &emitter;
     if (type == 9) blow = &emitter;
-    const auto bytes = range(executable, 0x80376808 + type * 168, 168);
+    const auto bytes = range(executable, elementDataAddress(executable, 0x80376808 + type * 168), 168);
     std::copy(bytes.begin(), bytes.end(), emitter.parameters.begin());
     emitter.field2C = static_cast<std::uint16_t>(((unsigned(bytes[0x10]) << 8) | bytes[0x11]) - bytes[0x71]);
     emitter.room = rooms.resolve(position);
@@ -257,10 +282,10 @@ void elements::Scene::updateBlow(const playeractor::View& player, std::uint32_t 
         particle->rotation += particle->rotationSpeed;
         particle->acceleration[1] -= parameter(emitter, 0x1c);
         const float damping = parameter(emitter, length(particle->velocity) <= parameter(emitter, 0x14) ? 0x20 : 0x24);
-        for (unsigned axis = 0; axis < 3; ++axis) {
+        for (unsigned axis = 0; axis < 3; ++axis)
             particle->velocity[axis] = particle->velocity[axis] * damping + particle->acceleration[axis];
-            particle->position[axis] += particle->velocity[axis];
-        }
+        limitSpeed(particle->velocity, maximumParticleSpeed);
+        for (unsigned axis = 0; axis < 3; ++axis) particle->position[axis] += particle->velocity[axis];
         if (--particle->age < 1) {
             emitter.particles.remove(*particle);
             pool.particles.free.append(*particle);
@@ -282,7 +307,7 @@ void elements::Scene::updateBlow(const playeractor::View& player, std::uint32_t 
 }
 
 void elements::Scene::updateBreath(const playeractor::View& player, particles::SceneContext& context,
-    std::uint32_t& randomState) {
+    const mapcollision::State& collision, std::uint32_t& randomState) {
     if (paused || !breath) return;
     auto& emitter = *breath;
     std::copy(breathDefaults.begin(), breathDefaults.end(), emitter.parameters.begin());
@@ -351,30 +376,26 @@ void elements::Scene::updateBreath(const playeractor::View& player, particles::S
         const float amplitude = parameter(emitter, 0x44);
         particle->size = particle->baseSize * ((1 - amplitude) + amplitude * sine[particle->pulse >> 4]);
         particle->rotation += particle->rotationSpeed;
-        particle->timer = std::min(particle->timer + 2.0f, parameter(emitter, 0x64));
         particle->acceleration[1] -= parameter(emitter, 0x1c);
-        for (unsigned axis = 0; axis < 3; ++axis) {
+        for (unsigned axis = 0; axis < 3; ++axis)
             particle->velocity[axis] = particle->velocity[axis] * parameter(emitter, 0x20) + particle->acceleration[axis];
-            particle->position[axis] += particle->velocity[axis];
-        }
-        if (context.actorPosition && particle->position[1] >= (*context.actorPosition)[1] &&
-            particle->position[1] <= context.height) {
-            const float dx = particle->position[0] - (*context.actorPosition)[0];
-            const float dz = particle->position[2] - (*context.actorPosition)[2];
-            const float distance = std::sqrt(dx * dx + dz * dz);
-            if (distance > 0 && distance <= particle->timer) {
-                const float x = dx / distance, z = dz / distance;
-                particle->position[0] = (*context.actorPosition)[0] + particle->timer * x;
-                particle->position[2] = (*context.actorPosition)[2] + particle->timer * z;
-                const float velocity = length(particle->velocity);
-                const std::array<float, 3> away{x - context.orientation[0], -context.orientation[1], z - context.orientation[2]};
-                const float force = parameter(emitter, 0x4c) * velocity + parameter(emitter, 0x50) * context.magnitude;
-                for (unsigned axis = 0; axis < 3; ++axis) particle->acceleration[axis] = force * away[axis];
-            }
-        }
+        limitSpeed(particle->velocity, maximumParticleSpeed);
+        for (unsigned axis = 0; axis < 3; ++axis) particle->position[axis] += particle->velocity[axis];
         if (--particle->age < 1) {
             emitter.particles.remove(*particle);
             pool.particles.free.append(*particle);
+        } else if (particle->size > collisionThreshold) {
+            const auto contact = collision.sweepSphere(particle->position, particle->size * collisionScale, particle->velocity);
+            if (contact.floor != -1 || contact.wall != -1)
+                for (unsigned axis = 0; axis < 3; ++axis) particle->position[axis] += contact.correction[axis];
+            if (contact.floor != -1) particle->velocity[1] = 0;
+            const float speed = length(particle->velocity);
+            if (contact.wall != -1 && speed != 0) {
+                auto reverse = particle->velocity;
+                for (auto& value : reverse) value /= -speed;
+                particle->velocity = cross(cross(reverse, contact.wallNormal), contact.wallNormal);
+                for (auto& value : particle->velocity) value *= speed;
+            }
         }
         particle = next;
     }

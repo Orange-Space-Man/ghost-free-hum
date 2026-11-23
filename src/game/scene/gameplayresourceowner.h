@@ -27,6 +27,7 @@ namespace gameplay {
         void bindPlayerDemo(std::function<void(std::string_view)> request);
         void bindControllerInstructions(std::function<void()> request);
         void bindSave(std::function<void()> callback);
+        void completeSave();
         void updateEvents(unsigned elapsedSeconds, std::uint32_t audioFrame);
         bool entranceActive() const;
         const scenetransition::Request& transition() const;
@@ -40,6 +41,7 @@ namespace gameplay {
         std::vector<startupscene::Picture> messagePictures() const;
         const roomlocation::Rooms& rooms() const;
         const std::vector<std::uint8_t>& executable() const;
+        const std::array<std::uint8_t, 0x220>& inventory() const;
         gameassets::Package& package();
         roomtraversal::State& visibility();
         std::vector<std::uint32_t>& roomFlags();
@@ -50,7 +52,8 @@ namespace gameplay {
         roommirror::Owner& mirror();
         std::vector<roomtraversal::Submission> prepareVisibility(const roomportal::Matrix& projection,
             const roomtraversal::Bounds& viewport, unsigned buffer = 0,
-            const std::function<bool(const std::array<std::int32_t, 3>&)>& centerVisible = {});
+            const std::function<bool(const std::array<std::int32_t, 3>&)>& centerVisible = {},
+            bool scannerMode = false);
 
     private:
         struct State;

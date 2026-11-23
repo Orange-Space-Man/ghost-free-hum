@@ -1,5 +1,7 @@
 #include "playerfurnitureframe.h"
 #include "game/actors/actorcollisionvolume.h"
+#include "game/actors/characterowner.h"
+#include "game/enemies/enemytreasurestrategy.h"
 #include "resources/dolresources.h"
 
 #include <cmath>
@@ -54,7 +56,10 @@ bool playerinteraction::FurnitureFrame::actor(playeractor::Player& player, Furni
         if (slot.state != 2 || !slot.owner) continue;
         auto& target = dynamic_cast<actors::MoveActor&>(slot.owner->actor());
         const bool npc = target.actorType == 39 || target.actorType == 42;
-        if ((target.flags & 0xc000) || (!npc && !(services.catalog.type(target.actorType).flags & 0x10))) continue;
+        auto* character = dynamic_cast<characterowner::Owner*>(slot.owner.get());
+        const bool treasure = character &&
+            dynamic_cast<enemystrategy::Treasure*>(character->ownership().strategy.get()) != nullptr;
+        if ((target.flags & 0xc000) || (!npc && !treasure && !(services.catalog.type(target.actorType).flags & 0x10))) continue;
         std::array<float, 3> direction;
         for (unsigned i = 0; i < 3; ++i) direction[i] = target.position[i] - player.position[i];
         const auto& facing = player.state.direction;

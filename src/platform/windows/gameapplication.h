@@ -26,6 +26,7 @@
 namespace gameapplication {
     class Application {
     public:
+        HWND initializeSetup(HINSTANCE instance, int show);
         void initialize(HINSTANCE instance, const std::filesystem::path& assetPath, bool live, bool preload);
         int run(int show);
         void prepareOpening(unsigned cutscene = 0x4c);
@@ -60,7 +61,7 @@ namespace gameapplication {
             gamesave::State saves;
             gameentry::State entry;
         };
-        std::array<std::optional<DebugCheckpointState>, 5> checkpointStates;
+        std::array<std::optional<DebugCheckpointState>, 6> checkpointStates;
         std::uint64_t presentationFrames = 0;
         gamesave::State* gameplaySaves = &saves;
         gamecard::Storage card;
@@ -70,6 +71,7 @@ namespace gameapplication {
         bool boundaryReported = false;
         std::filesystem::path currentAssets;
         std::filesystem::path savePath;
+        std::string saveGameId = "GLME01";
         fileselect::Scene menu;
         fileselect::State menuState;
         fileselect::Input menuInput;

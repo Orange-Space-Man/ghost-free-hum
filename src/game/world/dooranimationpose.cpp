@@ -1,4 +1,4 @@
-#include "resources/glme01addresses.h"
+#include "resources/gameedition.h"
 #include "resources/dolresources.h"
 #include "game/world/dooranimationpose.h"
 #include "game/startup/startupresources.h"
@@ -22,14 +22,16 @@ bool dooranimation::PoseTables::read(const std::vector<std::uint8_t>& executable
     error.clear();
     PoseTables result;
     std::vector<std::uint8_t> bytes;
-    if (!dolresources::read(executable, glme01::sineTable, 4096 * 4, bytes, error)) return false;
+    const auto edition = gameedition::identify(executable);
+    const auto sineAddress = gameedition::startup(edition).sineTable;
+    if (!dolresources::read(executable, sineAddress, 4096 * 4, bytes, error)) return false;
     for (unsigned i = 0; i < 4096; ++i) result.sine[i] = number<float, std::uint32_t>(bytes, i * 4);
-    if (!dolresources::read(executable, glme01::cosineTable, 4096 * 4, bytes, error)) return false;
+    if (!dolresources::read(executable, sineAddress + 0x1000, 4096 * 4, bytes, error)) return false;
     for (unsigned i = 0; i < 4096; ++i) result.cosine[i] = number<float, std::uint32_t>(bytes, i * 4);
-    if (!dolresources::read(executable, 0x804d9c40, 16, bytes, error)) return false;
+    if (!dolresources::read(executable, gameedition::cameraFollowConstant(edition, 0x804d9c40), 16, bytes, error)) return false;
     result.bias = number<double, std::uint64_t>(bytes, 0);
     result.angleScale = number<double, std::uint64_t>(bytes, 8);
-    if (!dolresources::read(executable, 0x804d9c10, 16, bytes, error)) return false;
+    if (!dolresources::read(executable, gameedition::cameraFollowConstant(edition, 0x804d9c10), 16, bytes, error)) return false;
     result.staticBias = number<double, std::uint64_t>(bytes, 0);
     result.staticAngleScale = number<double, std::uint64_t>(bytes, 8);
     result.loaded = true;

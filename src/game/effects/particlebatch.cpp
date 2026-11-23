@@ -1,4 +1,5 @@
 #include "resources/dolresources.h"
+#include "resources/gameedition.h"
 #include "game/effects/particlebatch.h"
 #include "game/startup/startupresources.h"
 
@@ -33,9 +34,10 @@ particles::Batch::Batch(const std::vector<std::uint8_t>& executable, ArchiveReso
 }
 
 bool particles::Batch::allocate() {
-    const auto parameters = resources.get(0x4b485f45, name(executable, 0x80383b1c + type * 4));
-    const auto texture = resources.get(0x4b485f45, name(executable, 0x80383b58 + type * 4));
-    const auto alternate = resources.get(0x4b485f45, name(executable, 0x80383b78 + type * 4));
+    const auto names = gameedition::particleBatchNames(gameedition::identify(executable));
+    const auto parameters = resources.get(0x4b485f45, name(executable, names + type * 4));
+    const auto texture = resources.get(0x4b485f45, name(executable, names + 0x3c + type * 4));
+    const auto alternate = resources.get(0x4b485f45, name(executable, names + 0x5c + type * 4));
     for (auto& slot : slots) {
         slot = pool.create(parameters, texture, alternate);
         if (!slot) return false;

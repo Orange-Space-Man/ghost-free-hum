@@ -6,6 +6,7 @@ gameplaycamera::CameraOwner::CameraOwner() : fieldOfView(26), aspect(4.0f / 3.0f
 
 void gameplaycamera::CameraOwner::reset() {
     callback = 0;
+    eventMode = 0;
     flags = 0;
     target = {0, 0, 0};
     fieldA4 = 0;

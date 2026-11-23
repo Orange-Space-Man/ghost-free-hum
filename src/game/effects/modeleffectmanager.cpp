@@ -1,4 +1,5 @@
 #include "resources/dolresources.h"
+#include "resources/gameedition.h"
 #include "game/effects/modeleffectmanager.h"
 #include "game/effects/sharedmodeleffect.h"
 #include "game/effects/cobwebeffectpool.h"
@@ -68,8 +69,10 @@ void modeleffects::Manager::initialize(const std::vector<std::uint8_t>& executab
     for (auto& buffer : drawBuffers) buffer = std::make_unique<j3dmodel::DrawBuffer>(1024);
     std::vector<std::uint8_t> bytes;
     std::string error;
-    if (!dolresources::read(executable, 0x80383fe0 + map * 4, 4, bytes, error)) throw std::runtime_error(error);
-    const unsigned selector = (unsigned(bytes[0]) << 24) | (unsigned(bytes[1]) << 16) | (unsigned(bytes[2]) << 8) | bytes[3];
+    if (!dolresources::read(executable, gameedition::modelEffectAddress(executable, 0x80383fe0 + map * 4),
+        4, bytes, error)) throw std::runtime_error(error);
+    const unsigned selector = gameedition::modelEffectSelector(executable,
+        (unsigned(bytes[0]) << 24) | (unsigned(bytes[1]) << 16) | (unsigned(bytes[2]) << 8) | bytes[3]);
     initializeSpecialized(selector);
     for (auto& definition : readDefinitions(executable, map)) ordinary.push_back(std::make_unique<Pool>(std::move(definition)));
     for (auto& pool : ordinary) add(*pool);

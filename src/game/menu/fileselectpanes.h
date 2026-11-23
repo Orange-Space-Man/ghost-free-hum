@@ -22,7 +22,7 @@ namespace fileselect {
 
     private:
         std::array<std::vector<std::string>, 6> choices;
-        std::array<std::string, 5> helpText;
+        std::array<std::string, 6> helpText;
         unsigned phase = 255;
     };
     void bindPreviews(std::array<menulayout::Layout, 3>& layouts, const State& state,

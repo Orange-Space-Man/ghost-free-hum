@@ -14,6 +14,7 @@ namespace fileselect {
         void update(const State& state, const gamesave::State& saves);
         void draw(bool present);
         bool ready(unsigned group) const;
+        unsigned optionCount() const;
 
     private:
         std::array<menulayout::Layout, 3> layouts;

@@ -18,25 +18,40 @@ struct gameplay::ResourceOwner::State {
         if (!entry.initialized || (entry.map != 1 && entry.map != 2 && entry.map != 3 && entry.map != 6)) throw std::invalid_argument("Gameplay resources require a supported selected map entry.");
         std::string error;
         std::vector<std::uint8_t> compressed, commonBytes, mapBytes;
-        if (!package.open(path, error) || !package.read("sys/main.dol", executable, error) ||
-            !package.read("files/Game/game_usa.szp", compressed, error) ||
-            !roomarchive::decompress(compressed, commonBytes, error) || !common.read(commonBytes, error) ||
-            !package.read("files/Map/map" + std::to_string(entry.map) + ".szp", compressed, error) ||
-            !roomarchive::decompress(compressed, mapBytes, error) || !map.read(mapBytes, error) ||
-            !mission.read(mapBytes, error) || !types.read(executable, error) ||
-            !creation.read(executable, error) || !strategies.read(executable, error) ||
-            !modelCatalog.read(executable, error) || !materials.read(executable, error) ||
-            !parameters.loadParameters(executable, commonBytes, error) || !jaudio::read(package, audio, error)) {
-            throw std::runtime_error(error);
-        }
+        const auto require = [&](bool result, const char* stage) {
+            if (!result) throw std::runtime_error(std::string(stage) + ": " + error);
+        };
+        require(package.open(path, error), "package");
+        require(package.read("sys/main.dol", executable, error), "executable");
+        require(package.read(gameassets::commonArchive(package.gameId()), compressed, error), "common archive");
+        require(roomarchive::decompress(compressed, commonBytes, error), "common decompression");
+        require(common.read(commonBytes, error), "common contents");
+        require(package.read("files/Map/map" + std::to_string(entry.map) + ".szp", compressed, error), "map archive");
+        require(roomarchive::decompress(compressed, mapBytes, error), "map decompression");
+        require(map.read(mapBytes, error), "map contents");
+        require(mission.read(mapBytes, error), "mission contents");
+        require(types.read(executable, error), "enemy types");
+        require(creation.read(executable, error), "enemy creation");
+        require(strategies.read(executable, error), "enemy strategies");
+        require(modelCatalog.read(executable, error), "actor models");
+        require(materials.read(executable, error), "material defaults");
+        require(parameters.loadParameters(executable, commonBytes, error), "enemy parameters");
+        require(jaudio::read(package, audio, error), "audio resources");
+        const auto stage = [](const char* name, auto action) {
+            try {
+                action();
+            } catch (const std::exception& exception) {
+                throw std::runtime_error(std::string(name) + ": " + exception.what());
+            }
+        };
         models = std::make_unique<actormodel::Resources>(modelCatalog);
-        models->initializeEmbedded(common);
-        pose = std::make_unique<actormodel::InitialPose>(executable);
-        cameraProjection = std::make_unique<gameplaycamera::Projection>(executable);
-        cameraFollow = std::make_unique<gameplaycamera::Follow>(executable, entry.map);
-        rooms = std::make_unique<roomlocation::Rooms>(executable, entry.map);
-        mirror = std::make_unique<roommirror::Owner>(executable, *rooms, entry.map);
-        collisions = std::make_unique<actorcollision::Catalog>(executable, modelCatalog);
+        stage("embedded models", [&] { models->initializeEmbedded(common); });
+        stage("initial actor pose", [&] { pose = std::make_unique<actormodel::InitialPose>(executable); });
+        stage("camera projection", [&] { cameraProjection = std::make_unique<gameplaycamera::Projection>(executable); });
+        stage("camera follow", [&] { cameraFollow = std::make_unique<gameplaycamera::Follow>(executable, entry.map); });
+        stage("room locations", [&] { rooms = std::make_unique<roomlocation::Rooms>(executable, entry.map); });
+        stage("room mirrors", [&] { mirror = std::make_unique<roommirror::Owner>(executable, *rooms, entry.map); });
+        stage("actor collision", [&] { collisions = std::make_unique<actorcollision::Catalog>(executable, modelCatalog); });
         construction = std::make_unique<actors::Construction>(actors::Construction{
             modelCatalog, *models, parameters, *pose, actorGlobals, *rooms});
         visibility.initialize(static_cast<unsigned>(rooms->entries().size()));
@@ -51,7 +66,7 @@ struct gameplay::ResourceOwner::State {
             const unsigned saved = (unsigned(entry.inventory.at(offset)) << 8) | entry.inventory.at(offset + 1);
             auto& value = roomFlags[i];
             if (saved & 1) value |= 2;
-            if (saved & 2) value |= 8;
+            if (saved & 2) value |= 0x8008;
             if (saved & 4) value |= 0x20;
             if (saved & 8) value |= 0x40;
             if (number == 0x14) value |= 0x10;
@@ -62,7 +77,9 @@ struct gameplay::ResourceOwner::State {
         ManagerDependencies dependencies{executable, package, audio, common, map, mission, materials, *construction,
             *collisions, types, creation, strategies, *cameras.cameras[0], roomFlags, visibility, entry, flags,
             motors, pad, {&entry.player, &secondRecord}, randomState, audioLife};
-        residentRooms = std::make_unique<roomresidency::InitialRooms>(executable, entry.map, *rooms);
+        stage("resident rooms", [&] {
+            residentRooms = std::make_unique<roomresidency::InitialRooms>(executable, entry.map, *rooms);
+        });
         dependencies.prepareRooms = [this](const enemies::Manager& manager) {
             auto position = manager.appearPoint(0).position;
             std::vector<std::uint8_t> bytes;
@@ -90,7 +107,10 @@ struct gameplay::ResourceOwner::State {
                 return bytes;
             });
         };
-        managers = std::make_unique<ManagerServices>(dependencies);
+        dependencies.beginChestReveal = [this](const std::array<float, 3>& position) {
+            cameraFollow->beginChestReveal(*cameras.cameras[0], position);
+        };
+        stage("manager services", [&] { managers = std::make_unique<ManagerServices>(dependencies); });
         managers->bindPlayerFurniture(*furnitureOwner);
         auto* player = managers->actors().actor(managers->enemies().appearPoint(0).actor);
         if (!player) throw std::runtime_error("Gameplay camera requires the manager-owned player.");
@@ -111,17 +131,28 @@ struct gameplay::ResourceOwner::State {
         std::vector<unsigned> hudRooms;
         for (const auto& resident : residentRooms->slots())
             if (resident.room != 0xffffffff) hudRooms.push_back(resident.room);
-        hud = std::make_unique<Hud>(common, executable, hudRooms, entry.map);
-        if (!messageFont.readExecutable(executable, error)) throw std::runtime_error(error);
-        messageGraphics = std::make_unique<gameevent::MessageGraphics>(common, executable, messageFont);
-        messages = std::make_unique<gameevent::MessageWindows>(executable, gameevent::MessageWindows::Services{
+        stage("gameplay HUD", [&] { hud = std::make_unique<Hud>(common, executable, hudRooms, entry.map, &package); });
+        stage("message font", [&] { if (!messageFont.readExecutable(executable, error)) throw std::runtime_error(error); });
+        stage("message graphics", [&] {
+            messageGraphics = std::make_unique<gameevent::MessageGraphics>(common, executable, messageFont);
+        });
+        stage("message windows", [&] { messages = std::make_unique<gameevent::MessageWindows>(executable, gameevent::MessageWindows::Services{
             [this](const std::string& text) { return messageGraphics->measure(text); },
             [this](unsigned sound) { managers->playback()->playGlobal(sound); },
-            [this](bool active) { managers->music().setCutsceneActive(active); }});
+            [this](bool active) { managers->music().setCutsceneActive(active); }}); });
         if (entry.map == 1) managers->music().requestLab(1);
         if (entry.map == 3) managers->music().requestTraining(1);
         if (entry.map == 6) managers->music().requestSequence(0x8000000f, 1);
-        entrance = std::make_unique<gameevent::EntranceOwner>(package, types, entry, *rooms, *managers, owner, executable, *messages, *cameraFollow);
+        if (entry.map == 2 && flags.value(1)) {
+            auto& music = managers->music();
+            music.setRoom(player->room(), -1);
+            music.syncRoomLight((roomFlags.at(player->room() >> 24) & 0x8000) != 0, flags.value(0x3d));
+            music.start();
+        }
+        stage("entrance events", [&] {
+            entrance = std::make_unique<gameevent::EntranceOwner>(package, types, entry, *rooms,
+                *managers, owner, executable, *messages, *cameraFollow);
+        });
         managers->bindScannerMessage([this](unsigned count) { entrance->startFurnitureMessage(count); });
         if (entry.map == 6) managers->bindProfessorInteraction([this] { entrance->startGalleryConversation(); });
         if (entry.map == 2) managers->bindToadInteraction([this] { entrance->startToadConversation(); });
@@ -236,6 +267,8 @@ void gameplay::ResourceOwner::bindSave(std::function<void()> callback) {
     });
 }
 
+void gameplay::ResourceOwner::completeSave() { state->entrance->completeSave(); }
+
 void gameplay::ResourceOwner::updateEvents(unsigned elapsedSeconds, std::uint32_t audioFrame) {
     state->entrance->update(elapsedSeconds, audioFrame);
 }
@@ -258,6 +291,7 @@ gameassets::Package& gameplay::ResourceOwner::package() { return state->package;
 roomtraversal::State& gameplay::ResourceOwner::visibility() { return state->visibility; }
 std::vector<std::uint32_t>& gameplay::ResourceOwner::roomFlags() { return state->roomFlags; }
 const roomresidency::InitialRooms& gameplay::ResourceOwner::residentRooms() const { return *state->residentRooms; }
+const std::array<std::uint8_t, 0x220>& gameplay::ResourceOwner::inventory() const { return state->entry.inventory; }
 bool gameplay::ResourceOwner::updateRooms(const std::function<void(const roomresidency::Resident&)>& release,
     const std::function<void(const roomresidency::Resident&)>& create) {
     if (!release || !create) throw std::invalid_argument("Room updates require renderer ownership callbacks.");
@@ -281,7 +315,7 @@ roomfurniture::Owner& gameplay::ResourceOwner::furniture() { return *state->furn
 
 std::vector<roomtraversal::Submission> gameplay::ResourceOwner::prepareVisibility(const roomportal::Matrix& projection,
     const roomtraversal::Bounds& viewport, unsigned buffer,
-    const std::function<bool(const std::array<std::int32_t, 3>&)>& centerVisible) {
+    const std::function<bool(const std::array<std::int32_t, 3>&)>& centerVisible, bool scannerMode) {
     std::vector<roomtraversal::SceneRoom> rooms;
     std::vector<std::uint16_t> saved(256);
     for (unsigned i = 0; i < state->rooms->entries().size(); ++i) {
@@ -302,7 +336,7 @@ std::vector<roomtraversal::Submission> gameplay::ResourceOwner::prepareVisibilit
         [&](const roomresidency::Resident& resident) { return resident.room == (player->room() & 255); }))
         throw std::runtime_error("Gameplay room transition requires the original room resource lifecycle.");
     auto submissions = traversal.stationary(player->room() >> 24, buffer, projection, viewport, 1,
-        state->roomTransition.floorOpacity, &state->roomTransition);
+        state->roomTransition.floorOpacity, &state->roomTransition, scannerMode);
     for (const auto& room : rooms) {
         const auto offset = 0xa0 + (room.id & 255) * 2;
         state->entry.inventory.at(offset) = static_cast<std::uint8_t>(saved[room.id & 255] >> 8);

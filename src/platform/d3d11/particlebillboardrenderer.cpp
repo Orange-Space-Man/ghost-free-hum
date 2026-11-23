@@ -1,6 +1,7 @@
 #include "platform/d3d11/particlebillboardrenderer.h"
 
 #include <d3dcompiler.h>
+#include <algorithm>
 #include <cstring>
 #include <stdexcept>
 
@@ -8,15 +9,37 @@ namespace {
     struct Vertex {
         std::array<float, 3> position;
         std::array<float, 2> uv;
+        std::array<float, 4> color;
     };
 
     void check(HRESULT result, const char* message) {
         if (FAILED(result)) throw std::runtime_error(message);
     }
 
+    const particles::Resource& debugImage() {
+        static const particles::Resource image = [] {
+            auto bytes = std::make_shared<std::vector<std::uint8_t>>(64, std::uint8_t{255});
+            std::fill(bytes->begin(), bytes->begin() + 32, std::uint8_t{0});
+            (*bytes)[0] = 1; (*bytes)[3] = 8; (*bytes)[5] = 4;
+            return bytes;
+        }();
+        return image;
+    }
+
+    particles::Billboard debugMaterial() {
+        particles::Billboard result;
+        result.texture = debugImage();
+        result.color = {255, 0, 0, 255};
+        result.mode = 2;
+        result.blend = 0x54;
+        result.depth = 0;
+        result.cull = 0;
+        return result;
+    }
+
     const char vertexSource[] = R"(
 cbuffer Matrices : register(b0) { float4 view[3]; float4 projection[4]; };
-struct Input { float3 position : POSITION; float2 uv : TEXCOORD0; };
+struct Input { float3 position : POSITION; float2 uv : TEXCOORD0; float4 color : COLOR0; };
 struct Output {
     float4 position : SV_POSITION; float4 color : COLOR0;
     float3 normal : NORMAL0; float3 binormal : NORMAL1; float3 tangent : NORMAL2;
@@ -30,6 +53,7 @@ Output main(Input input) {
     float4 cameraPosition = float4(dot(view[0], world), dot(view[1], world), dot(view[2], world), 1);
     output.position = float4(dot(projection[0], cameraPosition), dot(projection[1], cameraPosition),
         dot(projection[2], cameraPosition), dot(projection[3], cameraPosition));
+    output.color = input.color;
     output.generated[0] = input.uv;
     output.generatedQ[0] = output.generatedQ[1] = 1;
     return output;
@@ -49,9 +73,10 @@ void particlerenderer::Renderer::load(ID3D11Device* owner) {
         "Cannot create particle vertex shader.");
     const D3D11_INPUT_ELEMENT_DESC elements[] = {
         {"POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0, D3D11_INPUT_PER_VERTEX_DATA, 0},
-        {"TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT, 0, 12, D3D11_INPUT_PER_VERTEX_DATA, 0}
+        {"TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT, 0, 12, D3D11_INPUT_PER_VERTEX_DATA, 0},
+        {"COLOR", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 20, D3D11_INPUT_PER_VERTEX_DATA, 0}
     };
-    check(device->CreateInputLayout(elements, 2, code->GetBufferPointer(), code->GetBufferSize(), layout.ReleaseAndGetAddressOf()),
+    check(device->CreateInputLayout(elements, 3, code->GetBufferPointer(), code->GetBufferSize(), layout.ReleaseAndGetAddressOf()),
         "Cannot create particle vertex layout.");
     D3D11_BUFFER_DESC buffer{};
     buffer.ByteWidth = sizeof(Vertex) * 6;
@@ -129,17 +154,46 @@ void particlerenderer::Renderer::prepare(const particles::Billboard& billboard) 
     material(billboard);
 }
 
+void particlerenderer::Renderer::drawDebugOutlines(ID3D11DeviceContext* context,
+    const std::vector<particles::Billboard>& particles, const std::array<float, 12>& view,
+    const std::array<float, 16>& projection) {
+    if (particles.empty()) return;
+    prepare(debugMaterial());
+    std::vector<particles::Billboard> outlines;
+    outlines.reserve(particles.size() * 4);
+    for (const auto& particle : particles) {
+        std::array<float, 3> center{};
+        for (const auto& corner : particle.positions)
+            for (unsigned axis = 0; axis < 3; ++axis) center[axis] += corner[axis] * 0.25f;
+        for (unsigned edge = 0; edge < 4; ++edge) {
+            auto outline = debugMaterial();
+            const auto& first = particle.positions[edge];
+            const auto& second = particle.positions[(edge + 1) % 4];
+            for (unsigned axis = 0; axis < 3; ++axis) {
+                outline.positions[0][axis] = first[axis];
+                outline.positions[1][axis] = second[axis];
+                outline.positions[2][axis] = second[axis] + (center[axis] - second[axis]) * 0.18f;
+                outline.positions[3][axis] = first[axis] + (center[axis] - first[axis]) * 0.18f;
+            }
+            outlines.push_back(std::move(outline));
+        }
+    }
+    draw(context, outlines, view, projection);
+}
+
 modelrenderer::MaterialShader& particlerenderer::Renderer::material(const particles::Billboard& particle) {
     const unsigned key = particle.mode | (particle.blend << 8) | (particle.depth << 16) | (particle.cull << 24);
     const auto found = materials.find(key);
     if (found != materials.end()) return found->second;
     static const std::array<unsigned, 4> colors[] = {{2, 12, 8, 15}, {15, 2, 8, 15},
         {4, 2, 8, 15}, {15, 8, 2, 4}, {15, 8, 15, 2}, {15, 4, 8, 15}, {15, 15, 15, 2}, {15, 4, 8, 15}};
-    if (particle.mode > 7) throw std::runtime_error("Particle color combiner mode is invalid.");
+    if (particle.mode > 8) throw std::runtime_error("Particle color combiner mode is invalid.");
     modelmaterial::Stage stage;
     stage.coordinate = stage.texture = 0;
-    stage.color = colors[particle.mode];
-    stage.alpha = particle.mode == 5 ? std::array<unsigned, 4>{1, 7, 7, 4} : std::array<unsigned, 4>{7, 4, 1, 7};
+    stage.color = colors[particle.mode == 8 ? 4 : particle.mode];
+    stage.alpha = particle.mode == 8 ? std::array<unsigned, 4>{7, 4, 5, 7} :
+        particle.mode == 5 ? std::array<unsigned, 4>{1, 7, 7, 4} : std::array<unsigned, 4>{7, 4, 1, 7};
+    if (particle.mode == 8) stage.raster = 4;
     stage.alphaOperation = particle.mode == 5 ? 1 : 0;
     modelmaterial::StageProgram program;
     program.stageCount = program.coordinateCount = 1;
@@ -180,8 +234,14 @@ void particlerenderer::Renderer::draw(ID3D11DeviceContext* context, const std::v
             throw std::runtime_error("Invalid particle texture wrapping.");
         context->PSSetSamplers(0, 1, samplers[particle.textureWrap[0] * 3 + particle.textureWrap[1]].GetAddressOf());
         std::array<Vertex, 6> output;
-        for (unsigned i = 0; i < 6; ++i) output[i] = {particle.positions[corners[i]],
-            {particle.coordinates[corners[i]][0] * particle.textureScale, particle.coordinates[corners[i]][1] * particle.textureScale}};
+        for (unsigned i = 0; i < 6; ++i) {
+            const auto corner = corners[i];
+            output[i].position = particle.positions[corner];
+            output[i].uv = {particle.coordinates[corner][0] * particle.textureScale,
+                particle.coordinates[corner][1] * particle.textureScale};
+            for (unsigned channel = 0; channel < 4; ++channel)
+                output[i].color[channel] = particle.perVertexColor ? particle.vertexColors[corner][channel] / 255.0f : 1.0f;
+        }
         D3D11_MAPPED_SUBRESOURCE mapped{};
         check(context->Map(vertices.Get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped), "Cannot update particle vertices.");
         std::memcpy(mapped.pData, output.data(), sizeof(output));

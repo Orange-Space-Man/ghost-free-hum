@@ -17,7 +17,8 @@ namespace elements {
             particles::SceneContext& context, const roomtraversal::State& visibility);
         void updateBlow(const playeractor::View& player, std::uint32_t actorFlags,
             particles::SceneContext& context, const mapcollision::State& collision, std::uint32_t& randomState);
-        void updateBreath(const playeractor::View& player, particles::SceneContext& context, std::uint32_t& randomState);
+        void updateBreath(const playeractor::View& player, particles::SceneContext& context,
+            const mapcollision::State& collision, std::uint32_t& randomState);
         particles::Billboard blowMaterial() const;
         particles::Billboard breathMaterial() const;
         std::vector<particles::Billboard> prepareBlow(const std::array<float, 12>& view) const;
@@ -48,7 +49,7 @@ namespace elements {
         std::array<std::array<float, 2>, 4> coordinates{};
         originalmath::FloatTrig trig;
         float blowThreshold = 0, timerScale = 0, timerBase = 0, timerControl = 0;
-        float collisionThreshold = 0, collisionScale = 0, radiansPerDegree = 0;
+        float collisionThreshold = 0, collisionScale = 0, maximumParticleSpeed = 0, radiansPerDegree = 0;
         float breathSpecialScale = 0, breathSpecialRadius = 0;
     };
 }

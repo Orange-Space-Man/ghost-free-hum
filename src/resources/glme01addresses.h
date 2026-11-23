@@ -104,6 +104,7 @@ namespace glme01 {
     inline constexpr std::uint32_t keyFactory = 0x800eee90;
     inline constexpr std::uint32_t itemFactory = 0x800f0f58;
     inline constexpr std::uint32_t trainingGeneratorFactory = 0x800ef29c;
+    inline constexpr std::uint32_t parlorGhostFactory = 0x800eebf0;
     inline constexpr std::uint32_t ghostParentFactory = 0x800eed40;
     inline constexpr std::uint32_t labProfessorFactory = 0x800ef1bc;
     inline constexpr std::uint32_t noMoveFactory = 0x800f13d4;

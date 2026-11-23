@@ -1,6 +1,7 @@
 #include "game/events/eventmessagegraphics.h"
 #include "game/menu/gamefontprint.h"
 #include "resources/dolresources.h"
+#include "resources/gameedition.h"
 #include <algorithm>
 #include <cstring>
 #include <stdexcept>
@@ -54,20 +55,20 @@ gameevent::MessageGraphics::MessageGraphics(const gamearchive::Archive& archive,
         if (!dolresources::read(executable, address, size, bytes, error)) throw std::runtime_error(error);
         return bytes;
     };
-    constexpr unsigned portraitNames = 0x803054a8, windowColors = 0x80305180, windowLayout = 0x804d0540;
+    const auto addresses = gameedition::messageGraphics(gameedition::identify(executable));
     upper = load(archive, "/kawano/dmman/m_window4.bti");
     lower = load(archive, "/kawano/dmman/m_window5.bti");
-    const auto names = read(portraitNames, static_cast<unsigned>(portraits.size()) * 4);
+    const auto names = read(addresses.portraits, static_cast<unsigned>(portraits.size()) * 4);
     for (unsigned i = 0; i < portraits.size(); ++i) {
         const auto name = read(word(names, i * 4), 96);
         portraits[i] = load(archive, std::string(name.begin(), std::find(name.begin(), name.end(), 0)));
     }
-    const auto palette = read(windowColors, static_cast<unsigned>(colors.size()) * 4);
+    const auto palette = read(addresses.colors, static_cast<unsigned>(colors.size()) * 4);
     for (unsigned i = 0; i < colors.size(); ++i)
         for (unsigned j = 0; j < 4; ++j) colors[i][j] = palette[i * 4 + j] / 255.0f;
     choicePanel = load(archive, "/kawano/dmman/m_window1.bti");
     hand = load(archive, "/kawano/dmman/hand.bti");
-    const auto layout = read(windowLayout, 32);
+    const auto layout = read(addresses.layout, 32);
     auto half = [&](unsigned offset) { return static_cast<std::int16_t>((unsigned(layout[offset]) << 8) | layout[offset + 1]); };
     for (unsigned i = 0; i < choiceOrigin.size(); ++i) choiceOrigin[i] = half(24 + i * 2);
     choiceTextX = half(4);
@@ -85,8 +86,8 @@ gameevent::MessageGraphics::MessageGraphics(const gamearchive::Archive& archive,
         std::memcpy(&value, &bits, sizeof(value));
         return value;
     };
-    constexpr unsigned textScale = 0x804d0518, glyphSize = 0x804da2b4, lineSize = 0x804da2b8;
-    const float scale = number(textScale);
+    constexpr unsigned glyphSize = 0x804da2b4, lineSize = 0x804da2b8;
+    const float scale = number(addresses.textScale);
     this->textScale = scale;
     fontSize = static_cast<unsigned>(double(number(glyphSize)) * scale);
     lineSpacing = static_cast<int>(double(number(lineSize)) * scale);

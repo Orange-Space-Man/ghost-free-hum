@@ -1,5 +1,6 @@
 #include "platform/windows/debugoverlay.h"
 #include "platform/windows/controlsettings.h"
+#include "platform/windows/gameassetsetup.h"
 #include "imgui.h"
 #include "backends/imgui_impl_dx11.h"
 #include "backends/imgui_impl_win32.h"
@@ -12,7 +13,7 @@
 extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND window, UINT message, WPARAM wParam, LPARAM lParam);
 
 namespace {
-    bool visible = false, checkpointOpen = false;
+    bool visible = false;
     unsigned selectedCheckpoint = 0;
     bool platformReady = false, rendererReady = false;
     std::string systemInfo, sceneInfo, loadingInfo;
@@ -26,7 +27,6 @@ void debugoverlay::open(HWND window, ID3D11Device* device, ID3D11DeviceContext* 
     ImGui::GetIO().ConfigFlags |= ImGuiConfigFlags_NoMouseCursorChange;
     controlsettings::initialize(window);
     visible = false;
-    checkpointOpen = false;
     selectedCheckpoint = 0;
     loadingInfo.clear();
     systemInfo = "Windows (version unavailable)";
@@ -50,7 +50,7 @@ void debugoverlay::close() {
     if (rendererReady) ImGui_ImplDX11_Shutdown();
     if (platformReady) ImGui_ImplWin32_Shutdown();
     if (ImGui::GetCurrentContext()) ImGui::DestroyContext();
-    platformReady = rendererReady = visible = checkpointOpen = false;
+    platformReady = rendererReady = visible = false;
     selectedCheckpoint = 0;
     loadingInfo.clear();
 }
@@ -58,18 +58,8 @@ void debugoverlay::close() {
 bool debugoverlay::handleMessage(HWND window, UINT message, WPARAM wParam, LPARAM lParam) {
     if (!platformReady) return false;
     ImGui_ImplWin32_WndProcHandler(window, message, wParam, lParam);
-    if (checkpointOpen && message == WM_KEYDOWN && wParam == VK_ESCAPE) {
-        checkpointOpen = false;
-        return true;
-    }
+    if (gameassetsetup::active()) return gameassetsetup::handleMessage(message, wParam);
     if (controlsettings::handleMessage(message, wParam, lParam)) return true;
-    if (!controlsettings::visible() && message == WM_KEYDOWN && wParam == VK_F3) {
-        if (!(lParam & (1LL << 30))) checkpointOpen = !checkpointOpen;
-        return true;
-    }
-    if (checkpointOpen && (message == WM_KEYDOWN || message == WM_KEYUP || message == WM_CHAR ||
-        message == WM_LBUTTONDOWN || message == WM_LBUTTONUP || message == WM_RBUTTONDOWN ||
-        message == WM_RBUTTONUP || message == WM_MOUSEWHEEL)) return true;
     if (message == WM_KEYDOWN && wParam == VK_F2) {
         if (!(lParam & (1LL << 30))) toggle();
         return true;
@@ -83,7 +73,9 @@ void debugoverlay::setScene(const std::string& information) { sceneInfo = inform
 
 void debugoverlay::setLoading(const std::string& information) { loadingInfo = information; }
 bool debugoverlay::isLoading() { return !loadingInfo.empty(); }
-bool debugoverlay::checkpointVisible() { return checkpointOpen; }
+void debugoverlay::requestCheckpoint(unsigned checkpoint) {
+    if (checkpoint >= 1 && checkpoint <= 6) selectedCheckpoint = checkpoint;
+}
 unsigned debugoverlay::takeCheckpoint() {
     const auto result = selectedCheckpoint;
     selectedCheckpoint = 0;
@@ -112,30 +104,8 @@ void debugoverlay::draw() {
         list->AddText(nullptr, 0, {11, 11}, IM_COL32(0, 0, 0, 255), text.c_str(), nullptr, wrap);
         list->AddText(nullptr, 0, {10, 10}, IM_COL32(255, 255, 255, 255), text.c_str(), nullptr, wrap);
     }
-    if (checkpointOpen && loadingInfo.empty()) {
-        const auto display = ImGui::GetIO().DisplaySize;
-        const ImVec2 size{std::min(display.x - 24.0f, 360.0f), 0};
-        ImGui::SetNextWindowPos({display.x * 0.5f, display.y * 0.5f}, ImGuiCond_Always, {0.5f, 0.5f});
-        ImGui::SetNextWindowSize(size, ImGuiCond_Always);
-        ImGui::PushStyleColor(ImGuiCol_Button, {0.15f, 0.32f, 0.19f, 1});
-        ImGui::PushStyleColor(ImGuiCol_ButtonHovered, {0.23f, 0.44f, 0.27f, 1});
-        ImGui::PushStyleColor(ImGuiCol_ButtonActive, {0.30f, 0.52f, 0.34f, 1});
-        if (ImGui::Begin("Go to", nullptr, ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoResize |
-            ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_AlwaysAutoResize)) {
-            constexpr const char* destinations[]{"Mansion foyer", "Foyer after first key", "Training room", "Gallery",
-                "Foyer after training"};
-            for (unsigned i = 0; i < 5; ++i) {
-                if (ImGui::Button(destinations[i], {ImGui::GetContentRegionAvail().x, 36})) {
-                    selectedCheckpoint = i + 1;
-                    checkpointOpen = false;
-                }
-            }
-            ImGui::TextDisabled("F3 or Esc to close");
-        }
-        ImGui::End();
-        ImGui::PopStyleColor(3);
-    }
-    controlsettings::draw();
+    if (gameassetsetup::active()) gameassetsetup::draw();
+    else controlsettings::draw();
     ImGui::Render();
     ImGui_ImplDX11_RenderDrawData(ImGui::GetDrawData());
 }

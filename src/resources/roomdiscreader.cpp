@@ -6,6 +6,11 @@
 #include <stdexcept>
 
 namespace {
+    bool supported(const std::vector<std::uint8_t>& header) {
+        if (header.size() < 0x440 || header[6] != 0 || header[7] != 0) return false;
+        const std::string id(header.begin(), header.begin() + 6);
+        return id == "GLME01" || id == "GLMJ01" || id == "GLMP01";
+    }
     bool contains(std::size_t size, std::size_t offset, std::size_t length) {
         return offset <= size && length <= size - offset;
     }
@@ -49,6 +54,24 @@ namespace {
 
 }
 
+bool roomdisc::readGameId(const std::filesystem::path& path, std::string& gameId, std::string& error) {
+    gameId.clear();
+    error.clear();
+    try {
+        std::ifstream file(path, std::ios::binary | std::ios::ate);
+        if (!file || file.tellg() < 0x440) throw std::runtime_error("Cannot open the ISO.");
+        const auto size = static_cast<std::uint64_t>(file.tellg());
+        const auto header = readRange(file, size, 0, 0x440);
+        if (read32(header, 0x1c) != 0xc2339f3d || !supported(header))
+            throw std::runtime_error("Supported discs are Luigi's Mansion GLME01, GLMJ01, and GLMP01 revision 0.");
+        gameId.assign(header.begin(), header.begin() + 6);
+        return true;
+    } catch (const std::exception& exception) {
+        error = exception.what();
+        return false;
+    }
+}
+
 bool roomdisc::listFiles(const std::filesystem::path& path, std::vector<File>& files, std::string& error) {
     files.clear();
     error.clear();
@@ -62,8 +85,8 @@ bool roomdisc::listFiles(const std::filesystem::path& path, std::vector<File>& f
         if (read32(header, 0x1c) != 0xc2339f3d) {
             throw std::runtime_error("This is not an uncompressed GameCube ISO.");
         }
-        if (std::string(header.begin(), header.begin() + 6) != "GLME01" || header[6] != 0 || header[7] != 0) {
-            throw std::runtime_error("This build supports Luigi's Mansion USA revision 0 (GLME01).");
+        if (!supported(header)) {
+            throw std::runtime_error("Supported discs are Luigi's Mansion GLME01, GLMJ01, and GLMP01 revision 0.");
         }
         const auto table = readRange(file, size, read32(header, 0x424), read32(header, 0x428));
         const std::size_t count = read32(table, 8);
@@ -152,7 +175,7 @@ bool roomdisc::readExecutable(const std::filesystem::path& path, std::vector<std
         if (!file || file.tellg() < 0) throw std::runtime_error("Cannot open the ISO.");
         const std::uint64_t size = static_cast<std::uint64_t>(file.tellg());
         const auto header = readRange(file, size, 0, 0x440);
-        if (read32(header, 0x1c) != 0xc2339f3d || std::string(header.begin(), header.begin() + 6) != "GLME01" || header[6] != 0 || header[7] != 0) {
+        if (read32(header, 0x1c) != 0xc2339f3d || !supported(header)) {
             throw std::runtime_error("Unsupported disc for executable data.");
         }
         const auto start = read32(header, 0x420);

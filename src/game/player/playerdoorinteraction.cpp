@@ -5,6 +5,7 @@
 #include "game/world/dooranimationpose.h"
 #include "resources/dolresources.h"
 #include "resources/glme01addresses.h"
+#include "resources/gameedition.h"
 
 #include <algorithm>
 #include <cmath>
@@ -43,7 +44,7 @@ playerinteraction::DoorInteraction::DoorInteraction(const std::vector<std::uint8
     padding = scalar(selection, 0);
     facingThreshold = scalar(selection, 1);
     const auto types = read(executable, glme01::fakeDoorActorTypes, 12);
-    const auto box = read(executable, glme01::doorCollisionBoxes, 24);
+    const auto box = read(executable, gameedition::doors(gameedition::identify(executable)).collisionBoxes, 24);
     for (unsigned i = 0; i < 3; ++i) {
         fakeTypes[i] = word(types, i);
         fakeOrigin[i] = scalar(box, i);

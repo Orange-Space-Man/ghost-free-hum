@@ -15,7 +15,7 @@ ghostparent::Parent::Parent(ParentServices value) {
 ghostparent::Parent::Parent() = default;
 
 void ghostparent::Parent::bind(ParentServices value) {
-    if (!value.random || !value.assemble || !value.roomCleared || !value.elementEffect || !value.createCapture ||
+    if (!value.random || !value.place || !value.assemble || !value.roomCleared || !value.elementEffect || !value.createCapture ||
         !value.notifyAttackFishing || !value.finishSecondary || !value.clearElement || !value.lightResult101 ||
         !value.secondResult101 || !value.damagePlayer)
         throw std::runtime_error("Original ghost parent requires its child, room, effect, damage and capture services.");
@@ -108,8 +108,13 @@ void ghostparent::Parent::updateGhostState() {
 }
 
 void ghostparent::Parent::enterInitialize() {
+    // Event 8 restarts the parent after an uncaptured light fade. The previous EnLight
+    // delegate belongs to that attempt and must not suppress the new sight search.
+    setLightDelegate(nullptr);
     const InitializeServices initialization{services().actor, services().character, services().parameters, services().source, services().random};
     selection = initialize(fields, initialization);
+    if (!fields.holding && (selection.configuration.place == 1 || selection.configuration.place == 2))
+        services().place(selection.configuration.place, fields.placementId);
     children = services().assemble(selection);
 }
 

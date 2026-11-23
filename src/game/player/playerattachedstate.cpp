@@ -1,4 +1,5 @@
 #include "resources/dolresources.h"
+#include "resources/gameedition.h"
 #include "game/player/playerattachedstate.h"
 #include "game/startup/startupresources.h"
 
@@ -36,6 +37,13 @@ namespace {
         if (!dolresources::read(executable, address, size, result, error)) throw std::runtime_error(error);
         return result;
     }
+
+    unsigned attachedAddress(const std::vector<std::uint8_t>& executable, unsigned northAmerican) {
+        const auto edition = gameedition::identify(executable);
+        if (edition == "GLMJ01") return northAmerican - 0xaec0;
+        if (edition == "GLMP01") return northAmerican - 0xefb8;
+        return northAmerican;
+    }
 }
 
 playercomponents::AttachedState::AttachedState(const std::vector<std::uint8_t>& executable, int actorType,
@@ -44,7 +52,7 @@ playercomponents::AttachedState::AttachedState(const std::vector<std::uint8_t>& 
     if (actorType == 0x27) address = 0x80354ec0;
     else if (actorType >= 0 && actorType < 2) address = 0x80354dec;
     else if (actorType == 0xb3) address = 0x80354fd4;
-    const auto bytes = range(executable, address, parameters.size() * 4);
+    const auto bytes = range(executable, attachedAddress(executable, address), parameters.size() * 4);
     for (unsigned i = 0; i < parameters.size(); ++i) parameters[i] = word(bytes, i * 4);
     for (unsigned i = 0; i < 3; ++i) model.attachment(parameters[i]);
     fields24C.fill(parameters[52]);
@@ -111,7 +119,7 @@ playercomponents::AttachedSingle::AttachedSingle(const std::vector<std::uint8_t>
     if (actorType == 0x27) address = 0x803550f8;
     else if (actorType >= 0 && actorType < 2) address = 0x803550d0;
     else if (actorType == 0xb3) address = 0x80355120;
-    const auto bytes = range(executable, address, parameters.size() * 4);
+    const auto bytes = range(executable, attachedAddress(executable, address), parameters.size() * 4);
     for (unsigned i = 0; i < parameters.size(); ++i) parameters[i] = word(bytes, i * 4);
     effect.flags = 0;
     effect.field40 = 0;

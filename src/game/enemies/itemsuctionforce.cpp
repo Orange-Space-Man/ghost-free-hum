@@ -32,7 +32,7 @@ itemsuction::Force::Force(const playeractor::View& player, const particles::Suct
 
 unsigned itemsuction::Force::apply(double arrivalRadius, const Vector& position, Vector& velocity, Vector& acceleration,
     std::uint8_t& remaining, std::uint8_t& duration, bool countdown, const Parameters& parameters,
-    const Vector& unwrittenDirection) {
+    const std::function<Vector()>& unwrittenDirection) {
     const auto miss = [&] {
         acceleration = {};
         if (countdown) duration = 0;
@@ -43,12 +43,12 @@ unsigned itemsuction::Force::apply(double arrivalRadius, const Vector& position,
     Vector delta;
     for (unsigned i = 0; i < 3; ++i) delta[i] = position[i] - (*context.position)[i];
     distance = magnitude(delta);
-    Vector outward = unwrittenDirection;
-    if (!(distance <= 0)) outward = normalized(delta);
     if (distance <= arrivalRadius && duration) {
         if (countdown) duration = 0;
         return 2;
     }
+    if (distance <= 0 && !unwrittenDirection) throw std::runtime_error("Original zero-distance suction scratch storage is not bound.");
+    const Vector outward = distance <= 0 ? unwrittenDirection() : normalized(delta);
     const auto& axis = *context.direction;
     const float projection = std::fma(outward[0], axis[0], outward[1] * axis[1]) + outward[2] * axis[2];
     if (projection <= -0.35f || !player.field8B4->intersects(200, direction, position)) return miss();

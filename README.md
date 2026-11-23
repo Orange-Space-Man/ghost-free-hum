@@ -8,8 +8,8 @@
   <img alt="x86-64" src="https://img.shields.io/badge/CPU-x86--64-7755aa">
   <img alt="Windows" src="https://img.shields.io/badge/OS-Windows-0078D4">
   <img alt="NTSCU" src="https://img.shields.io/badge/NTSC--U-Supported-test">
-  <img alt="NTSCJ" src="https://img.shields.io/badge/NTSC--J-Planned-%23FFFF00FF">
-  <img alt="PAL" src="https://img.shields.io/badge/PAL-Planned-%23FFFF00FF">
+  <img alt="NTSCJ" src="https://img.shields.io/badge/NTSC--J-Supported-test">
+  <img alt="PAL" src="https://img.shields.io/badge/PAL-Supported-test">
   <a href="#license"><img alt="License: Not specified" src="https://img.shields.io/badge/License-Not%20specified-lightgrey"></a>
 </p>
 

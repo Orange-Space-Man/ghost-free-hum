@@ -18,6 +18,15 @@ void gameplaymusic::Owner::setRoom(unsigned value, std::int16_t polygon) {
     refreshContext();
 }
 
+void gameplaymusic::Owner::syncRoomLight(bool lit, bool blackout) {
+    std::lock_guard<std::recursive_mutex> lock(mutex);
+    // 80016780 publishes both flags every room update. 80018D78 masks the
+    // cleared-room music selection during blackout; 80018DBC retains the raw
+    // light flag for room-specific routing.
+    state.alternateSelection = lit && !blackout;
+    state.roomVariant = lit;
+}
+
 void gameplaymusic::Owner::notifyRoom(unsigned packedRoom, unsigned mapMode) {
     std::lock_guard<std::recursive_mutex> lock(mutex);
     roomAudio.enter(packedRoom, mapMode, state.roomVariant != 0, {
@@ -112,6 +121,7 @@ bool gameplaymusic::Owner::requestEntrance(std::uint32_t audioFrame) {
 
 void gameplaymusic::Owner::updateSequenceControls() {
     std::lock_guard<std::recursive_mutex> lock(mutex);
+    if (hasMansionSequence() && soundState > 3) state.updateSelection(*this);
     sequence.updateSequenceControls();
     sequenceVolume.update();
     if (fanfareActive) fanfare.updateSequenceControls();
@@ -158,6 +168,7 @@ bool gameplaymusic::Owner::requestFirstKey(std::uint32_t audioFrame) {
     }
     preparedSound = activeSound = 0x8000001b;
     sequence.start();
+    resumeMansion = true;
     soundState = 4;
     lastRequestFrame = audioFrame;
     return true;
@@ -204,6 +215,7 @@ void gameplaymusic::Owner::updateRequests(std::uint32_t audioFrame, bool enabled
     case 0x8000001b: requestFirstKey(audioFrame); break;
     case 0x8000000e: requestItem(audioFrame); break;
     case 0x80000008: case 0x8000000f: case 0x80000026: case 0x80000027: requestSequence(pending, audioFrame); break;
+    case 0x80000032: requestBattleClear(audioFrame); break;
     default: throw std::logic_error("Pending music request has no recovered route.");
     }
 }
@@ -294,6 +306,13 @@ bool gameplaymusic::Owner::requestSequence(std::uint32_t id, std::uint32_t audio
     soundState = 4;
     lastRequestFrame = audioFrame;
     return true;
+}
+
+// JaiArcS sequence 50 is BattleClear. Resume the lit-room mansion track when the cue ends.
+bool gameplaymusic::Owner::requestBattleClear(std::uint32_t audioFrame) {
+    if (lastRequestFrame == audioFrame) return false;
+    resumeMansion = true;
+    return requestSequence(0x80000032, audioFrame);
 }
 
 bool gameplaymusic::Owner::requestToadFanfare(std::uint32_t audioFrame) {

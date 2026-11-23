@@ -36,6 +36,9 @@ enemystrategy::Capture::Capture(CaptureServices services, const gamearchive::Arc
         std::string error;
         if (!parameters.load(common.resource(entry), error)) throw std::runtime_error(error);
     }
+    const auto& captureType = this->services.parameters.parameters(this->services.actor.type()).entries().at(18);
+    if (captureType.name != "mTsuriType") throw std::runtime_error("Original ghost capture type is out of place.");
+    verticalCapture = captureType.bits == 1;
 }
 
 void enemystrategy::Capture::update() {
@@ -119,18 +122,36 @@ void enemystrategy::Capture::initializeBehavior() {
         animation("MOGAKU_A", 0);
         actor.previousRotation[0] = actor.previousRotation[2] = 0;
         services.collision.reset();
-        motion.damping = 0.95f; motion.force = {}; motion.forceMagnitude = 4; motion.maximumSpeed = 40;
+        motion.damping = verticalCapture ? 0.98f : 0.95f;
+        motion.force = {}; motion.forceMagnitude = 4; motion.maximumSpeed = verticalCapture ? 80.0f : 40.0f;
         motion.recoilEnabled = false; motion.recoilFrames = 0;
         motion.overrideHeight = motion.preserveVertical = false; motion.height = 0;
         blocked = false;
         motion.track(actor.position, services.captureSource());
-        steering.begin(motion, steeringInput());
+        if (!verticalCapture) steering.begin(motion, steeringInput());
         animation("MOGAKU_A", 0);
         actor.previousRotation[0] = 0;
         escapeHeight = 180;
         initializeEscape();
+        if (verticalCapture) chooseVerticalDirection();
         break;
     }
+}
+
+void enemystrategy::Capture::chooseVerticalDirection() {
+    verticalDirection = (static_cast<double>(services.random()) / 4294967296.0) >= 0.5;
+    verticalTimer = 10.0f + static_cast<float>(static_cast<double>(services.random()) / 4294967296.0 * 20.0);
+}
+
+void enemystrategy::Capture::updateVerticalForce() {
+    ghostcapture::Vector direction{};
+    direction[1] = verticalDirection ? 1.0f : -1.0f;
+    for (unsigned axis = 0; axis < 3; ++axis) direction[axis] -= 0.57735026f * motion.towardSource[axis];
+    const float length = std::sqrt(direction[0] * direction[0] + direction[1] * direction[1] + direction[2] * direction[2]);
+    if (length > 0.0f) for (auto& component : direction) component = component * 4.0f / length;
+    motion.force = direction;
+    verticalTimer -= 1.0f;
+    if (verticalTimer <= 0.0f) chooseVerticalDirection();
 }
 
 void enemystrategy::Capture::faceForce() {
@@ -172,7 +193,10 @@ void enemystrategy::Capture::behavior() {
         if (unlinked() || blocked) break;
         services.collision.update(actor, 70);
         motion.track(actor.position, services.captureSource());
-        if (!motion.recoil(services.collision.contact != 0, services.collision.boundaryNormal)) steering.update(motion, steeringInput());
+        if (!motion.recoil(services.collision.contact != 0, services.collision.boundaryNormal)) {
+            if (verticalCapture) updateVerticalForce();
+            else steering.update(motion, steeringInput());
+        }
         faceForce();
         actor.setVelocity(motion.velocity(actor.position, actor.velocity, services.collision.minimum[1],
             number(services.parameters.parameters(actor.type()).entries()[13].bits),

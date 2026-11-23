@@ -1,4 +1,5 @@
 #include "resources/dolresources.h"
+#include "resources/gameedition.h"
 #include "game/effects/modeleffectpool.h"
 #include "game/startup/startupresources.h"
 
@@ -40,8 +41,9 @@ namespace {
 
 std::vector<modeleffects::Definition> modeleffects::readDefinitions(const std::vector<std::uint8_t>& executable, unsigned map) {
     if (map > (0xffffffffu - 0x80384d6cu) / 4) throw std::out_of_range("Original model-effect map index is invalid.");
-    const auto count = range(executable, 0x80384b34 + map, 1).front();
-    const auto address = word(range(executable, 0x80384d6c + map * 4, 4), 0);
+    const auto count = range(executable, gameedition::modelEffectAddress(executable, 0x80384b34 + map), 1).front();
+    const auto address = word(range(executable,
+        gameedition::modelEffectAddress(executable, 0x80384d6c + map * 4), 4), 0);
     const auto table = range(executable, address, count * 12);
     std::vector<Definition> result;
     for (unsigned i = 0; i < count; ++i) {

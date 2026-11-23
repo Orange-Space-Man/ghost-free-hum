@@ -31,6 +31,9 @@ void modelrenderer::initializeModelState(PipelineState& state) {
 
 void modelrenderer::selectModelPass(PipelineState& state, unsigned pass) {
     state.earlyDepth = (pass & 255) == 0;
+    // The faded room pass is composited before coins and other J3D effects.
+    // Its color must not leave an opaque depth silhouette over those later draws.
+    state.depthWrite = (pass & 255) != 2;
 }
 
 void modelrenderer::selectBatchCull(PipelineState& state, std::uint8_t batchCull, std::uint8_t mode) {

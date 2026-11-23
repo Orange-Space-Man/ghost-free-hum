@@ -45,7 +45,7 @@ bool controlbindings::valid(const Binding& binding, bool keyboard) {
     if (binding.kind == Kind::None) return true;
     if (keyboard) return binding.kind == Kind::Key && binding.code >= 8 && binding.code < 256 &&
         binding.code != VK_ESCAPE && binding.code != VK_F1 && binding.code != VK_F2 &&
-        binding.code != VK_F3 && binding.code != VK_F5;
+        binding.code != VK_F5;
     if (binding.kind == Kind::Axis) return binding.code >= 0 && binding.code < 6 &&
         (binding.direction == 1 || (binding.code < 4 && binding.direction == -1));
     return binding.kind == Kind::Button && binding.code > 0 && !(binding.code & (binding.code - 1)) &&

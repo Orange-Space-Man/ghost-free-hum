@@ -65,6 +65,7 @@ namespace jaudio {
             std::uint16_t pitchRemaining = 0;
             InstrumentVoice instrument;
             Envelope envelope;
+            Envelope modulation;
             Envelope vibrato;
             Oscillator vibratoDefinition;
             bool hasVibrato = false;

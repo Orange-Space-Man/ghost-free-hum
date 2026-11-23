@@ -62,7 +62,7 @@ unsigned playerinput::PadSampler::stick(std::int8_t x, std::int8_t y, float divi
 
 void playerinput::PadSampler::update(Pad& pad, PadStatus status) const {
     if (status.error != 0 && status.error != -1) {
-        pad.pressed = pad.released = 0;
+        pad.pressed = pad.released = pad.repeat = 0;
         return;
     }
     if (status.error == -1) status = {};
@@ -81,6 +81,20 @@ void playerinput::PadSampler::update(Pad& pad, PadStatus status) const {
     pad.pressed = held & (held ^ pad.held);
     pad.released = pad.held & (held ^ pad.held);
     pad.held = held;
+    constexpr std::uint32_t repeatMask = 0x0f0f000f;
+    const auto filtered = held & repeatMask;
+    pad.repeat = 0;
+    if (!filtered) pad.repeatHeld = pad.repeatCount = 0;
+    else if (filtered == pad.repeatHeld) {
+        ++pad.repeatCount;
+        if (pad.repeatCount == 32 || (pad.repeatCount > 32 && (pad.repeatCount - 32) % 4 == 0))
+            pad.repeat = filtered;
+    } else {
+        pad.repeat = filtered & ~pad.repeatHeld;
+        pad.repeatHeld = filtered;
+        pad.repeatCount = 0;
+    }
+    pad.repeat |= pad.pressed & ~repeatMask;
     pad.analogA = status.analogA;
     pad.analogB = status.analogB;
     pad.triggerLeft = status.triggerLeft;

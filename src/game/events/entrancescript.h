@@ -75,6 +75,7 @@ namespace gameevent {
         virtual void startAll();
         virtual void timeActive();
         virtual void save();
+        virtual bool saveComplete() const;
         virtual void stopMusic();
     };
 

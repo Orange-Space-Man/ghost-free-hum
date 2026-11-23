@@ -1,5 +1,6 @@
 #include "game/world/roommirror.h"
 #include "resources/dolresources.h"
+#include "resources/gameedition.h"
 
 #include <cmath>
 #include <cstring>
@@ -23,15 +24,18 @@ namespace {
 }
 
 roommirror::Owner::Owner(const std::vector<std::uint8_t>& executable, const roomlocation::Rooms& rooms, unsigned map) :
-    pose(executable), projection(executable), distance(scalar(executable, mirrorDistance)) {
-    for (unsigned i = 0; i < 3; ++i) position[i] = scalar(executable, foyerPosition + i * 4);
+    pose(executable), projection(executable), distance(scalar(executable,
+        gameedition::cameraFollowConstant(gameedition::identify(executable), mirrorDistance))) {
+    const auto edition = gameedition::identify(executable);
+    for (unsigned i = 0; i < 3; ++i) position[i] = scalar(executable,
+        gameedition::cameraFollowConstant(edition, foyerPosition + i * 4));
     world = pose.rotation({0, -3640, 0});
     for (unsigned i = 0; i < 3; ++i) {
         world[i * 4 + 3] = position[i];
         normal[i] = world[i * 4 + 2];
     }
     roomId = map == 2 ? rooms.resolve(position, 0) : 0xffffffff;
-    retained.fieldOfView = scalar(executable, foyerFieldOfView);
+    retained.fieldOfView = scalar(executable, gameedition::cameraFollowConstant(edition, foyerFieldOfView));
     retained.nearPlane = distance;
     retained.visibilityMode = 2;
 }

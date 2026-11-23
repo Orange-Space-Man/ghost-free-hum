@@ -1,6 +1,7 @@
 #pragma once
 
 #include "game/scene/gameplayresourceowner.h"
+#include "game/scene/gameboyhorrormap.h"
 #include "game/menu/controllerinstructionservices.h"
 #include "platform/d3d11/modelbatchrenderer.h"
 #include "game/startup/keypresentationowner.h"
@@ -50,7 +51,14 @@ namespace gameplay {
         keypresentation::SceneControl sceneControl;
         keypresentation::Owner keyPresentation;
         unsigned presentationButtons = 0;
-        bool gameBoyOpen = false;
+        std::unique_ptr<gameboyhorror::Map> gameBoyMap;
+        bool gameBoyListEnabled = false;
+        bool gameBoyListActive = false, gameBoyListDetail = false;
+        unsigned gameBoyListTab = 0, gameBoyListSelection = 0;
+        std::uint32_t gameBoyPendingPressed = 0, gameBoyPendingRepeat = 0;
+        bool saveMenuActive = false, saveMenuYes = true;
+        std::function<void()> saveCallback;
+        unsigned saveMenuFrame = 0;
         originalmath::FloatTrig trig;
         dooranimation::PoseTables poseTables;
         std::vector<float> textureTrigonometry;
@@ -69,7 +77,7 @@ namespace gameplay {
         std::array<modelrenderer::StageRegisters, 16> retained{};
         unsigned ticks = 0;
         std::uint8_t flaggedOpacity = 0, limitedOpacity = 0;
-        bool overrideRoomOpacity = false;
+        bool overrideRoomOpacity = false, scannerVisibility = false;
         float opacityDistance = 0;
         std::array<float, 3> lightOrigin{}, lightTarget{};
         bool useRoomLights = true;
@@ -85,6 +93,7 @@ namespace gameplay {
         unsigned visibleModelEffects = 0;
         std::unique_ptr<particles::Billboards> particleBillboards;
         particlerenderer::Renderer particleRenderer;
+        std::map<const std::vector<std::uint8_t>*, particles::Resource> trailTextures;
         playerpoints::Renderer pointRenderer;
         playersheets::Renderer sheetRenderer;
         roommirror::Renderer mirrorRenderer;
@@ -96,6 +105,7 @@ namespace gameplay {
         void drawPlayerLight();
         void drawScannerEffects();
         void drawVacuumEffects();
+        void drawTrails();
         void prepareAuxiliary();
         void drawAuxiliary(unsigned stage);
         j3dmodel::MaterialState equipmentMaterialState;
@@ -104,6 +114,7 @@ namespace gameplay {
         void updateOpacity();
         void publishCamera();
         void drawGameplay(bool present);
+        void drawGameBoyMap();
         void drawShadows();
         void drawWorld(bool reflection, const s3denvironment::Camera& camera);
         void refreshActorModels();
@@ -116,3 +127,4 @@ namespace gameplay {
             bool lowOpacity = false);
     };
 }
+

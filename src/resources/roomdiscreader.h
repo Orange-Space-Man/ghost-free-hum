@@ -13,6 +13,7 @@ namespace roomdisc {
     };
 
     bool listFiles(const std::filesystem::path& path, std::vector<File>& files, std::string& error);
+    bool readGameId(const std::filesystem::path& path, std::string& gameId, std::string& error);
     bool readExecutable(const std::filesystem::path& path, std::vector<std::uint8_t>& data, std::string& error);
     bool readFile(const std::filesystem::path& path, const std::string& internalPath, std::vector<std::uint8_t>& data, std::string& error);
     bool read(const std::filesystem::path& path, std::vector<std::uint8_t>& model, std::string& error);

@@ -1,6 +1,7 @@
 #include "resources/dolresources.h"
 #include "game/world/roomfurnitureowner.h"
 #include "game/startup/startupresources.h"
+#include "game/audio/jaudiopositionowners.h"
 
 #include <algorithm>
 #include <cstring>
@@ -244,6 +245,8 @@ void roomfurniture::Owner::release(unsigned row) {
     auto& index = rows.at(row);
     if (index == -1) return;
     auto& object = objects.at(index);
+    if (object.swingSound) object.swingSound->stop(0);
+    object.swingSound = nullptr;
     object.model = nullptr;
     object.animations.clear();
     object.matrices.clear();

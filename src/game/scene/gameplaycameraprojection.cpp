@@ -1,14 +1,12 @@
 #include "game/scene/gameplaycameraprojection.h"
 #include "resources/dolresources.h"
+#include "resources/gameedition.h"
 
 #include <cmath>
 #include <cstring>
 #include <stdexcept>
 
 namespace {
-    constexpr unsigned shakeDecayAddress = 0x804d9c88;
-    constexpr unsigned halfAngleAddress = 0x804dd708, radiansAddress = 0x804dd70c;
-
     float constant(const std::vector<std::uint8_t>& executable, unsigned address) {
         std::vector<std::uint8_t> bytes;
         std::string error;
@@ -31,8 +29,9 @@ namespace {
 }
 
 gameplaycamera::Projection::Projection(const std::vector<std::uint8_t>& executable) :
-    shakeDecay(constant(executable, shakeDecayAddress)), halfAngle(constant(executable, halfAngleAddress)),
-    radians(constant(executable, radiansAddress)) {}
+    shakeDecay(constant(executable, gameedition::projection(gameedition::identify(executable)).shakeDecay)),
+    halfAngle(constant(executable, gameedition::projection(gameedition::identify(executable)).halfAngle)),
+    radians(constant(executable, gameedition::projection(gameedition::identify(executable)).radians)) {}
 
 gameplaycamera::DrawState gameplaycamera::Projection::publish(CameraOwner& owner, const actormodel::InitialPose& pose) const {
     owner.fieldA4 = static_cast<std::uint16_t>(owner.fieldA4 + 0x2000);

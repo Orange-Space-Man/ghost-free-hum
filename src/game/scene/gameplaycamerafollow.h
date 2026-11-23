@@ -10,8 +10,10 @@ namespace gameplaycamera {
         explicit Follow(const std::vector<std::uint8_t>& executable, unsigned map = 2);
         void update(CameraOwner& camera, const playeractor::View& player, unsigned room, unsigned playerIndex = 0);
         void updateScanner(CameraOwner& camera, const playeractor::View& player) const;
+        void beginChestReveal(CameraOwner& camera, const std::array<float, 3>& chest);
         unsigned preset() const;
         static constexpr unsigned captureCallback = 0x80022bc4;
+        static constexpr unsigned chestRevealCallback = 0x80024680;
         void beginTarget(CameraOwner& camera) const;
         void updateTarget(CameraOwner& camera, const std::array<float, 3>& player,
             const std::array<float, 3>& target, unsigned room) const;
@@ -25,6 +27,7 @@ namespace gameplaycamera {
         void select(unsigned value, unsigned delay);
         void refreshRoom(unsigned room);
         void updateCapture(CameraOwner& camera, const playeractor::View& player, unsigned room, unsigned playerIndex);
+        void updateChestReveal(CameraOwner& camera) const;
         std::array<float, 3> aimFor(const std::array<float, 3>& subject, float lead, bool inverted) const;
         std::array<float, 3> eyeFor(const std::array<float, 3>& subject, float lead, float cameraTargetY, float height, float depth) const;
         void approach(std::array<float, 3>& value, const std::array<float, 3>& target, float rate) const;
@@ -43,6 +46,7 @@ namespace gameplaycamera {
         float captureFarDistance, captureLookDistance, eyeHeight = 0, eyeDepth = 0;
         float corridorDepth = 0;
         bool gallery = false;
+        std::array<float, 3> chestFocus{};
         std::array<float, 3> up;
     };
 }

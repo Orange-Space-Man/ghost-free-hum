@@ -12,11 +12,13 @@ namespace gameplaymusic {
         Owner(gameassets::Package& package, const jaudio::Resources& resources,
             const gameplayaudio::Context& context, const std::int32_t& playerHealth);
         void setRoom(unsigned room, std::int16_t soundPolygon);
+        void syncRoomLight(bool lit, bool blackout);
         void notifyRoom(unsigned packedRoom, unsigned mapMode);
         void start();
         bool requestLab(std::uint32_t audioFrame);
         bool requestTraining(std::uint32_t audioFrame);
         bool requestSequence(std::uint32_t id, std::uint32_t audioFrame);
+        bool requestBattleClear(std::uint32_t audioFrame);
         bool requestToadFanfare(std::uint32_t audioFrame);
         void stopEventMusic();
         bool requestDeath(std::uint32_t audioFrame);

@@ -32,15 +32,20 @@ namespace enemystrategy {
         ghostcapture::Steering steering;
         float escapeHeight = 180;
         bool blocked = false;
+        bool verticalCapture = false;
 
     private:
         CaptureServices services;
         gameparameters::Parameters parameters;
         std::uint16_t baseYaw = 0;
+        bool verticalDirection = false;
+        float verticalTimer = 0.0f;
         bool unlinked();
         void animation(const char* name, unsigned duration);
         void initializeEscape();
         void faceForce();
         ghostcapture::SteeringInput steeringInput() const;
+        void chooseVerticalDirection();
+        void updateVerticalForce();
     };
 }

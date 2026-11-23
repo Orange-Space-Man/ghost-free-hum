@@ -1,4 +1,4 @@
-#include "resources/glme01addresses.h"
+#include "resources/gameedition.h"
 #include "resources/dolresources.h"
 #include "game/math/originalfloattrig.h"
 #include "game/startup/startupresources.h"
@@ -20,8 +20,9 @@ bool originalmath::FloatTrig::read(const std::vector<std::uint8_t>& executable, 
         }
         return true;
     };
-    if (!load(glme01::trigReductionTable, result.reduction) || !load(glme01::trigPolynomialTable, result.polynomial) ||
-        !load(glme01::trigConstants, result.constants)) return false;
+    const auto addresses = gameedition::floatTrig(gameedition::identify(executable));
+    if (!load(addresses.reduction, result.reduction) || !load(addresses.polynomial, result.polynomial) ||
+        !load(addresses.constants, result.constants)) return false;
     result.loaded = true;
     *this = result;
     return true;

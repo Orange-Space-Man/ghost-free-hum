@@ -141,8 +141,6 @@ ghostparent::Selection ghostparent::initialize(Fields& fields, const InitializeS
     character.fields93c[1] = 5.0f;
     character.fields93c[3] = 8.0f;
     character.fields93c[2] = randomOffset(speedForMode(services.parameters, fields.invisibleMode == 1 ? 1 : 0), services.random);
-    if (!fields.holding && (selection.configuration.place == 1 || selection.configuration.place == 2))
-        throw std::runtime_error("Original ghost placement types 1 and 2 (800C9354 / 800C93D0) are not ported.");
     fields.element = static_cast<std::uint32_t>(parameterWord(services.parameters, Parameter::Element));
     fields.fadeScaled = 0;
     return selection;

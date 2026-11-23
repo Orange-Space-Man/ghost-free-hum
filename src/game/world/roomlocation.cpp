@@ -1,4 +1,5 @@
 #include "resources/dolresources.h"
+#include "resources/gameedition.h"
 #include "game/world/roomlocation.h"
 #include "game/startup/startupresources.h"
 
@@ -28,7 +29,8 @@ roomlocation::Rooms::Rooms(std::vector<Room> records) : records(std::move(record
 }
 
 roomlocation::Rooms::Rooms(const std::vector<std::uint8_t>& executable, unsigned map) {
-    const auto descriptor = range(executable, word(range(executable, 0x802ff218 + map * 4, 4), 0), 28);
+    const auto descriptor = range(executable, word(range(executable,
+        gameedition::cameraFollow(gameedition::identify(executable)).descriptors + map * 4, 4), 0), 28);
     const auto data = range(executable, word(descriptor, 20), descriptor[0] * 48);
     for (unsigned i = 0; i < descriptor[0]; ++i) {
         const unsigned offset = i * 48;

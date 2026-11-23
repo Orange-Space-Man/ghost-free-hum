@@ -24,6 +24,7 @@ namespace ghostparent {
         const actormodel::InitialPose& pose;
         enemystrategy::GhostDisappearance& disappearance;
         std::function<std::uint32_t()> random;
+        std::function<void(int, std::int32_t&)> place;
         std::function<Children(const Selection&)> assemble;
         std::function<bool(unsigned)> roomCleared;
         std::function<void(std::uint32_t)> elementEffect;

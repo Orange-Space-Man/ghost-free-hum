@@ -1,4 +1,4 @@
-#include "resources/glme01addresses.h"
+#include "resources/gameedition.h"
 #include "resources/dolresources.h"
 #include "game/enemies/enemytypecatalog.h"
 #include "game/startup/startupresources.h"
@@ -27,7 +27,8 @@ bool enemytypes::Catalog::read(const std::vector<std::uint8_t>& executable, std:
     error.clear();
     try {
         std::vector<std::uint8_t> table;
-        if (!dolresources::read(executable, glme01::actorTypeTable, 381 * 28, table, error)) return false;
+        if (!dolresources::read(executable, gameedition::actors(gameedition::identify(executable)).typeTable,
+            381 * 28, table, error)) return false;
         Catalog result;
         for (unsigned i = 0; i < result.types.size(); ++i) {
             auto& type = result.types[i];

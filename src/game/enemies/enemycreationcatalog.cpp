@@ -1,4 +1,5 @@
-#include "resources/glme01addresses.h"
+#include "resources/gameedition.h"
+#include "resources/regionfactories.h"
 #include "resources/dolresources.h"
 #include "game/enemies/enemycreationcatalog.h"
 #include "game/startup/startupresources.h"
@@ -24,11 +25,12 @@ namespace {
 bool enemycreation::Catalog::read(const std::vector<std::uint8_t>& executable, std::string& error) {
     error.clear();
     try {
-        const auto pools = range(executable, glme01::enemyCreationPools, 32);
-        const auto counts = range(executable, glme01::enemyCreationCounts, 16);
-        const auto typeTable = range(executable, glme01::actorTypeTable, 381 * 28);
-        const auto constructors = range(executable, glme01::enemyConstructors, 381 * 16);
-        const auto models = range(executable, glme01::actorAuxiliaryTable, 262 * 64);
+        const auto addresses = gameedition::actors(gameedition::identify(executable));
+        const auto pools = range(executable, addresses.creationPools, 32);
+        const auto counts = range(executable, addresses.creationCounts, 16);
+        const auto typeTable = range(executable, addresses.typeTable, 381 * 28);
+        const auto constructors = range(executable, addresses.constructors, 381 * 16);
+        const auto models = range(executable, addresses.auxiliaryTable, 262 * 64);
         Catalog result;
         for (unsigned i = 0; i < 4; ++i) {
             result.groups[i] = {word(pools, i * 8), word(pools, i * 8 + 4), word(counts, i * 4)};
@@ -36,7 +38,8 @@ bool enemycreation::Catalog::read(const std::vector<std::uint8_t>& executable, s
         for (unsigned i = 0; i < 381; ++i) {
             auto& type = result.types[i];
             type.model = word(typeTable, i * 28);
-            type.constructor = word(constructors, i * 16);
+            type.constructor = regionfactories::canonical(gameedition::identify(executable),
+                word(constructors, i * 16));
             const unsigned group = word(typeTable, i * 28 + 20) >> 16;
             type.group = static_cast<std::int16_t>(group < 32768 ? int(group) : int(group) - 65536);
             type.validModel = type.model < 262;

@@ -1,4 +1,5 @@
 #include "resources/dolresources.h"
+#include "resources/gameedition.h"
 #include "game/player/playeractionstate.h"
 #include "game/player/playerattachedstate.h"
 #include "game/startup/startupresources.h"
@@ -25,7 +26,8 @@ playeractions::Actions::Actions(const std::vector<std::uint8_t>& executable, int
     if (actorType == 0x27) address = 0x803527e0;
     else if (actorType >= 0 && actorType < 2) address = 0x803527d4;
     else if (actorType == 0xb3) address = 0x80352b9c;
-    const auto bytes = range(executable, address, 12);
+    const auto bytes = range(executable,
+        gameedition::playerActionDescriptor(gameedition::identify(executable), address), 12);
     for (unsigned i = 0; i < 3; ++i) parameters[i] = word(bytes, i * 4);
     entries.fill(parameters[2]);
     if (parameters[1]) {

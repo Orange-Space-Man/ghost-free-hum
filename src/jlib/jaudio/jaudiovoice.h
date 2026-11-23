@@ -51,6 +51,8 @@ namespace jaudio {
         float pan = 0.5f;
         unsigned release = 1000;
         Oscillator envelope;
+        Oscillator modulation;
+        bool hasModulation = false;
     };
 
     std::int16_t resampleWave(const Wave& wave, std::uint64_t position, unsigned ratio,
